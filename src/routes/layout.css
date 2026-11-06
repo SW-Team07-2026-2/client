@@ -1,0 +1,41 @@
+@import 'tailwindcss';
+
+@theme {
+	--font-sans:
+		'Noto Sans KR', 'Pretendard Variable', Pretendard, 'IBM Plex Sans KR', -apple-system,
+		BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif, Tossface;
+	--font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+	--font-display: 'Black Han Sans', 'IBM Plex Sans KR', sans-serif;
+}
+
+:root {
+	--bg: #070709;
+	--surface: #1b1b1bff;
+	--surface-2: #2e2e2eff;
+	--line: #3b3b3bff;
+	--fg: #f0f0f0ff;
+	--muted: #acabadff;
+	--accent: #ffffffff;
+	--accent-weak: #3d3d3dff;
+}
+
+body {
+	font-family: var(--font-sans);
+	background-color: var(--bg);
+	color: var(--fg);
+}
+
+/* 첫 페이지(/)와 헤더((user))/웰컴(welcome) 간 로고 뷰 트랜지션 */
+::view-transition-group(indig-logo) {
+	animation-duration: 0.8s;
+	animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+::view-transition-old(indig-logo),
+::view-transition-new(indig-logo) {
+	animation-duration: 0.8s;
+	animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+	height: 100%;
+	width: 100%;
+	object-fit: contain;
+}
