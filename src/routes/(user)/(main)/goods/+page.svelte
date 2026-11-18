@@ -1,26 +1,34 @@
 <script lang="ts">
-	// 굿즈 (Goods) 목록 페이지
+	import GoodsSection from '#lib/components/feature/goods/GoodsSection.svelte';
+	import { isMobile } from '#lib/stores';
 </script>
 
 <svelte:head>
 	<title>INDIG - 굿즈</title>
 </svelte:head>
 
-<main class="page-container">
-	<h1>굿즈 (Goods)</h1>
-	<p>인디 밴드 공식 MD 및 굿즈 스토어가 여기에 들어갑니다.</p>
+<main class="goods-container" class:is-mobile={isMobile.current}>
+	<GoodsSection />
 </main>
 
 <style>
-	.page-container {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
+	.goods-container {
+		width: 100%;
+		max-width: var(--content-max-width);
+		margin: 0 auto;
 		min-height: calc(100dvh - 60px);
-		padding: 2rem;
-		text-align: center;
-		color: #ffffff;
+		padding: 1.25rem var(--content-padding-x) 3.5rem;
+		box-sizing: border-box;
+		color: var(--fg);
+	}
+
+	.goods-container.is-mobile {
+		padding: 0.75rem var(--content-padding-x-mobile) 2.5rem;
+	}
+
+	@media (max-width: 768px) {
+		.goods-container {
+			padding: 0.75rem var(--content-padding-x-mobile) 2.5rem;
+		}
 	}
 </style>
-

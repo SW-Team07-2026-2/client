@@ -1,2 +1,1 @@
-export * from './wave';
-
+export * from './setting';

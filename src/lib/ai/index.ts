@@ -1,6 +1,12 @@
-export { default as Bot } from './Bot.svelte';
+export { default as Bot } from './part/Bot.svelte';
 export { default as BotArea } from './BotArea.svelte';
-export * from './chatStream';
-export type { BotState } from './Bot.svelte';
-export type { ChatAttachment, ChatMessage } from './BotArea.svelte';
-
+export { default as ChatHeader } from './part/ChatHeader.svelte';
+export { default as ChatMessages } from './part/ChatMessages.svelte';
+export { default as ChatInput } from './part/ChatInput.svelte';
+export { default as UserBubble } from './part/UserBubble.svelte';
+export { default as BotMessage } from './part/BotMessage.svelte';
+export { default as AiThinkingLoader } from './part/AiThinkingLoader.svelte';
+export { default as MarkdownViewer } from './part/MarkdownViewer.svelte';
+export * from './logic/chatStream';
+export * from './logic/types';
+export type { BotState } from './part/Bot.svelte';

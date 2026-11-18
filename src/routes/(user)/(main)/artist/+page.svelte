@@ -1,26 +1,34 @@
 <script lang="ts">
-	// 카테고리 기본 페이지: 아티스트 목록 및 탐색
+	import ArtistSection from '#lib/components/feature/artist/ArtistSection.svelte';
+	import { isMobile } from '#lib/stores';
 </script>
 
 <svelte:head>
 	<title>INDIG - 아티스트</title>
 </svelte:head>
 
-<main class="artist-container">
-	<h1>아티스트 (Artist)</h1>
-	<p>인디 밴드 및 아티스트 목록, 추천 피드가 여기에 들어갑니다.</p>
+<main class="artist-container" class:is-mobile={isMobile.current}>
+	<ArtistSection />
 </main>
 
 <style>
 	.artist-container {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
+		width: 100%;
+		max-width: var(--content-max-width);
+		margin: 0 auto;
 		min-height: calc(100dvh - 60px);
-		padding: 2rem;
-		text-align: center;
-		color: #ffffff;
+		padding: 1.25rem var(--content-padding-x) 3.5rem;
+		box-sizing: border-box;
+		color: var(--fg);
+	}
+
+	.artist-container.is-mobile {
+		padding: 0.75rem var(--content-padding-x-mobile) 2.5rem;
+	}
+
+	@media (max-width: 768px) {
+		.artist-container {
+			padding: 0.75rem var(--content-padding-x-mobile) 2.5rem;
+		}
 	}
 </style>
-

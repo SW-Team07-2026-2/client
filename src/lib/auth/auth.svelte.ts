@@ -1,4 +1,4 @@
-import { API_URL } from '#lib/config/setting';
+import { BASE_API_URL } from '#lib/config/api.ts';
 
 /**
  * G3 GET /api/auth/me 응답 타입 (명세서 §1 G3)
@@ -30,6 +30,23 @@ export interface ApiEnvelope<T = unknown> {
 	message: string;
 	result?: T;
 	correlationId?: string;
+}
+
+/**
+ * M24 / M25 약관 코드 (명세서 §2-0)
+ */
+export type TermsCode = 'AGE14' | 'TOS' | 'PRIVACY' | 'MARKETING' | 'PRIVACY_POLICY';
+
+/**
+ * M24 가입 약관 항목 (명세서 §2-6 M24)
+ */
+export interface TermsItem {
+	termsId: number;
+	code: TermsCode;
+	version: string;
+	title: string;
+	content: string;
+	required: boolean;
 }
 
 /**
@@ -67,19 +84,19 @@ export function isSignupFlowActive(): boolean {
 }
 
 const STORAGE_KEY_USER = 'indig_user';
-const STORAGE_KEY_XSRF = 'indig_xsrf';
 const MUTATING_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
 class AuthStore {
 	user = $state<User | null>(null);
 	token = $state<string | null>(null);
-	xsrfToken = $state<string | null>(null);
+	xsrfToken = $state<string | null>(null); // 메모리에만 보관 (명세 및 백엔드 가이드 준수)
 	isLoading = $state<boolean>(false);
 	isVerified = $state<boolean>(false);
 	isLoggedIn = $derived(Boolean(this.user));
+	private refreshPromise: Promise<'OK' | 'UNAUTHORIZED' | 'UNAVAILABLE'> | null = null;
 
 	get apiBaseUrl(): string {
-		return API_URL.replace(/\/+$/, '');
+		return BASE_API_URL.replace(/\/+$/, '');
 	}
 
 	constructor() {
@@ -98,7 +115,6 @@ class AuthStore {
 		const urlXsrf = urlParams.get('xsrfToken') || urlParams.get('xsrf');
 		if (urlXsrf) {
 			this.xsrfToken = urlXsrf;
-			localStorage.setItem(STORAGE_KEY_XSRF, urlXsrf);
 			urlParams.delete('xsrfToken');
 			urlParams.delete('xsrf');
 			const cleanQuery = urlParams.toString();
@@ -108,10 +124,10 @@ class AuthStore {
 	}
 
 	/**
-	 * 응답 헤더(X-XSRF-TOKEN) 또는 응답 바디에서 xsrfToken 추출
+	 * 응답 헤더(X-XSRF-TOKEN) 또는 응답 바디에서 xsrfToken을 추출해 메모리에 보관
 	 */
 	captureXsrfFromResponse(res: Response, body?: any): void {
-		const headerXsrf = res.headers.get('x-xsrf-token') || res.headers.get('X-XSRF-TOKEN');
+		const headerXsrf = res.headers.get('X-XSRF-TOKEN') || res.headers.get('x-xsrf-token');
 		const bodyXsrf =
 			typeof body?.result?.xsrfToken === 'string'
 				? body.result.xsrfToken
@@ -121,14 +137,11 @@ class AuthStore {
 		const resolved = headerXsrf || bodyXsrf || this.readXsrfCookie();
 		if (resolved) {
 			this.xsrfToken = resolved;
-			if (typeof window !== 'undefined') {
-				localStorage.setItem(STORAGE_KEY_XSRF, resolved);
-			}
 		}
 	}
 
 	/**
-	 * 브라우저 쿠키에서 XSRF-TOKEN 값을 읽어옵니다 (명세서 §0-2, §0-3)
+	 * 브라우저 쿠키에서 XSRF-TOKEN 값을 읽어옵니다 (동일 도메인 배포 환경용)
 	 */
 	readXsrfCookie(): string | null {
 		if (typeof document === 'undefined') return null;
@@ -137,25 +150,25 @@ class AuthStore {
 	}
 
 	/**
-	 * 현재 유효한 CSRF 토큰 반환 (G3 응답의 xsrfToken 또는 XSRF-TOKEN 쿠키)
+	 * 현재 메모리에 보관된 CSRF 토큰(또는 동일 도메인 쿠키) 반환
 	 */
 	getXsrfToken(): string | null {
-		return this.xsrfToken || this.readXsrfCookie();
+		return this.xsrfToken || (this.user?.xsrfToken ? this.user.xsrfToken : null) || this.readXsrfCookie();
 	}
 
 	private restoreFromStorage() {
 		try {
 			const savedUser = localStorage.getItem(STORAGE_KEY_USER);
-			const savedXsrf = localStorage.getItem(STORAGE_KEY_XSRF);
-			if (savedXsrf) {
-				this.xsrfToken = savedXsrf;
-			} else {
-				const cookieXsrf = this.readXsrfCookie();
-				if (cookieXsrf) this.xsrfToken = cookieXsrf;
+			const cookieXsrf = this.readXsrfCookie();
+			if (cookieXsrf) {
+				this.xsrfToken = cookieXsrf;
 			}
 			if (savedUser) {
 				this.user = JSON.parse(savedUser);
 				this.token = 'cookie_session';
+				if (this.user?.xsrfToken && !this.xsrfToken) {
+					this.xsrfToken = this.user.xsrfToken;
+				}
 			}
 		} catch (e) {
 			console.error('Failed to restore auth from storage:', e);
@@ -175,9 +188,7 @@ class AuthStore {
 		}
 		if (typeof window !== 'undefined') {
 			localStorage.removeItem(STORAGE_KEY_USER);
-			if (clearXsrf) {
-				localStorage.removeItem(STORAGE_KEY_XSRF);
-			}
+			localStorage.removeItem('indig_xsrf');
 			localStorage.removeItem('indig_token');
 		}
 	}
@@ -209,14 +220,14 @@ class AuthStore {
 
 		this.user = userData;
 		this.token = 'cookie_session';
-		this.xsrfToken = resolvedXsrf || null;
+		if (resolvedXsrf) {
+			this.xsrfToken = resolvedXsrf;
+		}
 		this.isVerified = true;
+		clearSignupFlow();
 
 		if (typeof window !== 'undefined') {
 			localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(userData));
-			if (resolvedXsrf) {
-				localStorage.setItem(STORAGE_KEY_XSRF, resolvedXsrf);
-			}
 		}
 
 		return userData;
@@ -263,15 +274,12 @@ class AuthStore {
 			}
 
 			const body = await res.json().catch(() => null);
-	auth.captureXsrfFromResponse(res, body);
+			this.captureXsrfFromResponse(res, body);
 			const data = body?.result ?? body;
 			if (!data) return { ok: false };
 
 			if (typeof data.xsrfToken === 'string') {
 				this.xsrfToken = data.xsrfToken;
-				if (typeof window !== 'undefined') {
-					localStorage.setItem(STORAGE_KEY_XSRF, data.xsrfToken);
-				}
 			}
 
 			if (data.newUser) {
@@ -290,45 +298,50 @@ class AuthStore {
 
 	/**
 	 * G5 ✅ 토큰 재발급 (POST /api/auth/refresh)
+	 * - 동시 다발적인 401 응답 시 단일 요청으로 병합(single-flight)하여 RT 중복 사용(REFRESH_REUSED) 방지
 	 * - 200: 새 쿠키 발급 -> 'OK'
 	 * - 401 REFRESH_INVALID · REFRESH_REUSED: 세션 만료 -> 'UNAUTHORIZED'
 	 * - 503: 일시적 장애 (쿠키 유지) -> 'UNAVAILABLE'
 	 */
 	async refresh(): Promise<'OK' | 'UNAUTHORIZED' | 'UNAVAILABLE'> {
-		try {
-			const headers: Record<string, string> = {};
-			const xsrf = this.getXsrfToken();
-			if (xsrf) {
-				headers['X-XSRF-TOKEN'] = xsrf;
-			}
-
-			const res = await fetch(`${this.apiBaseUrl}/api/auth/refresh`, {
-				method: 'POST',
-				headers,
-				credentials: 'include'
-			});
-
-			if (res.ok) {
-				const cookieXsrf = this.readXsrfCookie();
-				if (cookieXsrf) {
-					this.xsrfToken = cookieXsrf;
-					if (typeof window !== 'undefined') {
-						localStorage.setItem(STORAGE_KEY_XSRF, cookieXsrf);
-					}
-				}
-				return 'OK';
-			}
-
-			if (res.status === 503) {
-				return 'UNAVAILABLE';
-			}
-
-			this.clearAuth();
-			return 'UNAUTHORIZED';
-		} catch (err) {
-			console.warn('Token refresh error:', err);
-			return 'UNAVAILABLE';
+		if (this.refreshPromise) {
+			return this.refreshPromise;
 		}
+
+		this.refreshPromise = (async () => {
+			try {
+				const headers: Record<string, string> = {};
+				const xsrf = this.getXsrfToken();
+				if (xsrf) {
+					headers['X-XSRF-TOKEN'] = xsrf;
+				}
+
+				const res = await fetch(`${this.apiBaseUrl}/api/auth/refresh`, {
+					method: 'POST',
+					headers,
+					credentials: 'include'
+				});
+
+				if (res.ok) {
+					this.captureXsrfFromResponse(res);
+					return 'OK';
+				}
+
+				if (res.status === 503) {
+					return 'UNAVAILABLE';
+				}
+
+				this.clearAuth();
+				return 'UNAUTHORIZED';
+			} catch (err) {
+				console.warn('Token refresh error:', err);
+				return 'UNAVAILABLE';
+			} finally {
+				this.refreshPromise = null;
+			}
+		})();
+
+		return this.refreshPromise;
 	}
 
 	/**
@@ -344,7 +357,6 @@ class AuthStore {
 			});
 
 			const body = await res.json().catch(() => null);
-	auth.captureXsrfFromResponse(res, body);
 			this.captureXsrfFromResponse(res, body);
 
 			if (res.ok) {
@@ -396,13 +408,27 @@ class AuthStore {
 	/**
 	 * G13 ✅ 가입 완료 (POST /api/auth/signup)
 	 * - SIGNUP 쿠키 + X-XSRF-TOKEN 헤더 필요
+	 * - 토큰이 없으면 가입 요청을 보내지 않고 쿠키 차단·로그인 상태 확인 에러 반환
 	 */
 	async signup(
 		artistIds: number[],
 		agreements: SignupAgreementInput[]
 	): Promise<SignupResult> {
+		const xsrfToken = this.getXsrfToken();
+		if (!xsrfToken) {
+			throw Object.assign(
+				new Error(
+					'인증 토큰(X-XSRF-TOKEN)이 없습니다. 쿠키 차단 설정이나 로그인 상태를 확인하거나 페이지를 새로고침해 주세요.'
+				),
+				{ code: 'CSRF_TOKEN_MISSING', status: 403 }
+			);
+		}
+
 		const result = await api<SignupResult>('/api/auth/signup', {
 			method: 'POST',
+			headers: {
+				'X-XSRF-TOKEN': xsrfToken
+			},
 			body: JSON.stringify({ artistIds, agreements })
 		});
 		clearSignupFlow();
@@ -526,4 +552,12 @@ export async function api<T = unknown>(
 	}
 
 	return body.result as T;
+}
+
+/**
+ * M24 GET /api/members/terms — 가입 약관 목록 조회 (공개)
+ */
+export async function fetchTermsList(): Promise<TermsItem[]> {
+	const res = await api<{ items: TermsItem[] }>('/api/members/terms');
+	return res?.items ?? [];
 }

@@ -36,11 +36,6 @@
 	},
 	"imports": {
 		"#lib": "./src/lib/index.ts",
-		"#lib/audio": "./src/lib/audio/index.ts",
-		"#lib/auth": "./src/lib/auth/index.ts",
-		"#lib/fluid": "./src/lib/fluid/index.ts",
-		"#lib/components": "./src/lib/components/index.ts",
-		"#lib/ai": "./src/lib/ai/index.ts",
 		"#lib/*": "./src/lib/*"
 	}
 }

@@ -18,6 +18,13 @@
 			isCheckingAuth = false;
 		})();
 	});
+
+	// 사용 중 세션이 만료/초기화되어 로그아웃 상태로 전환되면 검은 빈 화면에 머무르지 않고 메인으로 이동
+	$effect(() => {
+		if (!isCheckingAuth && !auth.isLoggedIn) {
+			goto('/', { replaceState: true });
+		}
+	});
 </script>
 
 {#if !isCheckingAuth && auth.isLoggedIn}
