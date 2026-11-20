@@ -1,13 +1,26 @@
 <script lang="ts">
-	import { onDestroy, untrack, type Snippet } from 'svelte';
-	import { FluidSetting } from '#lib/fluid/setting';
+	import { onDestroy, onMount, untrack, type Snippet } from 'svelte';
+	import { FluidSetting, prefersReducedMotion } from '#lib/fluid';
 	import { isMobile } from '#lib/stores';
-	import FdButton from '../../ui/FdButton.svelte';
-	import FdTextMorph from '../../ui/FdTextMorph.svelte';
+	import FdDiv from '../../ui/FdDiv.svelte';
+	import DynamicText from '../../ui/DynamicText.svelte';
 	import FdSegmentedControl, { type SegmentOption } from '../../ui/FdSegmentedControl.svelte';
 	import RefreshCcwIcon from '../../ui/RefreshCcwIcon.svelte';
 	import FdContentSearchInput from '../../feature/FdContentSearchInput.svelte';
-	import ContentFilterArea from '../../feature/ContentFilterArea.svelte';
+	import ContentFilterSection from '../../feature/filter/ContentFilterSection.svelte';
+	import {
+		DIRECTIONAL_BLUR_MOTION,
+		easeOutCubic,
+		resolveSlideDirection
+	} from '#lib/utils/directionalBlur';
+	import {
+		clearSavedCategoryFilter,
+		countActiveFilters,
+		createDefaultFilterState,
+		restoreCategoryFilterState,
+		saveCategoryFilter,
+		type ContentFilterState
+	} from '#lib/config/filter';
 
 	interface Props {
 		/** 현재 카테고리 명칭 (예: 'Artist', 'Concert', 'Album', 'Merchandise' 또는 한글 명칭) */
@@ -20,7 +33,7 @@
 		description?: string;
 		/** 카테고리 뱃지/태그 텍스트 (옵션) */
 		badge?: string;
-		/** 피드 탭 선택 값 ('recommend' | 'follow') */
+		/** 피드 탭 선택 값 ('recommend' | 'popular' | 'all' | 'follow') */
 		feedMode?: string;
 		/** 피드 탭 변경 콜백 */
 		onFeedChange?: (value: string, item: SegmentOption, index: number) => void;
@@ -38,10 +51,14 @@
 		onFilterToggle?: (open: boolean) => void;
 		/** 선택된 장르 필터 목록 (양방향 바인딩) */
 		selectedGenres?: string[];
+		/** 통합 필터 상태 (양방향 바인딩) */
+		filterState?: ContentFilterState;
 		/** 장르 필터 다중 선택 허용 여부 (기본값: true) */
 		filterMultiple?: boolean;
 		/** 장르 필터 변경 콜백 */
 		onGenreChange?: (genres: string[]) => void;
+		/** 통합 필터 변경 콜백 */
+		onFilterChange?: (state: ContentFilterState) => void;
 		/** 필터 영역 스니펫 (추후 제작될 필터 컴포넌트들을 전달) */
 		filters?: Snippet;
 		/** 우측 상단 액션 영역 (검색, 정렬 셀렉트 등 옵션) */
@@ -69,8 +86,10 @@
 		filterOpen = $bindable(false),
 		onFilterToggle,
 		selectedGenres = $bindable<string[]>([]),
+		filterState = $bindable<ContentFilterState>(createDefaultFilterState()),
 		filterMultiple = true,
 		onGenreChange,
+		onFilterChange,
 		filters,
 		actions,
 		onRefresh,
@@ -108,28 +127,6 @@
 
 	let targetIndex = $derived(Math.max(0, morphWords.indexOf(targetWord)));
 
-	let morphRef: ReturnType<typeof FdTextMorph> | undefined = $state();
-	let prevIndex: number | null = null;
-
-	$effect(() => {
-		const idx = targetIndex;
-		const ref = morphRef;
-		if (!ref) {
-			prevIndex = null;
-			return;
-		}
-
-		if (prevIndex === null) {
-			prevIndex = idx;
-			return;
-		}
-
-		if (idx !== prevIndex) {
-			prevIndex = idx;
-			ref.goTo(idx);
-		}
-	});
-
 	const CATEGORY_SEARCH_TEXT: Record<string, { label: string; placeholder: string }> = {
 		Artist: { label: '아티스트 검색', placeholder: '아티스트를 검색하세요...' },
 		Concert: { label: '공연 검색', placeholder: '공연을 검색하세요...' },
@@ -150,6 +147,25 @@
 	let resolvedSearchMeta = $derived(resolveCategorySearch(targetWord, title));
 	let resolvedSearchLabel = $derived(resolvedSearchMeta.label);
 	let resolvedSearchPlaceholder = $derived(searchPlaceholder || resolvedSearchMeta.placeholder);
+
+	let searchOpen = $state(false);
+	const isSearchFeedMode = $derived(searchOpen || searchQuery.trim().length > 0);
+	let lastStandardFeedMode = $state<'recommend' | 'popular'>('recommend');
+
+	$effect.pre(() => {
+		if (isSearchFeedMode) {
+			if (feedMode === 'recommend' || feedMode === 'popular') {
+				lastStandardFeedMode = feedMode;
+				feedMode = 'all';
+			}
+		} else {
+			if (feedMode === 'recommend' || feedMode === 'popular') {
+				lastStandardFeedMode = feedMode;
+			} else if (feedMode === 'all') {
+				feedMode = lastStandardFeedMode;
+			}
+		}
+	});
 
 	// 카테고리 순서(Artist -> Concert -> Album -> Merchandise)에 따른 부설명 전환 컨트롤러
 	// 1: 오른쪽 카테고리(예: 아티스트 -> 공연), -1: 왼쪽 카테고리(예: 굿즈 -> 공연)
@@ -175,18 +191,6 @@
 	let lastSubtitleCategoryIndex: number | null = null;
 	let subtitleRafId = 0;
 
-	function prefersReducedMotion(): boolean {
-		return (
-			typeof window !== 'undefined' &&
-			window.matchMedia('(prefers-reduced-motion: reduce)').matches
-		);
-	}
-
-	function easeOutCubic(t: number): number {
-		const inv = 1 - t;
-		return 1 - inv * inv * inv;
-	}
-
 	function stopSubtitleLoop() {
 		if (subtitleRafId) {
 			cancelAnimationFrame(subtitleRafId);
@@ -202,7 +206,8 @@
 		for (const item of subtitleItems) {
 			if (item.phase === 'idle') continue;
 
-			const raw = item.duration > 0 ? Math.min(1, Math.max(0, (now - item.startTime) / item.duration)) : 1;
+			const raw =
+				item.duration > 0 ? Math.min(1, Math.max(0, (now - item.startTime) / item.duration)) : 1;
 			const eased = easeOutCubic(raw);
 
 			item.x = item.fromX + (item.toX - item.fromX) * eased;
@@ -280,9 +285,10 @@
 				return;
 			}
 
-			const dir: 1 | -1 = idx >= lastSubtitleCategoryIndex ? 1 : -1;
+			const dir = resolveSlideDirection(lastSubtitleCategoryIndex, idx);
 			lastSubtitleCategoryIndex = idx;
 			const now = performance.now();
+			const { distance, blur, enterDuration, exitDuration } = DIRECTIONAL_BLUR_MOTION;
 
 			// 기존 활성 텍스트는 현재 프레임의 실제 위치·투명도·블러에서 자연스럽게 반대 방향으로 퇴장
 			const updated = subtitleItems.map((item) => {
@@ -291,13 +297,13 @@
 					...item,
 					phase: 'exiting' as const,
 					fromX: item.x,
-					toX: -dir * 38,
+					toX: -dir * distance,
 					fromOpacity: item.opacity,
 					toOpacity: 0,
 					fromBlur: item.blur,
-					toBlur: 6,
+					toBlur: blur,
 					startTime: now,
-					duration: 320
+					duration: exitDuration
 				};
 			});
 
@@ -305,17 +311,17 @@
 				uid: nextSubtitleUid++,
 				text,
 				phase: 'entering',
-				x: dir * 38,
+				x: dir * distance,
 				opacity: 0,
-				blur: 6,
-				fromX: dir * 38,
+				blur,
+				fromX: dir * distance,
 				toX: 0,
 				fromOpacity: 0,
 				toOpacity: 1,
-				fromBlur: 6,
+				fromBlur: blur,
 				toBlur: 0,
 				startTime: now,
-				duration: 420
+				duration: enterDuration
 			});
 
 			subtitleItems = updated;
@@ -327,9 +333,21 @@
 		stopSubtitleLoop();
 	});
 
-	const hasSelectedGenres = $derived(selectedGenres.length > 0);
+	$effect(() => {
+		const genres = selectedGenres;
+		untrack(() => {
+			if (
+				genres.length !== filterState.genres.length ||
+				genres.some((g, i) => g !== filterState.genres[i])
+			) {
+				filterState = { ...filterState, genres: [...genres] };
+			}
+		});
+	});
 
-	// 필터 버튼: 뒷배경(--bg) + 보더(--line), 호버 시엔 색만 변하고 장르 1개 이상 선택 시 보더 색 물결 활성화
+	const hasActiveFilters = $derived(countActiveFilters(filterState) > 0);
+
+	// 필터 버튼: 뒷배경(--bg) + 보더(--line), 호버 시엔 색만 변하고 활성 필터가 1개 이상이면 보더 색 물결 활성화
 	const filterBtnSetting = $derived(
 		new FluidSetting({
 			radius: 999,
@@ -337,8 +355,8 @@
 			bulge: 6,
 			bulgeWidth: 18,
 			layers: 2,
-			layerGap: hasSelectedGenres ? 2.8 : 0,
-			waveAmp: hasSelectedGenres ? 2.4 : 0,
+			layerGap: hasActiveFilters ? 2 : 0,
+			waveAmp: hasActiveFilters ? 2.4 : 0,
 			waveLength: 60,
 			spin: 1.15,
 			inset: 12,
@@ -347,7 +365,7 @@
 			bulgeReactive: true,
 			clickReactive: true,
 			pressDeform: { x: 0.8, y: -1.2 },
-			pauseWhenIdle: !hasSelectedGenres,
+			pauseWhenIdle: !hasActiveFilters,
 			color: 'var(--bg)',
 			hoverColor: 'var(--surface-dim)',
 			pressColor: 'var(--surface-3)',
@@ -357,16 +375,164 @@
 			borderColor: 'var(--line)',
 			hoverBorderColor: 'var(--muted)',
 			pressBorderColor: 'var(--muted)',
-			textColor: hasSelectedGenres || filterOpen ? 'var(--fg)' : 'var(--muted)'
+			textColor: hasActiveFilters || filterOpen ? 'var(--fg)' : 'var(--muted)'
 		})
 	);
 
 	let refreshHovered = $state(false);
 	let refreshIconRef: ReturnType<typeof RefreshCcwIcon> | undefined = $state();
+	let filterSectionRef: ReturnType<typeof ContentFilterSection> | undefined = $state();
+
+	// 필터 드로어가 닫혀 있을 때는 수십 개의 캔버스(FdDiv) 마운트/해제를 지연해 카테고리 전환 렉 제거
+	let filterMounted = $state(untrack(() => filterOpen));
+	let filterUnmountTimer: ReturnType<typeof setTimeout> | undefined;
+
+	$effect(() => {
+		const isOpen = filterOpen;
+		clearTimeout(filterUnmountTimer);
+		if (isOpen) {
+			filterMounted = true;
+		} else if (filterMounted) {
+			filterUnmountTimer = setTimeout(() => {
+				filterMounted = false;
+			}, 380);
+		}
+	});
+
+	// 필터 드로어가 언마운트된 상태에서도 카테고리 전환 시 마운트 전에 필터 상태 기억/복원 유지
+	let prevHeaderCategory = untrack(() => targetWord);
+	$effect.pre(() => {
+		const nextCategory = targetWord;
+		if (nextCategory !== prevHeaderCategory) {
+			const leavingCategory = prevHeaderCategory;
+			prevHeaderCategory = nextCategory;
+			untrack(() => {
+				if (filterMounted) return;
+				saveCategoryFilter(leavingCategory, filterState);
+				const restored = restoreCategoryFilterState(nextCategory, filterState);
+				if (restored) {
+					filterState = restored.nextState;
+					if (restored.genresChanged) {
+						selectedGenres = [...restored.nextState.genres];
+						onGenreChange?.([...restored.nextState.genres]);
+					}
+					onFilterChange?.(restored.nextState);
+				}
+			});
+		}
+	});
+
+	// 필터 알약 가로 확장 스프링 (필터 활성 시 오른쪽으로 부드럽게 늘어나 '초기화' 버튼 노출)
+	const FILTER_ICON_WIDTH = 38;
+	let resetSlotEl = $state<HTMLDivElement | null>(null);
+	let resetSlotWidth = $state(58);
+	let filterPillWidth = $state(FILTER_ICON_WIDTH);
+	let pillTargetWidth = FILTER_ICON_WIDTH;
+	let pillVelocity = 0;
+	let pillRafId = 0;
+	let pillLastTime = 0;
+	let pillWidthInitialized = false;
+
+	function tickFilterPill(now: number) {
+		pillRafId = 0;
+		const dt = Math.min((now - pillLastTime) / 1000, 1 / 30) || 1 / 60;
+		pillLastTime = now;
+
+		const sub = 4;
+		const subDt = dt / sub;
+		let w = filterPillWidth;
+		for (let i = 0; i < sub; i++) {
+			const accel = -300 * (w - pillTargetWidth) - 26 * pillVelocity;
+			pillVelocity += accel * subDt;
+			w += pillVelocity * subDt;
+		}
+
+		if (Math.abs(w - pillTargetWidth) < 0.08 && Math.abs(pillVelocity) < 0.35) {
+			filterPillWidth = pillTargetWidth;
+			pillVelocity = 0;
+			return;
+		}
+
+		filterPillWidth = Math.max(FILTER_ICON_WIDTH, w);
+		pillRafId = requestAnimationFrame(tickFilterPill);
+	}
+
+	function syncFilterPillTarget(nextTarget: number, animate = true) {
+		pillTargetWidth = nextTarget;
+		if (!animate || !pillWidthInitialized || prefersReducedMotion()) {
+			if (pillRafId) {
+				cancelAnimationFrame(pillRafId);
+				pillRafId = 0;
+			}
+			filterPillWidth = nextTarget;
+			pillVelocity = 0;
+			pillWidthInitialized = true;
+			return;
+		}
+		if (pillRafId) return;
+		pillLastTime = performance.now();
+		pillRafId = requestAnimationFrame(tickFilterPill);
+	}
+
+	$effect(() => {
+		const active = hasActiveFilters;
+		const extra = resetSlotWidth;
+		const target = active ? FILTER_ICON_WIDTH + extra : FILTER_ICON_WIDTH;
+		untrack(() => {
+			syncFilterPillTarget(target, pillWidthInitialized);
+		});
+	});
+
+	onMount(() => {
+		if (resetSlotEl) {
+			const w = resetSlotEl.offsetWidth;
+			if (w > 0) resetSlotWidth = w;
+		}
+		syncFilterPillTarget(
+			hasActiveFilters ? FILTER_ICON_WIDTH + resetSlotWidth : FILTER_ICON_WIDTH,
+			false
+		);
+
+		if (!resetSlotEl) return;
+		const ro = new ResizeObserver(() => {
+			if (!resetSlotEl) return;
+			const w = resetSlotEl.offsetWidth;
+			if (w > 0 && Math.abs(w - resetSlotWidth) > 0.5) {
+				resetSlotWidth = w;
+			}
+		});
+		ro.observe(resetSlotEl);
+		return () => ro.disconnect();
+	});
+
+	onDestroy(() => {
+		clearTimeout(filterUnmountTimer);
+		if (pillRafId) {
+			cancelAnimationFrame(pillRafId);
+			pillRafId = 0;
+		}
+	});
 
 	function handleFilterToggle() {
 		filterOpen = !filterOpen;
 		onFilterToggle?.(filterOpen);
+	}
+
+	function handleResetAllFilters(e: MouseEvent) {
+		e.stopPropagation();
+		if (filterSectionRef) {
+			filterSectionRef.resetAll();
+		} else {
+			const next = {
+				...createDefaultFilterState(),
+				sort: feedMode === 'follow' ? filterState.sort : ''
+			};
+			clearSavedCategoryFilter(targetWord);
+			filterState = next;
+			selectedGenres = [];
+			onGenreChange?.([]);
+			onFilterChange?.(next);
+		}
 	}
 
 	function handleRefreshClick() {
@@ -378,28 +544,10 @@
 {#if !isMobile.current}
 	<header class="main-page-header {className}">
 		<div class="header-inner">
-			<!-- 중앙 타이틀 & 설명 영역 (FdTextMorph 모핑 적용) -->
+			<!-- 중앙 타이틀 & 설명 영역 (DynamicText 모핑 적용) -->
 			<div class="title-meta">
 				<h1 class="category-heading">
-					<FdTextMorph
-						bind:this={morphRef}
-						words={morphWords}
-						initialIndex={targetIndex}
-						morph="liquid"
-						color="#FAFAFA"
-						morphColor="#fafafa"
-						tint={0.3}
-						align="center"
-						duration={1.1}
-						stagger={0.25}
-						staggerFrom="random"
-						travel={0.5}
-						goo={0.1}
-						swell={0.02}
-						softness={0.8}
-						scale={0.04}
-						trigger="manual"
-					/>
+					<DynamicText mode="morph" text={targetWord} />
 				</h1>
 
 				{#if subtitleItems.length > 0}
@@ -425,67 +573,93 @@
 				<div class="filter-section" role="region" aria-label="{title} 필터">
 					<div class="filter-scroll-container">
 						<div class="filter-left">
-							<div class="filter-toggle-slot">
-								<FdButton
-									class="filter-toggle-btn {filterOpen ? 'is-open' : ''} {hasSelectedGenres
-										? 'has-filter'
-										: ''}"
-									setting={filterBtnSetting}
-									aria-expanded={filterOpen}
-									aria-label={filterOpen ? '필터 닫기' : '필터 열기'}
-									onclick={handleFilterToggle}
-								>
-									<svg
-										class="filter-toggle-icon"
-										class:is-open={filterOpen}
-										xmlns="http://www.w3.org/2000/svg"
-										width="20"
-										height="20"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										aria-hidden="true"
-									>
-										<path
-											class="bar bar-top"
-											fill="none"
-											stroke="currentColor"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="1.5"
-											d="M4.5 7h15"
-										/>
-										<path
-											class="bar bar-mid"
-											fill="none"
-											stroke="currentColor"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="1.5"
-											d="M7 12h10"
-										/>
-										<path
-											class="bar bar-bot"
-											fill="none"
-											stroke="currentColor"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="1.5"
-											d="M4.5 17h15"
-										/>
-									</svg>
-								</FdButton>
-							</div>
-
 							<div class="search-slot">
 								<FdContentSearchInput
 									bind:value={searchQuery}
+									bind:open={searchOpen}
 									label={resolvedSearchLabel}
 									placeholder={resolvedSearchPlaceholder}
 									oninput={(val) => onSearchChange?.(val)}
 									onenter={(val) => onSearchSubmit?.(val)}
 									aria-label="{title} 검색"
 								/>
+							</div>
+
+							<div class="filter-toggle-slot">
+								<FdDiv
+									setting={filterBtnSetting}
+									class="filter-pill-wrap"
+									bodyClass="filter-pill-body"
+								>
+									<div class="filter-pill-stage" style:width="{filterPillWidth.toFixed(2)}px">
+										<button
+											type="button"
+											class="filter-toggle-btn"
+											class:is-open={filterOpen}
+											class:has-filter={hasActiveFilters}
+											aria-expanded={filterOpen}
+											aria-label={filterOpen ? '필터 닫기' : '필터 열기'}
+											onclick={handleFilterToggle}
+										>
+											<svg
+												class="filter-toggle-icon"
+												class:is-open={filterOpen}
+												xmlns="http://www.w3.org/2000/svg"
+												width="20"
+												height="20"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												aria-hidden="true"
+											>
+												<path
+													class="bar bar-top"
+													fill="none"
+													stroke="currentColor"
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													stroke-width="1.5"
+													d="M4.5 7h15"
+												/>
+												<path
+													class="bar bar-mid"
+													fill="none"
+													stroke="currentColor"
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													stroke-width="1.5"
+													d="M7 12h10"
+												/>
+												<path
+													class="bar bar-bot"
+													fill="none"
+													stroke="currentColor"
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													stroke-width="1.5"
+													d="M4.5 17h15"
+												/>
+											</svg>
+										</button>
+
+										<div
+											bind:this={resetSlotEl}
+											class="filter-reset-slot"
+											class:is-visible={hasActiveFilters}
+											aria-hidden={!hasActiveFilters}
+										>
+											<span class="filter-reset-divider" aria-hidden="true"></span>
+											<button
+												type="button"
+												class="filter-reset-pill-btn"
+												tabindex={hasActiveFilters ? 0 : -1}
+												onclick={handleResetAllFilters}
+											>
+												초기화
+											</button>
+										</div>
+									</div>
+								</FdDiv>
 							</div>
 
 							{#if filters}
@@ -516,18 +690,32 @@
 
 							<FdSegmentedControl
 								class="content-segment-control"
+								data-keep-search-open="true"
 								items={[
 									{ value: 'recommend', label: '추천' },
 									{ value: 'popular', label: '인기' },
 									{ value: 'follow', label: '팔로우' }
 								]}
+								merge={{
+									active: isSearchFeedMode,
+									targetValues: ['recommend', 'popular'],
+									mergedOption: { value: 'all', label: '전체' }
+								}}
 								bind:value={feedMode}
 								persistKey="main-page-header-feed-mode"
 								pauseWhenIdle={false}
 								rubberDock={true}
+								reach={32}
+								bulge={6}
+								bulgeWidth={18}
+								bulgeReactive={true}
+								layerGap={2.3}
 								color="var(--white-2)"
 								waveColor="var(--white-3)"
 								style="--fd-seg-active-color: var(--bg);"
+								onpointerdown={(e) => {
+									if (searchOpen) e.preventDefault();
+								}}
 								onchange={onFeedChange}
 							/>
 						</div>
@@ -543,11 +731,20 @@
 				>
 					<div class="filter-drawer-inner">
 						<div class="filter-drawer-content">
-							<ContentFilterArea
-								bind:selected={selectedGenres}
-								multiple={filterMultiple}
-								onchange={onGenreChange}
-							/>
+							{#if filterMounted}
+								<ContentFilterSection
+									bind:this={filterSectionRef}
+									category={targetWord}
+									{feedMode}
+									bind:filterState
+									multiple={filterMultiple}
+									onGenreChange={(nextGenres) => {
+										selectedGenres = nextGenres;
+										onGenreChange?.(nextGenres);
+									}}
+									onchange={(nextState) => onFilterChange?.(nextState)}
+								/>
+							{/if}
 						</div>
 					</div>
 				</div>
@@ -576,7 +773,7 @@
 		padding: 1.25rem var(--content-header-padding-x) 0.5rem var(--content-header-padding-x);
 		display: flex;
 		flex-direction: column;
-		gap: 1.1rem;
+		gap: 0.5rem;
 		box-sizing: border-box;
 	}
 
@@ -585,7 +782,6 @@
 		flex-direction: column;
 		align-items: center;
 		text-align: center;
-		gap: 0.4rem;
 		width: 100%;
 		min-width: 0;
 	}
@@ -595,9 +791,9 @@
 		width: 100%;
 		display: flex;
 		justify-content: center;
-		font-size: clamp(2.625rem, 3.8vw, 3.375rem);
-		font-weight: 800;
-		line-height: 1.22;
+		font-size: clamp(4.01875rem, 4.37vw, 4.88125rem);
+		font-weight: var(--fw-bold);
+		line-height: 1;
 		letter-spacing: -0.02em;
 		color: #fafafa;
 	}
@@ -615,12 +811,13 @@
 
 	.category-subtitle {
 		grid-area: 1 / 1;
-		margin: 0.15rem 0 0 0;
-		font-size: 0.96875rem;
-		font-weight: 400;
-		line-height: 1.5;
+		margin: 0;
+		font-size: 1.1625rem;
+		font-weight: var(--fw-medium);
 		color: var(--muted);
 		text-align: center;
+		line-height: 1;
+
 		will-change: transform, opacity, filter;
 	}
 
@@ -657,25 +854,104 @@
 	.filter-toggle-slot {
 		display: inline-flex;
 		align-items: center;
-		margin-left: -4px;
-		margin-right: -10px;
+		margin-left: -12px;
+		margin-right: 0;
 		flex-shrink: 0;
 	}
 
-	:global(.fd-wrap .fd-body .fd-btn.filter-toggle-btn) {
+	:global(.fd-wrap.filter-pill-wrap .fd-body.filter-pill-body) {
+		padding: 0;
+		display: inline-flex;
+		align-items: center;
+		overflow: hidden;
+		border-radius: 999px;
+	}
+
+	.filter-pill-stage {
+		display: inline-flex;
+		align-items: center;
+		height: 38px;
+		overflow: hidden;
+		border-radius: 999px;
+		will-change: width;
+	}
+
+	.filter-toggle-btn {
+		appearance: none;
+		border: none;
+		background: transparent;
+		margin: 0;
+		padding: 0;
 		width: 38px;
 		height: 38px;
-		padding: 0;
+		flex-shrink: 0;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		color: var(--muted);
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
 		transition: color 0.2s ease;
 	}
 
-	:global(.fd-wrap:hover .fd-body .fd-btn.filter-toggle-btn),
-	:global(.fd-wrap .fd-body .fd-btn.filter-toggle-btn.is-open),
-	:global(.fd-wrap .fd-body .fd-btn.filter-toggle-btn.has-filter) {
+	:global(.fd-wrap.filter-pill-wrap:hover) .filter-toggle-btn,
+	.filter-toggle-btn.is-open,
+	.filter-toggle-btn.has-filter {
+		color: var(--fg);
+	}
+
+	.filter-toggle-btn:focus-visible,
+	.filter-reset-pill-btn:focus-visible {
+		outline: 2px solid var(--line);
+		outline-offset: -2px;
+		border-radius: 999px;
+	}
+
+	.filter-reset-slot {
+		display: inline-flex;
+		align-items: center;
+		height: 38px;
+		flex-shrink: 0;
+		white-space: nowrap;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.2s ease;
+	}
+
+	.filter-reset-slot.is-visible {
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.filter-reset-divider {
+		width: 1px;
+		height: 14px;
+		background: var(--line);
+		flex-shrink: 0;
+	}
+
+	.filter-reset-pill-btn {
+		appearance: none;
+		border: none;
+		background: transparent;
+		margin: 0;
+		padding: 0 13px 0 10px;
+		height: 38px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		font: inherit;
+		font-size: 0.78rem;
+		font-weight: var(--fw-semibold);
+		letter-spacing: -0.01em;
+		color: var(--muted);
+		cursor: pointer;
+		white-space: nowrap;
+		-webkit-tap-highlight-color: transparent;
+		transition: color 0.18s ease;
+	}
+
+	.filter-reset-pill-btn:hover {
 		color: var(--fg);
 	}
 
@@ -702,11 +978,6 @@
 	.filter-drawer-content {
 		padding: 0.75rem 12px 0.35rem 8px;
 		box-sizing: border-box;
-	}
-
-	:global(.fd-wrap .fd-body .fd-btn.filter-toggle-btn:focus-visible) {
-		outline: 2px solid var(--line);
-		outline-offset: 2px;
 	}
 
 	.filter-toggle-icon {
@@ -799,9 +1070,10 @@
 	}
 
 	.search-slot {
-		flex: 1 1 240px;
-		max-width: 340px;
-		min-width: 180px;
+		flex: 0 1 auto;
+		max-width: 100%;
+		min-width: 0;
+		margin-left: -4px;
 	}
 
 	:global(.fd-seg-control.content-segment-control) {

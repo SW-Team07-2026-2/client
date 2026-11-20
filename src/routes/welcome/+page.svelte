@@ -9,10 +9,6 @@
 		FdToast,
 		WelcomeAgreeModal,
 		WelcomeArtistSection,
-		DEFAULT_WELCOME_TERMS,
-		getInitialWelcomeArtists,
-		getRelatedMockArtists,
-		getMoreMockArtists,
 		loadCatalogArtists,
 		loadWelcomeTerms,
 		checkSignupSession,
@@ -27,13 +23,12 @@
 
 	let allowed = $state(false);
 	let artistsPassed = $state(false);
-	let termsList = $state<TermsItem[]>(DEFAULT_WELCOME_TERMS);
+	let termsList = $state<TermsItem[]>([]);
 	let agreements = $state<WelcomeAgreementsMap>({});
 
-	let artists = $state<ArtistItem[]>(getInitialWelcomeArtists());
+	let artists = $state<ArtistItem[]>([]);
 	let catalogPage = $state(0);
-	let hasNextCatalog = $state(true);
-	let isMockCatalog = $state(true);
+	let hasNextCatalog = $state(false);
 
 	let selectedIds = $state<string[]>([]);
 	let searchQuery = $state('');
@@ -47,8 +42,6 @@
 	let toastType = $state<ToastType>('info');
 	let toastMessage = $state('');
 	let toastTrigger = $state(0);
-
-	const expandedSet = new Set<string>();
 
 	// URL 파라미터 기반 단계 판별 (기본: 'artists', ?step=terms 일 때 약관 모달 오픈)
 	const step = $derived<WelcomeStep>(
@@ -99,16 +92,19 @@
 			allowed = true;
 
 			// 4. 카탈로그 아티스트 목록 & 최신 약관 목록 병렬 조회 (약관 응답 헤더에서 XSRF 토큰도 캡처)
-			const [catalogRes, fetchedTerms] = await Promise.all([
-				loadCatalogArtists({ page: 0, size: 20, useFallbackOnEmpty: true }),
-				loadWelcomeTerms(true)
-			]);
+			try {
+				const [catalogRes, fetchedTerms] = await Promise.all([
+					loadCatalogArtists({ page: 0, size: 20 }),
+					loadWelcomeTerms()
+				]);
 
-			artists = catalogRes.items;
-			catalogPage = catalogRes.page;
-			hasNextCatalog = catalogRes.hasNext;
-			isMockCatalog = catalogRes.isMock;
-			termsList = fetchedTerms;
+				artists = catalogRes.items;
+				catalogPage = catalogRes.page;
+				hasNextCatalog = catalogRes.hasNext;
+				termsList = fetchedTerms;
+			} catch (err: any) {
+				showToast(err?.message || '온보딩 데이터를 불러오지 못했습니다.');
+			}
 		})();
 	});
 
@@ -120,7 +116,7 @@
 		}
 	});
 
-	function handleToggleArtist(artist: ArtistItem, index: number, nextSelected: boolean) {
+	function handleToggleArtist(artist: ArtistItem, _index: number, nextSelected: boolean) {
 		if (!nextSelected) {
 			selectedIds = selectedIds.filter((id) => id !== artist.id);
 			return;
@@ -129,46 +125,23 @@
 		if (!selectedIds.includes(artist.id)) {
 			selectedIds = [...selectedIds, artist.id];
 		}
-
-		// 목업 모드에서만 클릭 시 연관 아티스트 버블 확장
-		if (!isMockCatalog || expandedSet.has(artist.id)) return;
-		expandedSet.add(artist.id);
-
-		const existingIds = new Set(artists.map((a) => a.id));
-		const related = getRelatedMockArtists(artist, existingIds);
-		if (related.length === 0) return;
-
-		const currentIdx = artists.findIndex((a) => a.id === artist.id);
-		const insertIdx = currentIdx >= 0 ? currentIdx + 1 : index + 1;
-		artists = [...artists.slice(0, insertIdx), ...related, ...artists.slice(insertIdx)];
 	}
 
 	async function handleAddMore() {
-		if (isLoadingMore) return;
+		if (isLoadingMore || !hasNextCatalog) return;
 		isLoadingMore = true;
 		try {
 			const existingIds = new Set(artists.map((a) => a.id));
-
-			if (!isMockCatalog) {
-				if (!hasNextCatalog) return;
-				const next = await loadCatalogArtists({
-					page: catalogPage + 1,
-					size: 12,
-					useFallbackOnEmpty: false
-				});
-				const fresh = next.items.filter((item) => !existingIds.has(item.id));
-				if (fresh.length > 0) {
-					artists = [...artists, ...fresh];
-				}
-				catalogPage = next.page;
-				hasNextCatalog = next.hasNext;
-				return;
+			const next = await loadCatalogArtists({
+				page: catalogPage + 1,
+				size: 12
+			});
+			const fresh = next.items.filter((item) => !existingIds.has(item.id));
+			if (fresh.length > 0) {
+				artists = [...artists, ...fresh];
 			}
-
-			const more = getMoreMockArtists(existingIds, 4);
-			if (more.length > 0) {
-				artists = [...artists, ...more];
-			}
+			catalogPage = next.page;
+			hasNextCatalog = next.hasNext;
 		} catch (err: any) {
 			showToast(err?.message || '아티스트를 더 불러오지 못했습니다.');
 		} finally {
@@ -217,7 +190,7 @@
 
 			if (code === 'TERMS_OUTDATED' || code === 'REQUIRED_AGREEMENT_MISSING') {
 				showToast(err?.message || '약관이 변경되었어요. 다시 확인하고 동의해 주세요.');
-				termsList = await loadWelcomeTerms(true);
+				termsList = await loadWelcomeTerms();
 				agreements = {};
 			} else if (code === 'SIGNUP_EXPIRED' || code === 'SIGNUP_INVALID') {
 				showToast(err?.message || '가입 시간이 지났어요. 다시 로그인해 주세요.');
@@ -252,7 +225,7 @@
 		{isSubmitting}
 		{isLoadingMore}
 		onToggleArtist={handleToggleArtist}
-		onAddMore={isMockCatalog || hasNextCatalog ? handleAddMore : undefined}
+		onAddMore={hasNextCatalog ? handleAddMore : undefined}
 		onComplete={handleArtistsNext}
 	/>
 

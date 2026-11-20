@@ -173,14 +173,17 @@
 		let cBase = cfg.color;
 		let prevBase = cBase;
 		let cHover = cfg.hoverColor ?? cBase;
+		let prevHover = cHover;
 		let cPress = cfg.pressColor;
 		let cWave = cfg.waveColor ?? cHover;
 		let prevWave = cWave;
 		let cHoverWave = cfg.hoverWaveColor ?? cWave;
+		let prevHoverWave = cHoverWave;
 
 		let cBorder = cfg.borderColor ?? cfg.textColor;
 		let prevBorder = cBorder;
 		let cHoverBorder = cfg.hoverBorderColor ?? cBorder;
+		let prevHoverBorder = cHoverBorder;
 		let cPressBorder = cfg.pressBorderColor ?? cHoverBorder;
 
 		let touchResetTimer: ReturnType<typeof setTimeout> | undefined;
@@ -202,17 +205,28 @@
 
 			if (
 				animateChange &&
-				(nextBase !== cBase || nextWave !== cWave || nextBorder !== cBorder)
+				(nextBase !== cBase ||
+					nextHover !== cHover ||
+					nextWave !== cWave ||
+					nextHoverWave !== cHoverWave ||
+					nextBorder !== cBorder ||
+					nextHoverBorder !== cHoverBorder)
 			) {
 				prevBase = cBase;
+				prevHover = cHover;
 				prevWave = cWave;
+				prevHoverWave = cHoverWave;
 				prevBorder = cBorder;
+				prevHoverBorder = cHoverBorder;
 				cs.x = 0;
 				cs.v = 0;
 			} else if (!animateChange) {
 				prevBase = nextBase;
+				prevHover = nextHover;
 				prevWave = nextWave;
+				prevHoverWave = nextHoverWave;
 				prevBorder = nextBorder;
+				prevHoverBorder = nextHoverBorder;
 				cs.x = 1;
 				cs.v = 0;
 			}
@@ -312,15 +326,46 @@
 			}
 		}
 
+		let laidOutW = 0;
+		let laidOutH = 0;
+		let laidOutDpr = 0;
+		let laidOutRadius = -1;
+		let laidOutInset = -1;
+		let laidOutSafe = -1;
+
 		function layout() {
 			if (!box || !canvas) return;
-			W = box.offsetWidth;
-			H = box.offsetHeight;
-			bw = W - 2 * inset;
-			bh = H - 2 * inset;
-			if (bw < 2 || bh < 2) return;
+			const nextW = box.offsetWidth;
+			const nextH = box.offsetHeight;
+			const nextBw = nextW - 2 * inset;
+			const nextBh = nextH - 2 * inset;
+			if (nextBw < 2 || nextBh < 2) return;
 
-			dpr = Math.min(window.devicePixelRatio || 1, 4);
+			const nextDpr = Math.min(window.devicePixelRatio || 1, 4);
+			if (
+				ready &&
+				nextW === laidOutW &&
+				nextH === laidOutH &&
+				nextDpr === laidOutDpr &&
+				cfg.radius === laidOutRadius &&
+				inset === laidOutInset &&
+				SAFE === laidOutSafe
+			) {
+				return;
+			}
+
+			W = nextW;
+			H = nextH;
+			bw = nextBw;
+			bh = nextBh;
+			dpr = nextDpr;
+			laidOutW = nextW;
+			laidOutH = nextH;
+			laidOutDpr = nextDpr;
+			laidOutRadius = cfg.radius;
+			laidOutInset = inset;
+			laidOutSafe = SAFE;
+
 			cw = W + SAFE * 2;
 			ch = H + SAFE * 2;
 			canvas.width = Math.round(cw * dpr);
@@ -440,7 +485,7 @@
 				spring(ws, wT, 180, 14, h);
 				spring(hs, hT, 180, 14, h);
 				spring(ps, pT, 320, 16, h);
-				spring(cs, 1, 150, 13, h);
+				spring(cs, 1, 90, 19, h);
 				spring(bs, bT, 280, 34, h);
 				for (let i = 0; i < n; i++) {
 					bv[i] += ((tg[i] - b[i]) * 340 - bv[i] * 28) * h;
@@ -668,17 +713,13 @@
 					shape(sx, sy, grow, amp, wl, s, i + 1);
 					trace();
 					const layerAlpha = (alphas[i] ?? 0.4) * wv;
-					if (hv <= 0.003 || cHoverWave === cWave || isTransparent(cHoverWave)) {
+					if (hv <= 0.003 || (cHoverWave === cWave && prevHoverWave === prevWave)) {
 						fillCrossfade(c, prevWave, cWave, cv, layerAlpha);
 					} else if (hv >= 0.997) {
-						c.fillStyle = cHoverWave;
-						c.globalAlpha = layerAlpha;
-						c.fill();
+						fillCrossfade(c, prevHoverWave, cHoverWave, cv, layerAlpha);
 					} else {
 						fillCrossfade(c, prevWave, cWave, cv, layerAlpha * (1 - hv));
-						c.fillStyle = cHoverWave;
-						c.globalAlpha = layerAlpha * hv;
-						c.fill();
+						fillCrossfade(c, prevHoverWave, cHoverWave, cv, layerAlpha * hv);
 					}
 				}
 				c.globalAlpha = 1;
@@ -700,14 +741,14 @@
 				c.restore();
 			}
 
-			// 기본 베이스 색상 (설정 변경 시 부드럽게 크로스페이드)
-			fillCrossfade(c, prevBase, cBase, cv, 1);
-
-			// hover 색상 오버레이
-			if (hv > 0.003 && cHover !== cBase && !isTransparent(cHover)) {
-				c.globalAlpha = hv;
-				c.fillStyle = cHover;
-				c.fill();
+			// 기본 및 호버 베이스 색상 (호버 상태에서도 설정 변경 시 부드럽게 크로스페이드)
+			if (hv <= 0.003 || (cHover === cBase && prevHover === prevBase)) {
+				fillCrossfade(c, prevBase, cBase, cv, 1);
+			} else if (hv >= 0.997) {
+				fillCrossfade(c, prevHover, cHover, cv, 1);
+			} else {
+				fillCrossfade(c, prevBase, cBase, cv, 1);
+				fillCrossfade(c, prevHover, cHover, cv, hv);
 			}
 
 			// press 색상 오버레이
@@ -723,14 +764,17 @@
 				c.lineJoin = 'round';
 				c.lineCap = 'round';
 
-				const hoverHidesBorder = cHoverBorder !== cBorder && isTransparent(cHoverBorder);
-				const baseBorderAlpha = hoverHidesBorder ? Math.max(0, 1 - hv) : 1;
-				strokeCrossfade(c, prevBorder, cBorder, cv, baseBorderAlpha);
-
-				if (hv > 0.003 && cHoverBorder !== cBorder && !isTransparent(cHoverBorder)) {
-					c.globalAlpha = hv;
-					c.strokeStyle = cHoverBorder;
-					c.stroke();
+				if (hv <= 0.003 || (cHoverBorder === cBorder && prevHoverBorder === prevBorder)) {
+					strokeCrossfade(c, prevBorder, cBorder, cv, 1);
+				} else if (hv >= 0.997) {
+					strokeCrossfade(c, prevHoverBorder, cHoverBorder, cv, 1);
+				} else {
+					const hoverHidesBorder = cHoverBorder !== cBorder && isTransparent(cHoverBorder);
+					const baseBorderAlpha = hoverHidesBorder ? Math.max(0, 1 - hv) : 1;
+					strokeCrossfade(c, prevBorder, cBorder, cv, baseBorderAlpha);
+					if (!isTransparent(cHoverBorder)) {
+						strokeCrossfade(c, prevHoverBorder, cHoverBorder, cv, hv);
+					}
 				}
 
 				if (pv > 0.003 && cPressBorder !== cHoverBorder && !isTransparent(cPressBorder)) {

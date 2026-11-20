@@ -2,10 +2,9 @@
 
 @theme {
 	--font-sans:
-		'Noto Sans KR', 'Pretendard Variable', Pretendard, 'IBM Plex Sans KR', -apple-system,
-		BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif, Tossface;
-	--font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-	--font-display: 'Black Han Sans', 'IBM Plex Sans KR', sans-serif;
+		'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+		sans-serif;
+	--font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 :root {
@@ -43,6 +42,13 @@
 	--content-header-padding-x: calc(var(--content-padding-x));
 	--content-padding-x-mobile: 1rem;
 
+	/* Typography (Font Weights) */
+	--fw-regular: 400;
+	--fw-medium: 500;
+	--fw-semibold: 600;
+	--fw-bold: 700;
+	--fw-extrabold: 800;
+
 	/* Toast (error / info / success) */
 	--toast-error-bg: #3b1219;
 	--toast-error-fg: #fecaca;
@@ -55,6 +61,13 @@
 	--toast-success-bg: #102a1d;
 	--toast-success-fg: #bbf7d0;
 	--toast-success-wave: #22c55e;
+
+	/* Motion: Directional Blur Slide */
+	--dir-blur-distance: 38px;
+	--dir-blur-radius: 6px;
+	--dir-blur-enter-duration: 420ms;
+	--dir-blur-exit-duration: 320ms;
+	--dir-blur-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 body {
@@ -184,6 +197,7 @@ html.vt-artist-leave::view-transition-new(artist-hero-photo) {
 	0% {
 		clip-path: circle(var(--vt-origin-r) at var(--vt-origin-x) var(--vt-origin-y));
 	}
+
 	100% {
 		clip-path: circle(var(--vt-max-r) at var(--vt-origin-x) var(--vt-origin-y));
 	}
@@ -194,9 +208,11 @@ html.vt-artist-leave::view-transition-new(artist-hero-photo) {
 		clip-path: circle(var(--vt-max-r) at var(--vt-origin-x) var(--vt-origin-y));
 		opacity: 1;
 	}
+
 	82% {
 		opacity: 1;
 	}
+
 	100% {
 		clip-path: circle(var(--vt-origin-r) at var(--vt-origin-x) var(--vt-origin-y));
 		opacity: 0;
@@ -204,10 +220,53 @@ html.vt-artist-leave::view-transition-new(artist-hero-photo) {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
 	html.vt-artist-enter::view-transition-new(root),
 	html.vt-artist-leave::view-transition-old(root),
 	html.vt-artist-enter::view-transition-group(artist-hero-photo),
 	html.vt-artist-leave::view-transition-group(artist-hero-photo) {
 		animation-duration: 0.01ms !important;
 	}
+
+	.dir-blur-enter,
+	.dir-blur-exit {
+		animation: none !important;
+	}
+}
+
+/* 공통 좌우 블러 슬라이드 전환 (--dir-blur-dir: 1 | -1) */
+@keyframes fd-dir-blur-enter {
+	from {
+		opacity: 0;
+		filter: blur(var(--dir-blur-radius, 6px));
+		transform: translate3d(calc(var(--dir-blur-dir, 1) * var(--dir-blur-distance, 38px)), 0, 0);
+	}
+
+	to {
+		opacity: 1;
+		filter: blur(0px);
+		transform: translate3d(0, 0, 0);
+	}
+}
+
+@keyframes fd-dir-blur-exit {
+	from {
+		opacity: 1;
+		filter: blur(0px);
+		transform: translate3d(0, 0, 0);
+	}
+
+	to {
+		opacity: 0;
+		filter: blur(var(--dir-blur-radius, 6px));
+		transform: translate3d(calc(var(--dir-blur-dir, 1) * var(--dir-blur-distance, 38px) * -1), 0, 0);
+	}
+}
+
+.dir-blur-enter {
+	animation: fd-dir-blur-enter var(--dir-blur-enter-duration, 420ms) var(--dir-blur-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.dir-blur-exit {
+	animation: fd-dir-blur-exit var(--dir-blur-exit-duration, 320ms) var(--dir-blur-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
 }

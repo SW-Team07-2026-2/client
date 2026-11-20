@@ -175,14 +175,6 @@ async function fetchWithChatRetry(
 		headers.set('Authorization', `Bearer ${auth.token}`);
 	}
 
-	// 로컬 AI 서버 직접 호출(http://localhost:8000 등) 시 개발 모드 인증을 위해 X-User-Id 전달
-	if (!isGatewayRequest) {
-		const uid = auth.user?.userId || auth.user?.id;
-		if (uid && !headers.has('X-User-Id')) {
-			headers.set('X-User-Id', String(uid));
-		}
-	}
-
 	// POST 등 데이터 변경 요청 시 X-XSRF-TOKEN 주입 (🔒C)
 	if (method !== 'GET') {
 		const xsrf = auth.getXsrfToken();

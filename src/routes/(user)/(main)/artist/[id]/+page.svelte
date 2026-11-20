@@ -4,11 +4,7 @@
 	import { page } from '$app/state';
 	import { api, auth } from '#lib/auth/auth.svelte';
 	import FdButton from '#lib/components/ui/FdButton.svelte';
-	import {
-		buildArtistDetailExtra,
-		resolveArtistImageUrl,
-		type CatalogArtist
-	} from '#lib/config/artists';
+	import { resolveArtistImageUrl, type CatalogArtist } from '#lib/config/artists';
 	import { FluidSetting } from '#lib/fluid/setting';
 	import { artistTransition, isMobile, toast } from '#lib/stores';
 
@@ -19,13 +15,14 @@
 	);
 
 	let artist = $state<CatalogArtist | null>(initialCached?.artist ?? null);
+	let isLoading = $state<boolean>(
+		untrack(() => !initialCached?.artist && Number.isFinite(artistId))
+	);
 	let waveColor = $state<string>(initialCached?.waveColor ?? 'var(--muted)');
 	let following = $state<boolean>(
 		untrack(() => {
 			if (!Number.isFinite(artistId)) return false;
-			const override = artistTransition.getFollowing(artistId);
-			if (override !== undefined) return override;
-			return artistId === 1 || artistId === 3;
+			return artistTransition.getFollowing(artistId) ?? false;
 		})
 	);
 	let followLoading = $state(false);
@@ -49,7 +46,9 @@
 	});
 
 	const resolvedImageSrc = $derived(artist ? resolveArtistImageUrl(artist) : '');
-	const detailExtra = $derived(artist ? buildArtistDetailExtra(artist) : null);
+	const artistTags = $derived(artist?.tags ?? []);
+	const artistAlbums = $derived(artist?.albums ?? []);
+	const artistConcerts = $derived(artist?.concerts ?? []);
 	const isVtTarget = $derived(artist !== null && artistTransition.vtArtistId === artist.id);
 
 	const followBtnSetting = $derived.by(() => {
@@ -147,7 +146,10 @@
 	}
 
 	onMount(async () => {
-		if (!Number.isFinite(artistId)) return;
+		if (!Number.isFinite(artistId)) {
+			isLoading = false;
+			return;
+		}
 		try {
 			const res = await api<CatalogArtist>(`/api/catalog/artists/${artistId}`);
 			if (res && typeof res.id === 'number') {
@@ -155,7 +157,9 @@
 				artistTransition.cacheArtist(res);
 			}
 		} catch {
-			// 백엔드 미응답 시 캐시/목업 아티스트 데이터 유지
+			// 백엔드 응답 실패 시 기존 캐시 유지
+		} finally {
+			isLoading = false;
 		}
 	});
 </script>
@@ -192,12 +196,14 @@
 			</button>
 		</div>
 
-		{#if artist && detailExtra}
+		{#if artist}
 			<section class="detail-hero" aria-label="{artist.name} 프로필">
 				<div class="hero-photo-col">
 					<div class="hero-photo-glow" aria-hidden="true"></div>
 					<div class="artist-hero-frame" class:is-vt-target={isVtTarget}>
-						<img src={resolvedImageSrc} alt={artist.name} draggable="false" />
+						{#if resolvedImageSrc}
+							<img src={resolvedImageSrc} alt={artist.name} draggable="false" />
+						{/if}
 					</div>
 				</div>
 
@@ -209,18 +215,24 @@
 						{#if artist.debutYear}
 							<span class="meta-pill is-subtle">DEBUT {artist.debutYear}</span>
 						{/if}
-						<span class="meta-pill is-subtle">월간 리스너 {detailExtra.monthlyListeners}</span>
+						{#if artist.monthlyListeners}
+							<span class="meta-pill is-subtle">월간 리스너 {artist.monthlyListeners}</span>
+						{/if}
 					</div>
 
 					<h1 class="artist-detail-name">{artist.name}</h1>
 
-					<p class="artist-detail-bio">{detailExtra.bio}</p>
+					{#if artist.bio}
+						<p class="artist-detail-bio">{artist.bio}</p>
+					{/if}
 
-					<div class="artist-tags">
-						{#each detailExtra.tags as tag (tag)}
-							<span class="tag-chip">#{tag}</span>
-						{/each}
-					</div>
+					{#if artistTags.length > 0}
+						<div class="artist-tags">
+							{#each artistTags as tag (tag)}
+								<span class="tag-chip">#{tag}</span>
+							{/each}
+						</div>
+					{/if}
 
 					<div class="hero-actions">
 						<FdButton
@@ -235,48 +247,67 @@
 				</div>
 			</section>
 
-			<div class="detail-sections-grid">
-				<section class="detail-card-panel" aria-label="대표 음반">
-					<header class="panel-header">
-						<h2 class="panel-title">대표 음반</h2>
-						<span class="panel-count">{detailExtra.albums.length}</span>
-					</header>
+			{#if artistAlbums.length > 0 || artistConcerts.length > 0}
+				<div class="detail-sections-grid">
+					{#if artistAlbums.length > 0}
+						<section class="detail-card-panel" aria-label="대표 음반">
+							<header class="panel-header">
+								<h2 class="panel-title">대표 음반</h2>
+								<span class="panel-count">{artistAlbums.length}</span>
+							</header>
 
-					<ul class="album-list">
-						{#each detailExtra.albums as album (album.id)}
-							<li class="album-row">
-								<img class="album-thumb" src={album.coverUrl} alt={album.title} loading="lazy" />
-								<div class="album-meta">
-									<span class="album-title">{album.title}</span>
-									<span class="album-sub">{album.year} · {album.type}</span>
-								</div>
-							</li>
-						{/each}
-					</ul>
-				</section>
+							<ul class="album-list">
+								{#each artistAlbums as album (album.id)}
+									<li class="album-row">
+										{#if album.coverUrl}
+											<img
+												class="album-thumb"
+												src={album.coverUrl}
+												alt={album.title}
+												loading="lazy"
+											/>
+										{/if}
+										<div class="album-meta">
+											<span class="album-title">{album.title}</span>
+											{#if album.year || album.type}
+												<span class="album-sub">
+													{[album.year, album.type].filter(Boolean).join(' · ')}
+												</span>
+											{/if}
+										</div>
+									</li>
+								{/each}
+							</ul>
+						</section>
+					{/if}
 
-				<section class="detail-card-panel" aria-label="예정된 공연">
-					<header class="panel-header">
-						<h2 class="panel-title">예정된 공연</h2>
-						<span class="panel-count">{detailExtra.concerts.length}</span>
-					</header>
+					{#if artistConcerts.length > 0}
+						<section class="detail-card-panel" aria-label="예정된 공연">
+							<header class="panel-header">
+								<h2 class="panel-title">예정된 공연</h2>
+								<span class="panel-count">{artistConcerts.length}</span>
+							</header>
 
-					<ul class="concert-list">
-						{#each detailExtra.concerts as concert (concert.id)}
-							<li class="concert-row">
-								<div class="concert-info">
-									<span class="concert-title">{concert.title}</span>
-									<span class="concert-sub">{concert.date} · {concert.venue}</span>
-								</div>
-								<span class="concert-status" class:is-urgent={concert.status === '매진임박'}>
-									{concert.status}
-								</span>
-							</li>
-						{/each}
-					</ul>
-				</section>
-			</div>
-		{:else}
+							<ul class="concert-list">
+								{#each artistConcerts as concert (concert.id)}
+									<li class="concert-row">
+										<div class="concert-info">
+											<span class="concert-title">{concert.title}</span>
+											<span class="concert-sub">{concert.date} · {concert.venue}</span>
+										</div>
+										{#if concert.status}
+											<span class="concert-status" class:is-urgent={concert.status === '매진임박'}>
+												{concert.status}
+											</span>
+										{/if}
+									</li>
+								{/each}
+							</ul>
+						</section>
+					{/if}
+				</div>
+			{/if}
+		{:else if !isLoading}
 			<div class="artist-not-found">
 				<h2>아티스트 정보를 찾을 수 없습니다</h2>
 				<p>요청하신 아티스트가 존재하지 않거나 불러오지 못했습니다.</p>

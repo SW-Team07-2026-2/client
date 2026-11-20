@@ -42,10 +42,10 @@
 		onchange,
 		setting,
 		activeSetting,
-		color = '#fff',
-		hoverColor = '#fff',
-		pressColor = '#fff',
-		activeColor = '#fff',
+		color = 'var(--white-2)',
+		hoverColor = 'var(--white-2)',
+		pressColor = 'var(--white-2)',
+		activeColor = 'var(--white-2)',
 		waveColor,
 		activeWaveColor,
 		textColor,
@@ -60,6 +60,7 @@
 			radius: 999,
 			reach,
 			bulge,
+			waveAmp: setting?.waveAmp ?? 1.5,
 			color,
 			hoverColor,
 			pressColor,
@@ -67,6 +68,13 @@
 			...(textColor !== undefined ? { textColor } : {})
 		})
 	);
+
+	// FdCheckButton 활성 상태 기본 waveAmp(4.5)의 절반(2.25)으로 완화
+	const resolvedActiveSetting = $derived<Partial<FluidSetting>>({
+		layerGap: 3,
+		waveAmp: 2.25,
+		...activeSetting
+	});
 
 	// 전역 싱글톤 상태를 컴포넌트 checked 상태와 양방향 동기화
 	$effect(() => {
@@ -94,7 +102,7 @@
 		checked={bgm.isPlaying}
 		onchange={handleToggle}
 		setting={baseSetting}
-		{activeSetting}
+		activeSetting={resolvedActiveSetting}
 		{activeColor}
 		{activeWaveColor}
 		{textColor}

@@ -18,6 +18,9 @@
 	}
 
 	onNavigate((navigation) => {
+		// SPA 내부 이동이 한 번이라도 발생하면 이후 '/' 진입 시 초기 스플래시를 다시 띄우지 않음
+		(window as Window & { __indigRootSplashDone?: boolean }).__indigRootSplashDone = true;
+
 		if (!document.startViewTransition) return;
 
 		const fromPath = navigation.from?.url.pathname ?? '';

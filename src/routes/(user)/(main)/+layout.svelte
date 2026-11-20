@@ -3,16 +3,27 @@
 	import type { TransitionConfig } from 'svelte/transition';
 	import { page } from '$app/state';
 	import { beforeNavigate, afterNavigate } from '$app/navigation';
-	import { cubicOut } from 'svelte/easing';
 	import { MainLayout } from '#lib/components';
 	import BotArea from '#lib/ai/BotArea.svelte';
-	import { artistTransition } from '#lib/stores';
+	import { artistTransition, catalogFeed } from '#lib/stores';
+	import type { CatalogCategoryKey } from '#lib/config/catalogFeed';
+	import {
+		DIRECTIONAL_BLUR_MOTION,
+		directionalBlurIn,
+		directionalBlurOut,
+		resolveSlideDirection,
+		type SlideDirection
+	} from '#lib/utils/directionalBlur';
+	import { prefersReducedMotion } from '#lib/fluid/spring';
 	import { cancelSmoothScroll, smoothScrollToTop } from '#lib/utils/scroll';
 
 	let { children }: { children: Snippet } = $props();
 
 	let revealClearTimer: ReturnType<typeof setTimeout> | undefined;
 	let preNavScrollY = 0;
+	let isFullHeaderSlide = false;
+	let slideScrollOffset = 0;
+	let headerEl = $state<HTMLDivElement | undefined>(undefined);
 
 	/** 스크롤된 상태에서 카테고리 전환 시 바닥 높이 붕괴 방지 */
 	let stageMinHeight = $state<string>('');
@@ -20,6 +31,16 @@
 	let isHeaderConcealedForNav = $state(false);
 	/** 상단 도달 시 페이지 헤더를 부드럽게 페이드인+슬라이드업 시키는 상태 */
 	let isHeaderRevealingFromNav = $state(false);
+	let routeDir = $state<SlideDirection>(1);
+
+	const CATEGORY_ORDER = ['/artist', '/concert', '/album', '/goods', '/mypage'] as const;
+
+	function resolveRouteIndex(pathname?: string | null): number {
+		if (!pathname) return -1;
+		return CATEGORY_ORDER.findIndex(
+			(prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+		);
+	}
 
 	interface CategoryMeta {
 		title: string;
@@ -85,6 +106,35 @@
 	let displayedMeta = $state<CategoryMeta | null>(null);
 	let activeMeta = $derived(displayedMeta ?? currentMeta);
 
+	function resolveCatalogCategoryByPath(pathname?: string | null): CatalogCategoryKey | null {
+		if (!pathname) return null;
+		if (pathname === '/artist') return 'artist';
+		if (pathname === '/concert' || pathname.startsWith('/concert/')) return 'concert';
+		if (pathname === '/album' || pathname.startsWith('/album/')) return 'album';
+		if (pathname === '/goods' || pathname.startsWith('/goods/')) return 'goods';
+		return null;
+	}
+
+	function resolveCatalogCategoryByTitle(title?: string | null): CatalogCategoryKey | null {
+		if (title === 'Artist') return 'artist';
+		if (title === 'Concert') return 'concert';
+		if (title === 'Album') return 'album';
+		if (title === 'Merchandise') return 'goods';
+		return null;
+	}
+
+	let currentCatalogCategory = $derived(resolveCatalogCategoryByPath(page.url.pathname));
+	let currentHeaderCategory = $derived(resolveCatalogCategoryByTitle(activeMeta?.title));
+
+	$effect.pre(() => {
+		catalogFeed.activeCategory = currentCatalogCategory;
+		catalogFeed.headerCategory = currentHeaderCategory;
+	});
+
+	$effect(() => {
+		catalogFeed.syncSearchQuery(catalogFeed.searchQuery);
+	});
+
 	// 스크롤이 거의 없는 상태에서의 전환이거나 초기 진입 시에는 즉시 메타 반영
 	$effect(() => {
 		const next = currentMeta;
@@ -141,13 +191,68 @@
 		});
 	}
 
+	function isHeaderScrolledPastTop(): boolean {
+		if (!headerEl || typeof window === 'undefined') return false;
+		const pcHeaderHeight =
+			parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pc-header-height')) ||
+			70;
+		return headerEl.getBoundingClientRect().bottom <= pcHeaderHeight;
+	}
+
+	function playHeaderDirectionalSlide(dir: SlideDirection) {
+		if (!headerEl || prefersReducedMotion()) return;
+		headerEl.getAnimations().forEach((anim) => anim.cancel());
+		headerEl.animate(
+			[
+				{
+					opacity: 0,
+					filter: `blur(${DIRECTIONAL_BLUR_MOTION.blur}px)`,
+					transform: `translate3d(${dir * DIRECTIONAL_BLUR_MOTION.distance}px, 0, 0)`
+				},
+				{
+					opacity: 1,
+					filter: 'blur(0px)',
+					transform: 'translate3d(0, 0, 0)'
+				}
+			],
+			{
+				duration: DIRECTIONAL_BLUR_MOTION.enterDuration,
+				easing: DIRECTIONAL_BLUR_MOTION.easeCss,
+				fill: 'both'
+			}
+		);
+	}
+
 	beforeNavigate((nav) => {
 		if (typeof window === 'undefined') return;
 		const fromPath = nav.from?.url.pathname;
 		const toPath = nav.to?.url.pathname;
 		if (isArtistDetailPair(fromPath, toPath)) return;
+
+		const fromIdx = resolveRouteIndex(fromPath);
+		const toIdx = resolveRouteIndex(toPath);
+		if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
+			routeDir = resolveSlideDirection(fromIdx, toIdx);
+		}
+
+		isFullHeaderSlide = false;
+		slideScrollOffset = 0;
+
 		if (fromPath && toPath && fromPath !== toPath && nav.type !== 'popstate') {
 			preNavScrollY = window.scrollY;
+
+			// 콘텐츠 헤더가 상단 헤더 위로 완전히 넘어간 경우에는 스크롤 모션 없이 콘텐츠 헤더까지 함께 좌우 블러 전환
+			if (isHeaderScrolledPastTop()) {
+				clearTimeout(revealClearTimer);
+				cancelSmoothScroll();
+				isFullHeaderSlide = true;
+				slideScrollOffset = preNavScrollY;
+				isHeaderRevealingFromNav = false;
+				isHeaderConcealedForNav = false;
+				stageMinHeight = '';
+				return;
+			}
+
 			if (preNavScrollY > 2) {
 				stageMinHeight = `${preNavScrollY + window.innerHeight}px`;
 			}
@@ -165,65 +270,63 @@
 		const fromPath = nav.from?.url.pathname;
 		const toPath = nav.to?.url.pathname;
 		if (isArtistDetailPair(fromPath, toPath)) return;
-		// 초기 로드나 동일 경로가 아닌 실제 페이지 전환 시 부드럽게 상단 스크롤
+		// 초기 로드나 동일 경로가 아닌 실제 페이지 전환 시 처리
 		if (fromPath && toPath && fromPath !== toPath && nav.type !== 'popstate') {
+			if (isFullHeaderSlide) {
+				cancelSmoothScroll();
+				stageMinHeight = '';
+				window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+				playHeaderDirectionalSlide(routeDir);
+				preNavScrollY = 0;
+				requestAnimationFrame(() => {
+					isFullHeaderSlide = false;
+					slideScrollOffset = 0;
+				});
+				return;
+			}
 			handleNavScrollToTop(preNavScrollY);
 			preNavScrollY = 0;
 		}
 	});
 
-	function prefersReducedMotion(): boolean {
-		return (
-			typeof window !== 'undefined' &&
-			window.matchMedia('(prefers-reduced-motion: reduce)').matches
-		);
+	function contentBlurIn(node: Element): TransitionConfig {
+		if (artistTransition.vtPhase !== 'idle') return { duration: 0 };
+		return directionalBlurIn(node, { dir: routeDir });
 	}
 
-	function routePaneIn(_node: Element): TransitionConfig {
-		if (artistTransition.vtPhase !== 'idle' || prefersReducedMotion()) {
-			return { duration: 0 };
+	function contentBlurOut(node: Element): TransitionConfig {
+		if (artistTransition.vtPhase !== 'idle') return { duration: 0 };
+		if (isFullHeaderSlide && slideScrollOffset > 0) {
+			const el = node as HTMLElement;
+			el.style.position = 'absolute';
+			el.style.top = `${-slideScrollOffset}px`;
+			el.style.left = '0';
+			el.style.right = '0';
 		}
-		return {
-			delay: 0,
-			duration: 460,
-			easing: cubicOut,
-			css: (t, u) => {
-				const op = Math.min(1, t * 1.65);
-				return `opacity: ${op.toFixed(4)}; transform: translate3d(0, ${(u * 48).toFixed(2)}px, 0) scale(${(0.985 + 0.015 * t).toFixed(4)});`;
-			}
-		};
-	}
-
-	function routePaneOut(node: Element): TransitionConfig {
-		if (artistTransition.vtPhase !== 'idle' || prefersReducedMotion()) {
-			return { duration: 0 };
-		}
-		const el = node as HTMLElement;
-		el.style.zIndex = '1';
-		el.style.pointerEvents = 'none';
-		return {
-			delay: 0,
-			duration: 380,
-			easing: cubicOut,
-			css: (t, u) =>
-				`opacity: ${t.toFixed(4)}; filter: blur(${(u * 8).toFixed(2)}px); transform: scale(${(1 - u * 0.055).toFixed(4)});`
-		};
+		return directionalBlurOut(node, { dir: routeDir });
 	}
 
 	onMount(() => {
 		return () => {
 			cancelSmoothScroll();
 			clearTimeout(revealClearTimer);
+			catalogFeed.clearPendingDebounce();
 		};
 	});
 </script>
 
 <MainLayout
+	bind:headerEl
 	title={activeMeta?.title}
 	englishTitle={activeMeta?.englishTitle}
 	description={activeMeta?.description}
 	searchPlaceholder={activeMeta?.searchPlaceholder}
 	badge={activeMeta?.badge}
+	bind:feedMode={catalogFeed.feedMode}
+	bind:searchQuery={catalogFeed.searchQuery}
+	bind:filterState={catalogFeed.filterState}
+	onSearchSubmit={(val) => catalogFeed.commitSearch(val)}
+	onRefresh={() => catalogFeed.triggerRefresh()}
 	headerConcealed={isHeaderConcealedForNav}
 	headerRevealing={isHeaderRevealingFromNav}
 	headerOpacity={headerInlineOpacity}
@@ -231,7 +334,7 @@
 >
 	<div class="route-stage" style:min-height={stageMinHeight || undefined}>
 		{#key page.url.pathname}
-			<div class="route-transition-pane" in:routePaneIn out:routePaneOut>
+			<div class="route-transition-pane" in:contentBlurIn out:contentBlurOut>
 				{@render children()}
 			</div>
 		{/key}
@@ -260,8 +363,5 @@
 		z-index: 2;
 		width: 100%;
 		min-width: 0;
-		background-color: var(--bg);
-		transform-origin: 50% 180px;
-		will-change: transform, opacity, filter;
 	}
 </style>

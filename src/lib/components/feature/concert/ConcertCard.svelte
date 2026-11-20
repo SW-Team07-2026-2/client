@@ -61,7 +61,7 @@
 			<span
 				class="concert-status-badge"
 				class:is-urgent={concert.status === '매진임박'}
-				class:is-soldout={concert.status === '매진'}
+				class:is-soldout={concert.status === '매진' || concert.status === '판매종료'}
 			>
 				{concert.status}
 			</span>

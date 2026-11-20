@@ -1,0 +1,920 @@
+<script module lang="ts">
+	export interface Greeting {
+		text: string;
+		/** 스크린 리더가 언어별로 정확히 발음하도록 지정하는 BCP 47 언어 태그 */
+		lang?: string;
+	}
+
+	export type DynamicTextMode = 'morph' | 'decode' | 'cycle';
+
+	type Phase = 'rest' | 'travel' | 'drop' | 'fall' | 'roll' | 'fade';
+
+	interface Glyph {
+		id: number;
+		char: string;
+		digit: boolean;
+		/** 오른쪽에서부터 센 자릿수 인덱스 (가격/숫자 카운터 롤링용) */
+		slot: number;
+		el: HTMLSpanElement | null;
+		phase: Phase;
+		leaving: boolean;
+		delay: number;
+		x: number;
+		vx: number;
+		tx: number;
+		x0: number;
+		arc: number;
+		y: number;
+		vy: number;
+		ty: number;
+		r: number;
+		vr: number;
+		tr: number;
+		sq: number;
+		vsq: number;
+		o: number;
+	}
+
+	interface Token {
+		char: string;
+		x: number;
+		digit: boolean;
+		slot: number;
+	}
+
+	interface GlyphView {
+		id: number;
+		char: string;
+	}
+
+	interface DecodeCell {
+		el: HTMLElement;
+		char: string;
+		lockAt: number;
+		swapAt: number;
+		state: 'scramble' | 'flash' | 'done';
+	}
+
+	const MORPH_WORDS = ['Create', 'Iterate', 'Repeat', 'Ship'];
+	const DECODE_WORDS = ['Hello, world', 'Build 4096 ready', 'All systems go'];
+	const GREETINGS: Greeting[] = [
+		{ text: 'Hello', lang: 'en' },
+		{ text: 'こんにちは', lang: 'ja' },
+		{ text: 'Bonjour', lang: 'fr' },
+		{ text: 'Hola', lang: 'es' },
+		{ text: '안녕하세요', lang: 'ko' },
+		{ text: 'Ciao', lang: 'it' },
+		{ text: 'Hallo', lang: 'de' },
+		{ text: 'Hello', lang: 'en' }
+	];
+
+	const DEFAULT_WORDS: Record<DynamicTextMode, (string | Greeting)[]> = {
+		morph: MORPH_WORDS,
+		decode: DECODE_WORDS,
+		cycle: GREETINGS
+	};
+
+	const DEFAULT_INTERVAL: Record<DynamicTextMode, number> = {
+		morph: 2200,
+		decode: 2800,
+		cycle: 900
+	};
+
+	const segmenter =
+		typeof Intl !== 'undefined' && 'Segmenter' in Intl
+			? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+			: null;
+
+	function splitGraphemes(value: string): string[] {
+		return segmenter
+			? Array.from(segmenter.segment(value), (s) => s.segment)
+			: Array.from(value);
+	}
+
+	const isDigit = (char: string) => char >= '0' && char <= '9';
+	const isBlank = (char: string) => char.trim() === '';
+	const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+
+	function toGreeting(word: string | Greeting): Greeting {
+		return typeof word === 'string' ? { text: word } : word;
+	}
+
+	function holdFor(mode: DynamicTextMode, index: number, count: number, interval: number): number {
+		if (mode !== 'cycle') return interval;
+		if (index === 0) return interval;
+		if (index === count - 1) return interval * 2;
+		return Math.max(90, interval * 0.36 * 0.8 ** (index - 1));
+	}
+
+	/* ── Morph 물리 상수 ── */
+	const STEP = 1 / 120;
+	const damping = (k: number, zeta: number) => 2 * zeta * Math.sqrt(k);
+	const TRAVEL_K = 140;
+	const TRAVEL_C = damping(TRAVEL_K, 0.8);
+	const LIFT_K = 300;
+	const LIFT_C = damping(LIFT_K, 0.9);
+	const ROLL_K = 200;
+	const ROLL_C = damping(ROLL_K, 0.86);
+	const SQUASH_K = 1400;
+	const SQUASH_C = damping(SQUASH_K, 0.6);
+	const TILT_K = 140;
+	const TILT_C = damping(TILT_K, 0.7);
+	const WIDTH_K = 220;
+	const WIDTH_C = damping(WIDTH_K, 1);
+
+	const GRAVITY = 32;
+	const DROP = 0.7;
+	const FALL_FADE = 0.9;
+	const ROLL = 0.75;
+	const LAND_SQUASH = -0.16;
+	const ENTER_STAGGER = 0.035;
+	const MAX_ENTER_SPREAD = 0.45;
+	const FADE_RATE = 7;
+
+	function paintGlyph(g: Glyph) {
+		if (!g.el) return;
+		const sy = 1 + g.sq;
+		const sx = 1 - g.sq * 0.6;
+		g.el.style.transform = `translate3d(${g.x.toFixed(2)}px, ${g.y.toFixed(2)}px, 0) rotate(${g.r.toFixed(2)}deg) scale(${sx.toFixed(3)}, ${sy.toFixed(3)})`;
+		g.el.style.opacity = g.o.toFixed(3);
+	}
+
+	function stepSquash(g: Glyph, h: number) {
+		if (g.sq === 0 && g.vsq === 0) return;
+		g.vsq += (-SQUASH_K * g.sq - SQUASH_C * g.vsq) * h;
+		g.sq += g.vsq * h;
+		if (Math.abs(g.sq) < 0.001 && Math.abs(g.vsq) < 0.01) {
+			g.sq = 0;
+			g.vsq = 0;
+		}
+	}
+
+	function stepTravel(g: Glyph, h: number) {
+		const span = Math.abs(g.tx - g.x0);
+		const p = span < 0.5 ? 1 : clamp01(1 - Math.abs(g.tx - g.x) / span);
+		g.ty = g.arc * 4 * p * (1 - p);
+		g.vx += (-TRAVEL_K * (g.x - g.tx) - TRAVEL_C * g.vx) * h;
+		g.x += g.vx * h;
+		g.vy += (-LIFT_K * (g.y - g.ty) - LIFT_C * g.vy) * h;
+		g.y += g.vy * h;
+		g.o = Math.min(1, g.o + FADE_RATE * h);
+	}
+
+	function stepDrop(g: Glyph, h: number, em: number) {
+		g.vy += GRAVITY * em * h;
+		g.y += g.vy * h;
+		if (g.y >= 0) {
+			g.y = 0;
+			g.vy = 0;
+			g.sq = LAND_SQUASH;
+			g.phase = 'rest';
+		}
+		g.o = clamp01(1 + g.y / (DROP * em));
+	}
+
+	function stepFall(g: Glyph, h: number, em: number) {
+		g.vy += GRAVITY * em * h;
+		g.y += g.vy * h;
+		g.x += g.vx * h;
+		g.vr += (-TILT_K * (g.r - g.tr) - TILT_C * g.vr) * h;
+		g.r += g.vr * h;
+		g.o = Math.min(g.o, clamp01(1 - g.y / (FALL_FADE * em)));
+	}
+
+	function stepRoll(g: Glyph, h: number, em: number) {
+		g.vy += (-ROLL_K * (g.y - g.ty) - ROLL_C * g.vy) * h;
+		g.y += g.vy * h;
+		g.o = clamp01(1 - Math.abs(g.y) / (ROLL * em));
+	}
+
+	function stepFade(g: Glyph, h: number) {
+		g.o = clamp01(g.o + (g.leaving ? -FADE_RATE : FADE_RATE) * h);
+	}
+
+	function stepGlyph(g: Glyph, h: number, em: number) {
+		switch (g.phase) {
+			case 'travel':
+				stepTravel(g, h);
+				break;
+			case 'drop':
+				stepDrop(g, h, em);
+				break;
+			case 'fall':
+				stepFall(g, h, em);
+				break;
+			case 'roll':
+				stepRoll(g, h, em);
+				break;
+			case 'fade':
+				stepFade(g, h);
+				break;
+		}
+		stepSquash(g, h);
+	}
+
+	const isGone = (g: Glyph) => g.leaving && g.o <= 0.002;
+
+	function settle(g: Glyph): boolean {
+		if (g.leaving) return !isGone(g);
+		const arrived =
+			Math.abs(g.x - g.tx) < 0.05 &&
+			Math.abs(g.vx) < 0.5 &&
+			Math.abs(g.y) < 0.05 &&
+			Math.abs(g.vy) < 0.5;
+		const done =
+			(g.phase === 'travel' && arrived) ||
+			(g.phase === 'roll' && arrived) ||
+			(g.phase === 'fade' && g.o >= 1);
+		if (done) {
+			g.x = g.tx;
+			g.y = 0;
+			g.vx = 0;
+			g.vy = 0;
+			g.o = 1;
+			g.phase = 'rest';
+		}
+		return g.phase !== 'rest' || g.sq !== 0;
+	}
+
+	function rollDirection(previous: Glyph[], tokens: Token[]): number {
+		const before = Number(
+			previous
+				.filter((g) => g.digit)
+				.map((g) => g.char)
+				.join('')
+		);
+		const after = Number(
+			tokens
+				.filter((t) => t.digit)
+				.map((t) => t.char)
+				.join('')
+		);
+		return after < before ? -1 : 1;
+	}
+
+	function capStagger(glyphs: Glyph[], entering: number) {
+		const spread = entering * ENTER_STAGGER;
+		if (spread <= MAX_ENTER_SPREAD) return;
+		const scale = MAX_ENTER_SPREAD / spread;
+		for (const g of glyphs) {
+			g.delay *= scale;
+		}
+	}
+
+	function measureTokens(measure: HTMLElement, text: string) {
+		const chars = splitGraphemes(text);
+		const cells = measure.children;
+		const tokens: Token[] = [];
+		chars.forEach((char, i) => {
+			const cell = cells[i] as HTMLElement | undefined;
+			if (!cell || isBlank(char)) return;
+			tokens.push({ char, x: cell.offsetLeft, digit: isDigit(char), slot: 0 });
+		});
+		let slot = 0;
+		for (let i = tokens.length - 1; i >= 0; i--) {
+			const t = tokens[i];
+			if (t?.digit) t.slot = slot++;
+		}
+		return { tokens, width: measure.offsetWidth };
+	}
+
+	class MorphEngine {
+		glyphs: Glyph[] = [];
+		order: Glyph[] = [];
+		root: HTMLSpanElement | null = null;
+		onChange: (() => void) | null = null;
+		reduced = false;
+		started = false;
+		em = 16;
+		w = 0;
+		vw = 0;
+		tw = 0;
+		private nextId = 0;
+		private raf = 0;
+		private last = 0;
+
+		views(): GlyphView[] {
+			return this.glyphs.map((g) => ({ id: g.id, char: g.char }));
+		}
+
+		bindElement(id: number, el: HTMLSpanElement | null) {
+			const glyph = this.glyphs.find((g) => g.id === id);
+			if (glyph) {
+				glyph.el = el;
+				if (el) paintGlyph(glyph);
+			}
+		}
+
+		private create(t: Token): Glyph {
+			const glyph: Glyph = {
+				id: this.nextId++,
+				char: t.char,
+				digit: t.digit,
+				slot: t.slot,
+				el: null,
+				phase: 'rest',
+				leaving: false,
+				delay: 0,
+				x: t.x,
+				vx: 0,
+				tx: t.x,
+				x0: t.x,
+				arc: 0,
+				y: 0,
+				vy: 0,
+				ty: 0,
+				r: 0,
+				vr: 0,
+				tr: 0,
+				sq: 0,
+				vsq: 0,
+				o: 1
+			};
+			this.glyphs.push(glyph);
+			return glyph;
+		}
+
+		private move(g: Glyph, t: Token, instant: boolean) {
+			g.slot = t.slot;
+			g.tx = t.x;
+			if (instant) {
+				g.x = t.x;
+				g.y = 0;
+				g.vx = 0;
+				g.vy = 0;
+				g.phase = g.o < 1 ? 'fade' : 'rest';
+				return;
+			}
+			if (g.phase === 'rest' && Math.abs(t.x - g.x) < 0.5) {
+				g.x = t.x;
+				return;
+			}
+			g.x0 = g.x;
+			g.delay = 0;
+			const distance = t.x - g.x;
+			g.arc = -Math.sign(distance) * Math.min(0.22 * this.em, Math.abs(distance) * 0.14);
+			g.phase = 'travel';
+		}
+
+		private enter(g: Glyph, dir: number, instant: boolean, index: number) {
+			g.o = 0;
+			if (instant) {
+				g.phase = 'fade';
+				return;
+			}
+			if (g.digit) {
+				g.y = dir * ROLL * this.em;
+				g.ty = 0;
+				g.phase = 'roll';
+				return;
+			}
+			g.y = -DROP * this.em;
+			g.phase = 'drop';
+			g.delay = index * ENTER_STAGGER;
+		}
+
+		private leave(g: Glyph, dir: number, instant: boolean) {
+			g.leaving = true;
+			g.delay = 0;
+			if (instant) {
+				g.phase = 'fade';
+				return;
+			}
+			if (g.digit) {
+				g.phase = 'roll';
+				g.ty = -dir * ROLL * 1.2 * this.em;
+				return;
+			}
+			const side = g.x + this.em * 0.3 < this.tw / 2 ? -1 : 1;
+			g.tr = side * (5 + ((g.id * 7) % 11));
+			g.vx = side * 0.4 * this.em;
+			g.vy = Math.max(g.vy, 0);
+			g.phase = 'fall';
+		}
+
+		place(tokens: Token[], width: number) {
+			if (tokens.length !== this.order.length) return;
+			tokens.forEach((t, i) => {
+				const g = this.order[i];
+				if (g) {
+					g.tx = t.x;
+					if (g.phase === 'rest') {
+						g.x = t.x;
+						paintGlyph(g);
+					}
+				}
+			});
+			this.tw = width;
+			if (!this.raf) {
+				this.w = width;
+				this.paintWidth();
+			}
+		}
+
+		update(tokens: Token[], width: number) {
+			if (!this.started) {
+				this.started = true;
+				this.order = tokens.map((t) => this.create(t));
+				this.w = width;
+				this.tw = width;
+				this.paintWidth();
+				return;
+			}
+			const instant = this.reduced;
+			const letters = new Map<string, Glyph[]>();
+			const slots = new Map<number, Glyph>();
+			for (const g of this.order) {
+				if (g.digit) {
+					slots.set(g.slot, g);
+				} else {
+					const list = letters.get(g.char);
+					if (list) list.push(g);
+					else letters.set(g.char, [g]);
+				}
+			}
+			const dir = rollDirection(this.order, tokens);
+			const next: Glyph[] = [];
+			let entering = 0;
+			for (const t of tokens) {
+				let old: Glyph | undefined;
+				if (t.digit) {
+					old = slots.get(t.slot);
+					slots.delete(t.slot);
+				} else {
+					old = letters.get(t.char)?.shift();
+				}
+				if (old && old.char === t.char) {
+					this.move(old, t, instant);
+					next.push(old);
+					continue;
+				}
+				if (old) {
+					this.leave(old, dir, instant);
+				}
+				const g = this.create(t);
+				this.enter(g, dir, instant, entering++);
+				next.push(g);
+			}
+			capStagger(next, entering);
+			for (const list of letters.values()) {
+				for (const g of list) {
+					this.leave(g, dir, instant);
+				}
+			}
+			for (const g of slots.values()) {
+				this.leave(g, dir, instant);
+			}
+			this.order = next;
+			this.tw = width;
+			if (instant) {
+				this.w = width;
+				this.vw = 0;
+				this.paintWidth();
+			}
+		}
+
+		private paintWidth() {
+			if (this.root) {
+				this.root.style.width = `${this.w.toFixed(2)}px`;
+			}
+		}
+
+		private stepWidth(dt: number) {
+			if (Math.abs(this.w - this.tw) < 0.1 && Math.abs(this.vw) < 0.1) {
+				if (this.w !== this.tw) {
+					this.w = this.tw;
+					this.vw = 0;
+					this.paintWidth();
+				}
+				return false;
+			}
+			let t = dt;
+			while (t > 1e-6) {
+				const h = Math.min(STEP, t);
+				this.vw += (-WIDTH_K * (this.w - this.tw) - WIDTH_C * this.vw) * h;
+				this.w += this.vw * h;
+				t -= h;
+			}
+			this.paintWidth();
+			return true;
+		}
+
+		private stepAll(dt: number) {
+			let moving = false;
+			for (const g of this.glyphs) {
+				if (g.delay > 0) {
+					g.delay -= dt;
+					moving = true;
+					continue;
+				}
+				let t = dt;
+				while (t > 1e-6) {
+					const h = Math.min(STEP, t);
+					stepGlyph(g, h, this.em);
+					t -= h;
+				}
+				if (settle(g)) moving = true;
+				paintGlyph(g);
+			}
+			return moving;
+		}
+
+		private readonly tick = (now: number) => {
+			const dt = this.last ? Math.min(0.05, (now - this.last) / 1000) : 1 / 60;
+			this.last = now;
+			const moving = this.stepAll(dt);
+			const resizing = this.stepWidth(dt);
+			if (this.glyphs.some(isGone)) {
+				this.glyphs = this.glyphs.filter((g) => !isGone(g));
+				this.onChange?.();
+			}
+			this.raf = moving || resizing ? requestAnimationFrame(this.tick) : 0;
+		};
+
+		kick() {
+			if (!this.raf) {
+				this.last = 0;
+				this.raf = requestAnimationFrame(this.tick);
+			}
+		}
+
+		stop() {
+			cancelAnimationFrame(this.raf);
+			this.raf = 0;
+		}
+	}
+
+	/* ── Decode 헬퍼 ── */
+	const UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ#%&*+=<>/';
+	const LOWER = 'abcdefghijklmnopqrstuvwxyz#%&*+=<>/';
+	const DIGITS = '0123456789';
+	const SWAP_EVERY = 0.05;
+	const FLASH_FOR = 0.05;
+
+	function poolFor(char: string) {
+		if (isDigit(char)) return DIGITS;
+		return char.toLowerCase() === char ? LOWER : UPPER;
+	}
+
+	const randomFrom = (pool: string) => pool[Math.floor(Math.random() * pool.length)] ?? '';
+
+	function writeCell(cell: Element | undefined, char: string) {
+		const node = cell?.firstChild;
+		if (node && node.nodeValue !== char) {
+			node.nodeValue = char;
+		}
+	}
+
+	function stepCell(cell: DecodeCell, t: number) {
+		if (cell.state === 'flash') {
+			if (t >= cell.lockAt + FLASH_FOR) {
+				cell.el.removeAttribute('data-flash');
+				cell.state = 'done';
+			}
+			return;
+		}
+		if (t >= cell.lockAt) {
+			writeCell(cell.el, cell.char);
+			cell.el.removeAttribute('data-scramble');
+			cell.el.setAttribute('data-flash', '');
+			cell.state = 'flash';
+			return;
+		}
+		if (t >= cell.swapAt) {
+			writeCell(cell.el, randomFrom(poolFor(cell.char)));
+			cell.swapAt = t + SWAP_EVERY;
+		}
+	}
+</script>
+
+<script lang="ts">
+	import { onDestroy, onMount, untrack } from 'svelte';
+
+	interface Props {
+		/** `morph`: 글자 물리 이동·낙하·숫자 롤링 / `decode`: 모노스페이스 스크램블 잠금 / `cycle`: 인사말 리듬 순환 */
+		mode?: DynamicTextMode;
+		/** 표시할 문자열 (지정 시 `words` 무시, 값 변경 시 애니메이션) */
+		text?: string;
+		/** `text` 미지정 시 순환할 단어 목록 */
+		words?: (string | Greeting)[];
+		/** 단어 유지 시간 (ms) */
+		interval?: number;
+		/** 마지막 단어 이후 반복 여부 (`cycle` 기본 false, 그 외 true) */
+		loop?: boolean;
+		/** 반복 없이 마지막 단어 도달 시 1회 호출 */
+		onComplete?: () => void;
+		/** 추가 클래스 */
+		class?: string;
+		/** React 호환용 className 별칭 */
+		className?: string;
+	}
+
+	let {
+		mode = 'morph',
+		text,
+		words,
+		interval,
+		loop,
+		onComplete,
+		class: klass = '',
+		className = ''
+	}: Props = $props();
+
+	const list = $derived((words ?? DEFAULT_WORDS[mode]).map(toGreeting));
+	const count = $derived(list.length);
+	const hold = $derived(interval ?? DEFAULT_INTERVAL[mode]);
+	const repeat = $derived(loop ?? mode !== 'cycle');
+	const controlled = $derived(text !== undefined);
+
+	let step = $state(0);
+	const index = $derived(repeat ? step % Math.max(count, 1) : Math.min(step, Math.max(0, count - 1)));
+	const isLast = $derived(index === count - 1);
+	const isDone = $derived(!(controlled || repeat) && isLast);
+
+	const current = $derived<Greeting>(
+		controlled ? { text: text ?? '' } : (list[index] ?? { text: '' })
+	);
+	const chars = $derived(splitGraphemes(current.text));
+
+	let rootEl: HTMLSpanElement | undefined = $state(undefined);
+	let morphRootEl: HTMLSpanElement | undefined = $state(undefined);
+	let measureEl: HTMLSpanElement | undefined = $state(undefined);
+	let decodeHostEl: HTMLSpanElement | undefined = $state(undefined);
+
+	let reduced = $state(false);
+	let running = $state(false);
+	let live = $state(false);
+	let views = $state<GlyphView[]>([]);
+
+	const engine = new MorphEngine();
+	let completeFiredForRun = false;
+	let shownDecodeChars: string[] | null = null;
+
+	function bindGlyph(node: HTMLSpanElement, id: number) {
+		engine.bindElement(id, node);
+		return {
+			update(nextId: number) {
+				if (nextId !== id) {
+					engine.bindElement(id, null);
+					id = nextId;
+					engine.bindElement(id, node);
+				}
+			},
+			destroy() {
+				engine.bindElement(id, null);
+			}
+		};
+	}
+
+	onMount(() => {
+		const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+		const syncReduce = () => {
+			reduced = mq.matches;
+		};
+		syncReduce();
+		mq.addEventListener('change', syncReduce);
+
+		let inView = false;
+		const syncRun = () => {
+			running = inView && document.visibilityState === 'visible';
+		};
+		const io = new IntersectionObserver((entries) => {
+			inView = entries.some((e) => e.isIntersecting);
+			syncRun();
+		});
+		if (rootEl) io.observe(rootEl);
+		document.addEventListener('visibilitychange', syncRun);
+
+		engine.onChange = () => {
+			views = engine.views();
+		};
+		live = true;
+
+		return () => {
+			mq.removeEventListener('change', syncReduce);
+			io.disconnect();
+			document.removeEventListener('visibilitychange', syncRun);
+			engine.stop();
+		};
+	});
+
+	onDestroy(() => {
+		engine.stop();
+	});
+
+	// 자동 순환 타이머
+	$effect(() => {
+		if (controlled || isDone || !running || count < 2) return;
+		const id = setTimeout(() => {
+			step += 1;
+		}, holdFor(mode, index, count, hold));
+		return () => clearTimeout(id);
+	});
+
+	$effect(() => {
+		if (isDone && !completeFiredForRun) {
+			completeFiredForRun = true;
+			untrack(() => onComplete?.());
+		} else if (!isDone) {
+			completeFiredForRun = false;
+		}
+	});
+
+	// Morph / Cycle 물리 레이어 갱신
+	$effect(() => {
+		if (mode === 'decode' || !live || !morphRootEl || !measureEl) return;
+		const activeText = current.text;
+		const isReduced = reduced;
+		untrack(() => {
+			engine.root = morphRootEl!;
+			engine.em = Number.parseFloat(getComputedStyle(morphRootEl!).fontSize) || 16;
+			engine.reduced = isReduced;
+			const { tokens, width } = measureTokens(measureEl!, activeText);
+			engine.update(tokens, width);
+			views = engine.views();
+			engine.kick();
+		});
+	});
+
+	// 폰트 로드/크기 변경 시 글자 위치 재정렬
+	$effect(() => {
+		if (mode === 'decode' || !live || !morphRootEl || !measureEl) return;
+		const root = morphRootEl;
+		const measure = measureEl;
+		const activeText = current.text;
+		const ro = new ResizeObserver(() => {
+			engine.em = Number.parseFloat(getComputedStyle(root).fontSize) || 16;
+			const { tokens, width } = measureTokens(measure, activeText);
+			engine.place(tokens, width);
+		});
+		ro.observe(measure);
+		return () => ro.disconnect();
+	});
+
+	// Decode 레이어 갱신
+	$effect(() => {
+		if (mode !== 'decode' || !decodeHostEl || !running) return;
+		const host = decodeHostEl;
+		const activeText = current.text;
+		const isReduced = reduced;
+
+		return untrack(() => {
+			const next = splitGraphemes(activeText);
+			const previous = shownDecodeChars;
+			shownDecodeChars = next;
+			const els = Array.from(host.children) as HTMLElement[];
+
+			els.forEach((el, i) => {
+				writeCell(el, next[i] ?? '');
+				el.removeAttribute('data-scramble');
+				el.removeAttribute('data-flash');
+			});
+
+			const changed = next
+				.map((char, i) => ({ char, i }))
+				.filter(({ char, i }) => !isBlank(char) && previous?.[i] !== char);
+
+			if (changed.length === 0) return;
+
+			if (isReduced) {
+				host.animate([{ opacity: 0 }, { opacity: 1 }], {
+					duration: 160,
+					easing: 'ease-out'
+				});
+				return;
+			}
+
+			const stagger = Math.min(0.05, 0.75 / changed.length);
+			const cells: DecodeCell[] = [];
+			changed.forEach(({ char, i }, rank) => {
+				const el = els[i];
+				if (el) {
+					el.setAttribute('data-scramble', '');
+					cells.push({
+						el,
+						char,
+						lockAt: 0.15 + rank * stagger,
+						swapAt: 0,
+						state: 'scramble'
+					});
+				}
+			});
+
+			let raf = 0;
+			let start = 0;
+			const tick = (now: number) => {
+				start ||= now;
+				const t = (now - start) / 1000;
+				for (const cell of cells) {
+					stepCell(cell, t);
+				}
+				raf = cells.every((c) => c.state === 'done') ? 0 : requestAnimationFrame(tick);
+			};
+			raf = requestAnimationFrame(tick);
+
+			return () => {
+				cancelAnimationFrame(raf);
+				for (const cell of cells) {
+					writeCell(cell.el, cell.char);
+					cell.el.removeAttribute('data-scramble');
+					cell.el.removeAttribute('data-flash');
+				}
+			};
+		});
+	});
+</script>
+
+<span
+	bind:this={rootEl}
+	class="dynamic-text-root {klass} {className}"
+	lang={current.lang}
+>
+	<span aria-live={controlled ? 'polite' : 'off'} class="sr-only">
+		{current.text}
+	</span>
+
+	{#if mode === 'decode'}
+		<span aria-hidden="true" class="dynamic-decode-host" bind:this={decodeHostEl}>
+			{#each chars as char, i (i)}
+				<span class="dynamic-decode-cell">{char}</span>
+			{/each}
+		</span>
+	{:else}
+		<span class="dynamic-morph-root" bind:this={morphRootEl}>
+			<span aria-hidden="true" class="dynamic-morph-measure" bind:this={measureEl}>
+				{#each chars as char, i (i)}
+					<span>{char}</span>
+				{/each}
+			</span>
+
+			{#if live}
+				<span aria-hidden="true" class="dynamic-morph-strut">&#8203;</span>
+				{#each views as view (view.id)}
+					<span aria-hidden="true" class="dynamic-morph-glyph" use:bindGlyph={view.id}>
+						{view.char}
+					</span>
+				{/each}
+			{:else}
+				<span aria-hidden="true">
+					{#each chars as char, i (i)}
+						<span>{char}</span>
+					{/each}
+				</span>
+			{/if}
+		</span>
+	{/if}
+</span>
+
+<style>
+	.dynamic-text-root {
+		display: inline-block;
+		white-space: pre;
+		font-variant-numeric: tabular-nums;
+		--dynamic-text-accent: var(--toast-success-fg);
+	}
+
+	.dynamic-morph-root {
+		position: relative;
+		display: inline-block;
+		vertical-align: baseline;
+	}
+
+	.dynamic-morph-measure {
+		pointer-events: none;
+		visibility: hidden;
+		position: absolute;
+		top: 0;
+		left: 0;
+	}
+
+	.dynamic-morph-strut {
+		display: inline-block;
+		width: 0;
+		overflow: hidden;
+	}
+
+	.dynamic-morph-glyph {
+		position: absolute;
+		top: 0;
+		left: 0;
+		transform-origin: 50% 80%;
+	}
+
+	.dynamic-decode-host {
+		font-family: var(--font-mono);
+	}
+
+	.dynamic-decode-cell {
+		display: inline-block;
+		width: 1ch;
+		text-align: center;
+	}
+
+	.dynamic-decode-cell:global([data-scramble]) {
+		opacity: 0.45;
+	}
+
+	.dynamic-decode-cell:global([data-flash]) {
+		color: var(--dynamic-text-accent);
+	}
+</style>

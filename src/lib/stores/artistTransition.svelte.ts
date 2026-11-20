@@ -1,4 +1,4 @@
-import { findMockArtistById, type CatalogArtist } from '#lib/config/artists';
+import type { CatalogArtist } from '#lib/config/artists';
 
 export type ArtistVtPhase = 'idle' | 'entering' | 'leaving';
 
@@ -13,6 +13,7 @@ export interface ArtistFeedSnapshot {
 	hasNext: boolean;
 	query: string;
 	genre: string;
+	requestKey?: string;
 }
 
 function createArtistTransitionStore() {
@@ -62,13 +63,7 @@ function createArtistTransitionStore() {
 	}
 
 	function getCachedArtist(id: number): CachedArtistState | null {
-		const cached = artistCache.get(id);
-		if (cached) return cached;
-		const mock = findMockArtistById(id);
-		if (mock) {
-			return { artist: mock };
-		}
-		return null;
+		return artistCache.get(id) ?? null;
 	}
 
 	function setFollowing(id: number, following: boolean) {

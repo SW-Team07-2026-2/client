@@ -7,6 +7,7 @@
 	import MobileBottomBar from './mobile/MobileBottomBar.svelte';
 	import ContentBottomBar from './mobile/ContentBottomBar.svelte';
 	import type { SegmentOption } from '../ui/FdSegmentedControl.svelte';
+	import { createDefaultFilterState, type ContentFilterState } from '#lib/config/filter';
 
 	interface Props {
 		/** 본문 컨텐츠 */
@@ -37,10 +38,14 @@
 		onFilterToggle?: (open: boolean) => void;
 		/** 선택된 장르 필터 목록 */
 		selectedGenres?: string[];
+		/** 통합 필터 상태 */
+		filterState?: ContentFilterState;
 		/** 장르 필터 다중 선택 허용 여부 */
 		filterMultiple?: boolean;
 		/** 장르 필터 변경 콜백 */
 		onGenreChange?: (genres: string[]) => void;
+		/** 통합 필터 변경 콜백 */
+		onFilterChange?: (state: ContentFilterState) => void;
 		/** 새로고침 버튼 클릭 콜백 */
 		onRefresh?: () => void;
 		/** 커스텀 PC 컨텐츠 헤더 스니펫 (지정 시 기본 ContentHeader 대신 렌더링) */
@@ -74,8 +79,10 @@
 		filterOpen = $bindable(false),
 		onFilterToggle,
 		selectedGenres = $bindable<string[]>([]),
+		filterState = $bindable<ContentFilterState>(createDefaultFilterState()),
 		filterMultiple = true,
 		onGenreChange,
+		onFilterChange,
 		onRefresh,
 		contentHeader,
 		headerEl = $bindable(),
@@ -139,8 +146,10 @@
 						bind:filterOpen
 						{onFilterToggle}
 						bind:selectedGenres
+						bind:filterState
 						{filterMultiple}
 						{onGenreChange}
+						{onFilterChange}
 						{onRefresh}
 					/>
 				</div>

@@ -1,7 +1,30 @@
+<script module lang="ts">
+	interface ExtractedWaveColors {
+		inner: string;
+		outer: string;
+		accent: string;
+	}
+
+	const waveColorCache = new Map<string, ExtractedWaveColors>();
+
+	function setBoundedColorCache(key: string, value: ExtractedWaveColors, limit = 240) {
+		if (waveColorCache.size >= limit && !waveColorCache.has(key)) {
+			const oldest = waveColorCache.keys().next().value;
+			if (oldest !== undefined) waveColorCache.delete(oldest);
+		}
+		waveColorCache.set(key, value);
+	}
+</script>
+
 <script lang="ts">
 	import { untrack, type Snippet } from 'svelte';
 	import type { HTMLAttributes } from 'svelte/elements';
-	import { FluidSetting, computeFluidWave, isPointerBlocked } from '#lib/fluid/setting';
+	import {
+		FluidSetting,
+		computeFluidWave,
+		isPointerBlocked,
+		prefersReducedMotion
+	} from '#lib/fluid';
 
 	interface Props extends HTMLAttributes<HTMLDivElement> {
 		/** 표시할 이미지 경로 (URL 또는 Data URI) */
@@ -10,6 +33,8 @@
 		alt?: string;
 		/** 이미지 맞춤 방식 (기본값: 'cover') */
 		fit?: 'cover' | 'contain' | 'fill';
+		/** 이미지 정렬 기준 위치 (CSS object-position, 기본값: '50% 50%') */
+		objectPosition?: string;
 		/** 이미지 위에 겹쳐서 렌더링할 선택적 오버레이 콘텐츠 */
 		children?: Snippet;
 		/** 유체/물결/반응성/최적화 설정 (FluidSetting 인스턴스 또는 부분 설정 객체) */
@@ -47,7 +72,7 @@
 		hovered?: boolean;
 		/** 현재 포인터 누름(press) 상태 여부 */
 		pressed?: boolean;
-		/** 캔버스 물리 엔진 준비 완료 여부 */
+		/** 이미지 및 컴포넌트 준비 완료 여부 */
 		ready?: boolean;
 		/** 이미지 로드 완료 여부 */
 		imageLoaded?: boolean;
@@ -73,6 +98,7 @@
 		src,
 		alt = '',
 		fit = 'cover',
+		objectPosition = '50% 50%',
 		children,
 		setting,
 		hoverRadius,
@@ -109,7 +135,6 @@
 		...rest
 	}: Props = $props();
 
-	// 사용자가 명시적으로 waveColor를 지정했는지 판별 (미지정 시 이미지 가장자리 평균색 자동 사용)
 	const hasExplicitWaveColor = $derived(
 		waveColor !== undefined ||
 			(setting !== undefined &&
@@ -149,12 +174,18 @@
 
 	let wrap: HTMLDivElement;
 	let box: HTMLDivElement;
-	let canvas: HTMLCanvasElement;
+	let imgEl: HTMLImageElement;
+	let canvas: HTMLCanvasElement | undefined = $state(undefined);
+
+	// 평소(유휴)에는 순수 <img>만 렌더링하고, 근접·호버·클릭·상시 물결 시에만 물결 전용 <canvas> 활성화
+	let canvasActive = $state(untrack(() => active || !cfg.pauseWhenIdle));
+	let pendingPointer: { x: number; y: number } | null = null;
+	let pendingPress = false;
+	let snapRadiusOnCanvasMount = untrack(() => active);
 
 	let relayout: (() => void) | undefined;
 	let syncSetting: (() => void) | undefined;
 
-	let loadedImg = $state<HTMLImageElement | null>(null);
 	let autoWaveInner = $state('rgb(148, 163, 184)');
 	let autoWaveOuter = $state('rgb(100, 116, 139)');
 
@@ -167,7 +198,6 @@
 			hash = Math.imul(hash, 16777619);
 		}
 		const hue = Math.abs(hash) % 360;
-		// 과도하게 튀지 않도록 차분한 톤으로 변환 (HSL hue, 24%, 38%)
 		const s = 0.24;
 		const l = 0.38;
 		const c = (1 - Math.abs(2 * l - 1)) * s;
@@ -189,28 +219,12 @@
 		];
 	}
 
-	/** 인위적인 채도/명도 왜곡 없이 원본 이미지의 평균 RGB 색상을 그대로 사용 */
-	function formatRgbForWaves(
-		r: number,
-		g: number,
-		b: number
-	): { inner: string; outer: string; accent: string } {
+	function formatRgbForWaves(r: number, g: number, b: number): ExtractedWaveColors {
 		const color = `rgb(${r}, ${g}, ${b})`;
-		return {
-			inner: color,
-			outer: color,
-			accent: color
-		};
+		return { inner: color, outer: color, accent: color };
 	}
 
-	/**
-	 * 오프스크린 캔버스에 이미지를 그리고 이미지 전체 픽셀의
-	 * 평균 색상을 추출합니다.
-	 */
-	function extractAverageWaveColors(
-		img: HTMLImageElement,
-		sourceUrl: string
-	): { inner: string; outer: string; accent: string } {
+	function extractAverageWaveColors(img: HTMLImageElement, sourceUrl: string): ExtractedWaveColors {
 		try {
 			const size = 32;
 			const off = document.createElement('canvas');
@@ -255,42 +269,55 @@
 				}
 			}
 		} catch {
-			// 외부 이미지 CORS(SecurityError) 발생 시 아래 폴백 색상으로 안전하게 처리
+			// 외부 이미지 CORS 발생 시 폴백 색상 사용
 		}
 
 		const [fr, fg, fb] = fallbackColorFromSrc(sourceUrl);
 		return formatRgbForWaves(fr, fg, fb);
 	}
 
-	// src 변경 시 이미지 로드 및 전체 평균색 추출
+	// src 변경 시 평균 물결 색상 추출 및 이미지 로드 상태 동기화 (표시 자체는 네이티브 <img>가 담당)
 	$effect(() => {
 		const currentSrc = src;
 		void fit;
 		if (typeof window === 'undefined' || !currentSrc) {
-			loadedImg = null;
 			imageLoaded = false;
+			ready = false;
 			return;
 		}
 
 		let cancelled = false;
-		imageLoaded = false;
-
-		const [fr, fg, fb] = fallbackColorFromSrc(currentSrc);
-		const initial = formatRgbForWaves(fr, fg, fb);
+		const cacheKey = `${fit}:${currentSrc}`;
+		const cachedColors = waveColorCache.get(cacheKey);
+		const initial =
+			cachedColors ??
+			(() => {
+				const [fr, fg, fb] = fallbackColorFromSrc(currentSrc);
+				return formatRgbForWaves(fr, fg, fb);
+			})();
 		autoWaveInner = initial.inner;
 		autoWaveOuter = initial.outer;
 		extractedWaveColor = hasExplicitWaveColor ? (cfg.waveColor ?? initial.accent) : initial.accent;
 
-		const img = new Image();
-		if (!currentSrc.startsWith('data:') && !currentSrc.startsWith('blob:')) {
-			img.crossOrigin = 'anonymous';
+		if (imgEl && imgEl.complete && imgEl.naturalWidth > 0) {
+			imageLoaded = true;
+			ready = true;
+		} else {
+			imageLoaded = false;
+			ready = false;
 		}
 
-		img.onload = () => {
+		if (cachedColors) return;
+
+		// 미캐시 이미지만 백그라운드에서 CORS 안전하게 32x32 평균색 추출
+		const probe = new Image();
+		if (!currentSrc.startsWith('data:') && !currentSrc.startsWith('blob:')) {
+			probe.crossOrigin = 'anonymous';
+		}
+		probe.onload = () => {
 			if (cancelled) return;
-			loadedImg = img;
-			imageLoaded = true;
-			const extracted = extractAverageWaveColors(img, currentSrc);
+			const extracted = extractAverageWaveColors(probe, currentSrc);
+			setBoundedColorCache(cacheKey, extracted, 240);
 			autoWaveInner = extracted.inner;
 			autoWaveOuter = extracted.outer;
 			extractedWaveColor = hasExplicitWaveColor
@@ -298,33 +325,7 @@
 				: extracted.accent;
 			syncSetting?.();
 		};
-
-		img.onerror = () => {
-			if (cancelled) return;
-			// 외부 서버가 CORS(Access-Control-Allow-Origin)를 지원하지 않는 경우 crossOrigin 없이 재로드
-			if (img.crossOrigin) {
-				const retry = new Image();
-				retry.onload = () => {
-					if (cancelled) return;
-					loadedImg = retry;
-					imageLoaded = true;
-					syncSetting?.();
-				};
-				retry.onerror = () => {
-					if (cancelled) return;
-					loadedImg = null;
-					imageLoaded = false;
-					syncSetting?.();
-				};
-				retry.src = currentSrc;
-				return;
-			}
-			loadedImg = null;
-			imageLoaded = false;
-			syncSetting?.();
-		};
-
-		img.src = currentSrc;
+		probe.src = currentSrc;
 
 		return () => {
 			cancelled = true;
@@ -336,27 +337,122 @@
 		boxEl = box;
 	});
 
+	// 캔버스 비활성(유휴) 상태에서 포인터 근접·진입·클릭을 감지해 온디맨드로 캔버스를 깨움
 	$effect(() => {
 		if (disabled) {
 			hovered = false;
 			pressed = false;
+			canvasActive = false;
 			return;
 		}
-		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-		return untrack(() => initEngine());
+		if (prefersReducedMotion()) {
+			canvasActive = false;
+			return;
+		}
+		if (active || !cfg.pauseWhenIdle || hovered || pressed) {
+			if (!canvasActive) {
+				snapRadiusOnCanvasMount = active && !hovered && !pressed;
+				canvasActive = true;
+			}
+		}
+
+		if (canvasActive || !wrap || !box) return;
+
+		let visibleInViewport = true;
+		const io =
+			typeof IntersectionObserver !== 'undefined'
+				? new IntersectionObserver(
+						(entries) => {
+							visibleInViewport = entries[0]?.isIntersecting ?? true;
+						},
+						{ rootMargin: '80px' }
+					)
+				: null;
+		io?.observe(wrap);
+
+		const wakeFromPointer = (clientX: number, clientY: number, isPress = false) => {
+			pendingPointer = { x: clientX, y: clientY };
+			if (isPress) pendingPress = true;
+			snapRadiusOnCanvasMount = false;
+			canvasActive = true;
+		};
+
+		const onIdleEnter = (e: PointerEvent) => {
+			if (!cfg.hoverReactive && !cfg.bulgeReactive) return;
+			if (isPointerBlocked(e.target, wrap)) return;
+			wakeFromPointer(e.clientX, e.clientY, false);
+		};
+
+		const onIdleDown = (e: PointerEvent) => {
+			if (e.pointerType !== 'touch' && !cfg.clickReactive) return;
+			wakeFromPointer(e.clientX, e.clientY, cfg.clickReactive);
+		};
+
+		const onIdleUp = () => {
+			pendingPress = false;
+		};
+
+		const onIdleMove = (e: PointerEvent) => {
+			if (!visibleInViewport || e.pointerType === 'touch') return;
+			if (!cfg.bulgeReactive && !cfg.hoverReactive) return;
+			if (isPointerBlocked(e.target, wrap)) return;
+
+			const r = box.getBoundingClientRect();
+			if (!r.width || !r.height) return;
+
+			const W = r.width;
+			const H = r.height;
+			const bw = W - 2 * inset;
+			const bh = H - 2 * inset;
+			if (bw < 2 || bh < 2) return;
+
+			const lx = e.clientX - (r.left + W / 2);
+			const ly = e.clientY - (r.top + H / 2);
+			const rr = Math.min(cfg.radius, bw / 2, bh / 2);
+			const ihw = Math.max(0, bw / 2 - rr);
+			const ihh = Math.max(0, bh / 2 - rr);
+			const qx = Math.abs(lx) - ihw;
+			const qy = Math.abs(ly) - ihh;
+			const d = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - rr;
+
+			const triggerDist = cfg.bulgeReactive && cfg.bulge > 0 ? cfg.reach : 0;
+			if (d <= triggerDist) {
+				wakeFromPointer(e.clientX, e.clientY, false);
+			}
+		};
+
+		box.addEventListener('pointerenter', onIdleEnter);
+		box.addEventListener('pointerdown', onIdleDown);
+		window.addEventListener('pointerup', onIdleUp);
+		if (cfg.bulgeReactive && cfg.bulge > 0) {
+			window.addEventListener('pointermove', onIdleMove, { passive: true });
+		}
+
+		return () => {
+			io?.disconnect();
+			box.removeEventListener('pointerenter', onIdleEnter);
+			box.removeEventListener('pointerdown', onIdleDown);
+			window.removeEventListener('pointerup', onIdleUp);
+			window.removeEventListener('pointermove', onIdleMove);
+		};
 	});
 
-	// 도형 크기/여백에 영향을 주는 설정이 바뀌면 레이아웃 재계산
+	// canvasActive 가 true가 되어 <canvas> DOM이 마운트된 동안에만 2D 물결 엔진 실행
 	$effect(() => {
+		if (!canvasActive || !canvas || disabled || prefersReducedMotion()) return;
+		return untrack(() => initWaveEngine(canvas!));
+	});
+
+	$effect(() => {
+		void cfg.radius;
+		void hoverRadius;
 		void inset;
 		void SAFE;
 		relayout?.();
 	});
 
-	// 물결·반지름·색상·최적화 옵션이 동적으로 바뀌면 스프링을 유지한 채 부드럽게 전환
 	$effect(() => {
 		void cfg;
-		void hoverRadius;
 		void active;
 		void staticFrontWave;
 		void autoWaveInner;
@@ -370,11 +466,27 @@
 		return !c || c === 'transparent' || c === 'rgba(0, 0, 0, 0)' || c === 'rgba(0,0,0,0)';
 	}
 
-	function initEngine() {
-		const ctx = canvas.getContext('2d');
+	function traceRoundedRect(c: CanvasRenderingContext2D, w: number, h: number, r: number) {
+		const hw = w / 2;
+		const hh = h / 2;
+		const rr = Math.max(0, Math.min(r, hw, hh));
+		c.beginPath();
+		c.moveTo(-hw + rr, -hh);
+		c.lineTo(hw - rr, -hh);
+		c.arcTo(hw, -hh, hw, -hh + rr, rr);
+		c.lineTo(hw, hh - rr);
+		c.arcTo(hw, hh, hw - rr, hh, rr);
+		c.lineTo(-hw + rr, hh);
+		c.arcTo(-hw, hh, -hw, hh - rr, rr);
+		c.lineTo(-hw, -hh + rr);
+		c.arcTo(-hw, -hh, -hw + rr, -hh, rr);
+		c.closePath();
+	}
+
+	function initWaveEngine(targetCanvas: HTMLCanvasElement) {
+		const ctx = targetCanvas.getContext('2d');
 		if (!ctx) return;
 
-		/* ───────── 크기 & 둘레 샘플 점 ───────── */
 		let W = 0;
 		let H = 0;
 		let bw = 0;
@@ -383,6 +495,13 @@
 		let ch = 0;
 		let dpr = 1;
 		let n = 0;
+
+		let laidOutW = 0;
+		let laidOutH = 0;
+		let laidOutDpr = 0;
+		let laidOutSafe = -1;
+		let laidOutInset = -1;
+		let engineReady = false;
 
 		let rx: Float32Array;
 		let ry: Float32Array;
@@ -396,7 +515,6 @@
 		let xs: Float32Array;
 		let ys: Float32Array;
 
-		/* ───────── 포인터 & 스프링 상태 ───────── */
 		let lx = 0;
 		let ly = 0;
 		let cx = 0;
@@ -406,21 +524,21 @@
 		let inside = false;
 		let wasNear = false;
 		let ampT = 0;
-		let hasPointer = false;
-		let lastClientX = 0;
-		let lastClientY = 0;
+		let hasPointer = pendingPointer !== null;
+		let lastClientX = pendingPointer?.x ?? 0;
+		let lastClientY = pendingPointer?.y ?? 0;
+		pendingPointer = null;
 
-		// ws: 물결 활성 스프링 (0..1)
+		if (pendingPress) {
+			pressed = true;
+			pendingPress = false;
+		}
+
 		const ws = { x: !cfg.pauseWhenIdle ? 1 : 0, v: 0 };
-		// hs: 호버 상태 스프링 (0..1)
 		const hs = { x: 0, v: 0 };
-		// ps: 클릭/누름 스프링 (0..1)
 		const ps = { x: 0, v: 0 };
-		// cs: 물결/테두리 색상 변경 크로스페이드 스프링 (0..1)
 		const cs = { x: 1, v: 0 };
-		// bs: 근접 마그네틱 돌출 진폭 스프링
 		const bs = { x: 0, v: 0 };
-		// rs: 반지름(radius) 모핑 스프링 (px 단위 현재 반경)
 		const rs = { x: cfg.radius, v: 0 };
 
 		let curAmp = cfg.waveAmp;
@@ -434,7 +552,6 @@
 		let raf = 0;
 		let last = 0;
 
-		/* ───────── 물결 & 테두리 색상 ───────── */
 		let cWaveInner = autoWaveInner;
 		let prevWaveInner = cWaveInner;
 		let cWaveOuter = autoWaveOuter;
@@ -454,6 +571,25 @@
 				return Math.min(hoverRadius, maxR);
 			}
 			return baseR;
+		}
+
+		function syncImgDom(sx: number, sy: number, curR: number) {
+			if (!imgEl) return;
+			const nextR = `${curR.toFixed(2)}px`;
+			if (imgEl.style.borderRadius !== nextR) {
+				imgEl.style.borderRadius = nextR;
+			}
+			if (Math.abs(sx - 1) > 0.0005 || Math.abs(sy - 1) > 0.0005) {
+				imgEl.style.transform = `scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
+			} else if (imgEl.style.transform) {
+				imgEl.style.transform = '';
+			}
+		}
+
+		function resetImgDom() {
+			if (!imgEl) return;
+			imgEl.style.borderRadius = '';
+			imgEl.style.transform = '';
 		}
 
 		function readColors(animateChange = false) {
@@ -483,7 +619,8 @@
 				animateChange &&
 				(nextWaveInner !== cWaveInner ||
 					nextWaveOuter !== cWaveOuter ||
-					nextBorder !== cBorder)
+					nextBorder !== cBorder ||
+					nextHoverBorder !== cHoverBorder)
 			) {
 				prevWaveInner = cWaveInner;
 				prevWaveOuter = cWaveOuter;
@@ -505,7 +642,6 @@
 			cPressBorder = nextPressBorder;
 		}
 
-		/* ───────── 도형 (상단 정중앙 시작 둥근 사각형 둘레 균등 샘플링) ───────── */
 		function build(rInput?: number) {
 			if (bw < 2 || bh < 2 || !n) return;
 			const hw = bw / 2;
@@ -518,7 +654,6 @@
 			const qa = (Math.PI * r) / 2;
 			const lens = [sw, qa, sh, qa, sw, qa, sh, qa];
 			const total = lens.reduce((a, c) => a + c, 0);
-			// 상단 변 정중앙(x = 0, y = -hh)을 k = 0 시작점으로 고정하여 반지름 모핑 시 회전 왜곡 방지
 			const startOffset = sw / 2;
 
 			for (let k = 0; k < n; k++) {
@@ -534,52 +669,52 @@
 				let ox = 0;
 				let oy = 0;
 				switch (i) {
-					case 0: // 위 변
+					case 0:
 						x = -hw + r + sw * u;
 						y = -hh;
 						oy = -1;
 						break;
 					case 1: {
-						const a = -Math.PI / 2 + (u * Math.PI) / 2; // 우상
+						const a = -Math.PI / 2 + (u * Math.PI) / 2;
 						ox = Math.cos(a);
 						oy = Math.sin(a);
 						x = hw - r + ox * r;
 						y = -hh + r + oy * r;
 						break;
 					}
-					case 2: // 오른쪽 변
+					case 2:
 						x = hw;
 						y = -hh + r + sh * u;
 						ox = 1;
 						break;
 					case 3: {
-						const a = (u * Math.PI) / 2; // 우하
+						const a = (u * Math.PI) / 2;
 						ox = Math.cos(a);
 						oy = Math.sin(a);
 						x = hw - r + ox * r;
 						y = hh - r + oy * r;
 						break;
 					}
-					case 4: // 아래 변
+					case 4:
 						x = hw - r - sw * u;
 						y = hh;
 						oy = 1;
 						break;
 					case 5: {
-						const a = Math.PI / 2 + (u * Math.PI) / 2; // 좌하
+						const a = Math.PI / 2 + (u * Math.PI) / 2;
 						ox = Math.cos(a);
 						oy = Math.sin(a);
 						x = -hw + r + ox * r;
 						y = hh - r + oy * r;
 						break;
 					}
-					case 6: // 왼쪽 변
+					case 6:
 						x = -hw;
 						y = hh - r - sh * u;
 						ox = -1;
 						break;
 					default: {
-						const a = Math.PI + (u * Math.PI) / 2; // 좌상
+						const a = Math.PI + (u * Math.PI) / 2;
 						ox = Math.cos(a);
 						oy = Math.sin(a);
 						x = -hw + r + ox * r;
@@ -596,20 +731,42 @@
 		}
 
 		function layout() {
-			if (!box || !canvas) return;
-			W = box.offsetWidth;
-			H = box.offsetHeight;
-			bw = W - 2 * inset;
-			bh = H - 2 * inset;
-			if (bw < 2 || bh < 2) return;
+			if (!box || !targetCanvas) return;
+			const nextW = box.offsetWidth;
+			const nextH = box.offsetHeight;
+			const nextBw = nextW - 2 * inset;
+			const nextBh = nextH - 2 * inset;
+			if (nextBw < 2 || nextBh < 2) return;
 
-			dpr = Math.min(window.devicePixelRatio || 1, 4);
+			const nextDpr = Math.min(window.devicePixelRatio || 1, 4);
+			if (
+				engineReady &&
+				nextW === laidOutW &&
+				nextH === laidOutH &&
+				nextDpr === laidOutDpr &&
+				SAFE === laidOutSafe &&
+				inset === laidOutInset
+			) {
+				return;
+			}
+
+			W = nextW;
+			H = nextH;
+			bw = nextBw;
+			bh = nextBh;
+			dpr = nextDpr;
+			laidOutW = nextW;
+			laidOutH = nextH;
+			laidOutDpr = nextDpr;
+			laidOutSafe = SAFE;
+			laidOutInset = inset;
+
 			cw = W + SAFE * 2;
 			ch = H + SAFE * 2;
-			canvas.width = Math.round(cw * dpr);
-			canvas.height = Math.round(ch * dpr);
-			canvas.style.width = cw + 'px';
-			canvas.style.height = ch + 'px';
+			targetCanvas.width = Math.round(cw * dpr);
+			targetCanvas.height = Math.round(ch * dpr);
+			targetCanvas.style.width = cw + 'px';
+			targetCanvas.style.height = ch + 'px';
 
 			const maxPossiblePerim = 2 * (bw + bh);
 			const nextN = Math.min(360, Math.max(72, Math.round(maxPossiblePerim / 4.5)));
@@ -639,12 +796,12 @@
 				}
 			}
 
-			if (!ready) {
-				rs.x = getTargetRadius();
+			if (!engineReady) {
+				const maxR = Math.max(2, Math.min(bw, bh) / 2);
+				rs.x = snapRadiusOnCanvasMount ? getTargetRadius() : Math.min(cfg.radius, maxR);
 				rs.v = 0;
-				if (!cfg.pauseWhenIdle) {
-					ws.x = 1;
-				}
+				snapRadiusOnCanvasMount = false;
+				if (!cfg.pauseWhenIdle) ws.x = 1;
 				curAmp = cfg.waveAmp;
 				curGap = cfg.layerGap;
 				curWl = cfg.waveLength;
@@ -667,13 +824,10 @@
 			}
 			readColors(false);
 			draw();
-			ready = true;
-			if (!cfg.pauseWhenIdle || inside || pressed || ampT > 0 || ws.x > 0.001 || hs.x > 0.001) {
-				wake();
-			}
+			engineReady = true;
+			wake();
 		}
 
-		/* ───────── 물리 시뮬레이션 ───────── */
 		function spring(s: { x: number; v: number }, target: number, k: number, c: number, dt: number) {
 			s.v += ((target - s.x) * k - s.v * c) * dt;
 			s.x += s.v * dt;
@@ -706,12 +860,10 @@
 				spring(rs, rT, 170, 16, h);
 			}
 
-			// 반지름(radius)이 변하는 중이면 둘레 샘플 좌표 갱신
 			if (Math.abs(rs.x - builtRadius) > 0.04) {
 				build(rs.x);
 			}
 
-			// 근접 돌출: 몸체 경계의 최근접점(cx, cy)을 중심으로 포인터 방향으로 솟음
 			if (cfg.bulgeReactive && ampT > 0.01) {
 				const sig = Math.max(6, cfg.bulgeWidth);
 				const focusDist = Math.max(ampT, cfg.bulge, 12);
@@ -798,7 +950,6 @@
 			return moving;
 		}
 
-		/* ───────── 렌더링 ───────── */
 		function trace() {
 			const c = ctx!;
 			c.beginPath();
@@ -939,43 +1090,11 @@
 			}
 		}
 
-		function drawImageInsideClip(c: CanvasRenderingContext2D, sx: number, sy: number) {
-			if (!loadedImg) return;
-			const iw = loadedImg.naturalWidth || loadedImg.width || bw;
-			const ih = loadedImg.naturalHeight || loadedImg.height || bh;
-			if (iw < 1 || ih < 1) return;
-
-			// 앞쪽 이미지가 물결/돌출에 의해 가장자리 일부가 자연스럽게 잘리면서 일렁이도록
-			// 마그네틱 돌출 및 물결 진폭만큼의 여유 영역(bleed)을 포함해 렌더링
-			const bleed = Math.ceil((cfg.bulgeReactive ? cfg.bulge : 0) + curAmp + 4);
-			const targetW = bw * sx + bleed * 2;
-			const targetH = bh * sy + bleed * 2;
-
-			if (fit === 'fill') {
-				c.drawImage(loadedImg, -targetW / 2, -targetH / 2, targetW, targetH);
-				return;
-			}
-
-			if (fit === 'contain') {
-				const scale = Math.min((bw * sx) / iw, (bh * sy) / ih);
-				const dw = iw * scale;
-				const dh = ih * scale;
-				c.drawImage(loadedImg, -dw / 2, -dh / 2, dw, dh);
-				return;
-			}
-
-			// 기본값: 'cover'
-			const scale = Math.max(targetW / iw, targetH / ih);
-			const dw = iw * scale;
-			const dh = ih * scale;
-			c.drawImage(loadedImg, -dw / 2, -dh / 2, dw, dh);
-		}
-
 		function draw() {
-			if (!n) return;
+			if (!n || bw < 2 || bh < 2) return;
 			const c = ctx!;
 			c.setTransform(1, 0, 0, 1, 0, 0);
-			c.clearRect(0, 0, canvas.width, canvas.height);
+			c.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
 			c.setTransform(dpr, 0, 0, dpr, (cw / 2) * dpr, (ch / 2) * dpr);
 
 			const wv = Math.min(1, Math.max(0, ws.x));
@@ -984,13 +1103,16 @@
 			const pv = Math.min(1, Math.max(0, ps.x));
 			const cv = Math.min(1, Math.max(0, cs.x));
 
-			// press 시 텐션 변형
 			const gx = cfg.pressDeform.x * ps.x;
 			const gy = cfg.pressDeform.y * ps.x;
 			const sx = (bw / 2 + gx) / (bw / 2);
 			const sy = (bh / 2 + gy) / (bh / 2);
+			const curR = Math.min(rs.x, (bw * sx) / 2, (bh * sy) / 2);
 
-			// 1) 뒤쪽 물결 겹 (바깥 겹부터, 미지정 시 이미지 가장자리 평균색 기반 2톤 적용)
+			// 아래쪽 <img> 모서리 반경 및 press 변형을 캔버스 스프링과 1:1 동기화
+			syncImgDom(sx, sy, curR);
+
+			// 1) 바깥 물결 레이어만 캔버스에 그림 (바깥 겹부터)
 			const L = cfg.layerCount;
 			if (wv > 0.01 && L > 0) {
 				const alphas = [0.74, 0.45];
@@ -1009,18 +1131,19 @@
 				c.globalAlpha = 1;
 			}
 
-			// 2) 가장 앞쪽(이미지 본체) 레이어:
-			//    물결 진폭만큼 안쪽(-bodyWave * 0.55)으로 파고들며 파동이 일렁여
-			//    앞쪽 이미지의 가장자리 일부가 실제로 잘리면서(clip) 물결 윤곽이 형성됨
+			// 2) 앞쪽 물결 윤곽선 계산 후, <img> 내부만 투명하게 도려냄
+			//    → <img> 안쪽으로 파고든 물결 골에서는 물결 레이어 안쪽이 이미지 가장자리 위로 일렁이며 겹침
+			//    → <img> 바깥쪽은 도려내지 않아 외곽 물결과의 틈새 없음
 			const noFrontWave = staticFrontWave ?? cfg.staticFrontWave;
 			const bodyWave = noFrontWave ? 0 : (L === 0 ? curAmp : curAmp * 0.85) * ww;
-			const frontGrow = noFrontWave ? 0 : -bodyWave * 0.55;
+			const frontGrow = noFrontWave ? 0 : -bodyWave * 0.65;
 			shape(sx, sy, frontGrow, bodyWave, curWl * 1.1, phase, 0, noFrontWave);
-			trace();
 
-			// 뒤쪽 물결 색상이 이미지 내부에 비치지 않도록 본체 내부 클리어 후 클리핑하여 이미지 렌더링
 			if (wv > 0.01 && L > 0) {
 				c.save();
+				traceRoundedRect(c, bw * sx, bh * sy, curR);
+				c.clip();
+				trace();
 				c.globalCompositeOperation = 'destination-out';
 				c.globalAlpha = 1;
 				c.fillStyle = '#000000';
@@ -1028,28 +1151,15 @@
 				c.restore();
 			}
 
-			c.save();
-			trace();
-			c.clip();
-			c.globalAlpha = 1;
-
-			if (loadedImg) {
-				drawImageInsideClip(c, sx, sy);
-			} else {
-				// 이미지 로드 전 기본 배경
-				c.fillStyle = prevWaveOuter;
-				c.globalAlpha = 0.25;
-				c.fillRect(-cw / 2, -ch / 2, cw, ch);
-			}
-
-			// 클릭(press) 시 미세한 딤 피드백
+			// 클릭(press) 시 <img> 위 미세 딤 피드백
 			if (pv > 0.005 && cfg.clickReactive) {
-				c.globalAlpha = 0.18 * pv;
+				c.save();
+				traceRoundedRect(c, bw * sx, bh * sy, curR);
 				c.fillStyle = '#000000';
-				c.fillRect(-cw / 2, -ch / 2, cw, ch);
+				c.globalAlpha = 0.18 * pv;
+				c.fill();
+				c.restore();
 			}
-
-			c.restore();
 
 			// 3) 본체 외곽 테두리 (borderWidth > 0 일 때만 렌더링)
 			if (curBorderW > 0.05) {
@@ -1076,14 +1186,29 @@
 			c.globalAlpha = 1;
 		}
 
-		/* ───────── 루프 제어 ───────── */
 		function tick(now: number) {
 			raf = 0;
 			const dt = Math.min((now - last) / 1000, 1 / 30) || 1 / 60;
 			last = now;
 			const moving = update(dt);
 			draw();
-			if (moving) raf = requestAnimationFrame(tick);
+			if (moving) {
+				raf = requestAnimationFrame(tick);
+				return;
+			}
+			// 유휴 상태로 완전히 복귀하면 캔버스를 꺼서 순수 <img>만 유지 (메모리·GPU 절약)
+			if (
+				!active &&
+				!inside &&
+				!pressed &&
+				cfg.pauseWhenIdle &&
+				ws.x <= 0.002 &&
+				bs.x <= 0.01 &&
+				ps.x <= 0.002
+			) {
+				resetImgDom();
+				canvasActive = false;
+			}
 		}
 
 		function wake(animateColorChange = false) {
@@ -1094,7 +1219,6 @@
 			raf = requestAnimationFrame(tick);
 		}
 
-		/* ───────── 포인터 입력 이벤트 ───────── */
 		const onDown = (e: PointerEvent) => {
 			if (e.pointerType === 'touch') {
 				clearTimeout(touchResetTimer);
@@ -1224,6 +1348,7 @@
 		relayout = layout;
 		syncSetting = () => {
 			queueMicrotask(() => {
+				if (!engineReady) return;
 				draw();
 				wake(true);
 			});
@@ -1262,8 +1387,8 @@
 			window.removeEventListener('pointermove', onMove);
 			document.documentElement.removeEventListener('pointerleave', onDocLeave);
 			ctx.setTransform(1, 0, 0, 1, 0, 0);
-			ctx.clearRect(0, 0, canvas.width, canvas.height);
-			ready = false;
+			ctx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+			resetImgDom();
 			hovered = false;
 			pressed = false;
 		};
@@ -1274,7 +1399,7 @@
 	class="lq fd-wrap fd-image-wrap {klass}"
 	class:full-width={fullWidth}
 	bind:this={wrap}
-	data-ready={(ready && imageLoaded) || undefined}
+	data-ready={imageLoaded || undefined}
 	data-hovered={hovered || undefined}
 	data-pressed={pressed || undefined}
 	data-disabled={disabled || undefined}
@@ -1290,18 +1415,33 @@
 	style:--fd-text={cfg.textColor}
 	{style}
 >
-	<canvas bind:this={canvas} aria-hidden="true" style:left="{-SAFE}px" style:top="{-SAFE}px"
-	></canvas>
+	{#if canvasActive}
+		<canvas
+			bind:this={canvas}
+			aria-hidden="true"
+			style:left="{-SAFE}px"
+			style:top="{-SAFE}px"
+		></canvas>
+	{/if}
 
 	<div bind:this={box} class="fd-body fd-image-body {bodyClass}" style={bodyStyle} {...rest}>
 		<img
-			class="fd-fallback-img"
+			bind:this={imgEl}
+			class="fd-img"
 			{src}
 			{alt}
 			style:object-fit={fit}
+			style:object-position={objectPosition}
 			draggable="false"
 			loading="lazy"
+			onload={() => {
+				imageLoaded = true;
+				ready = true;
+			}}
 		/>
+		{#if cfg.borderWidth > 0 && !canvasActive}
+			<span class="fd-image-idle-border" aria-hidden="true"></span>
+		{/if}
 		{#if children}
 			<div class="fd-image-overlay">
 				{@render children()}
@@ -1314,6 +1454,10 @@
 	.fd-image-wrap {
 		position: relative;
 		display: inline-grid;
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: minmax(0, 1fr);
+		min-width: 0;
+		min-height: 0;
 		isolation: isolate;
 		vertical-align: middle;
 	}
@@ -1330,7 +1474,7 @@
 
 	canvas {
 		position: absolute;
-		z-index: 0;
+		z-index: 1;
 		pointer-events: none;
 	}
 
@@ -1340,44 +1484,47 @@
 		--fd-i-border-press: var(--fd-color-border-press, var(--fd-i-border-hover));
 
 		position: relative;
-		z-index: 1;
 		box-sizing: border-box;
 		margin: 0;
 		padding: 0;
 		width: 100%;
 		height: 100%;
-		overflow: hidden;
+		min-width: 0;
+		min-height: 0;
 		color: var(--fd-text, #ffffff);
 		-webkit-tap-highlight-color: transparent;
 
 		border: var(--fd-i-inset) solid transparent;
 		border-radius: calc(var(--fd-i-r) + var(--fd-i-inset));
-		background-clip: padding-box;
-		box-shadow: inset 0 0 0 var(--fd-border-w, 0px) var(--fd-i-border);
 	}
 
-	.fd-fallback-img {
+	.fd-img {
+		position: relative;
+		z-index: 0;
 		display: block;
 		width: 100%;
 		height: 100%;
+		min-width: 0;
+		min-height: 0;
 		border-radius: var(--fd-i-r);
+		background: color-mix(in srgb, var(--surface-3, #2c2c2e) 45%, transparent);
 		user-select: none;
 		pointer-events: none;
 	}
 
-	/* 캔버스와 이미지가 모두 준비되면 폴백 <img>와 CSS 테두리를 숨기고 캔버스가 물결 클리핑 이미지를 전담 */
-	.fd-image-wrap[data-ready] .fd-image-body {
-		box-shadow: none;
-		overflow: visible;
-	}
-
-	.fd-image-wrap[data-ready] .fd-fallback-img {
-		opacity: 0;
+	.fd-image-idle-border {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+		border-radius: var(--fd-i-r);
+		box-shadow: inset 0 0 0 var(--fd-border-w, 0px) var(--fd-i-border);
+		pointer-events: none;
 	}
 
 	.fd-image-overlay {
 		position: absolute;
 		inset: 0;
+		z-index: 2;
 		display: grid;
 		place-items: center;
 		pointer-events: none;

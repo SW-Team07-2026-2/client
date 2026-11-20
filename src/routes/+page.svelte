@@ -2,10 +2,30 @@
 	import { onMount, type Snippet } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { FdTitle, FdButton, FdBgmPlayer } from '#lib/components';
+	import FdTitleSplash from '#lib/components/ui/FdTitleSplash.svelte';
 	import FluidVinyl from '#lib/components/layout/FdBackground.svelte';
 	import { auth, clearSignupFlow } from '#lib/auth';
 
 	let { children }: { children?: Snippet } = $props();
+
+	type SplashWindow = Window & { __indigRootSplashDone?: boolean };
+	const shouldRunSplash =
+		typeof window === 'undefined' ? true : !(window as SplashWindow).__indigRootSplashDone;
+
+	let titleWrapEl: HTMLDivElement | undefined = $state(undefined);
+	let showSplash = $state(shouldRunSplash);
+	let titleRevealed = $state(!shouldRunSplash);
+
+	function handleSplashReveal() {
+		titleRevealed = true;
+	}
+
+	function handleSplashDone() {
+		if (typeof window !== 'undefined') {
+			(window as SplashWindow).__indigRootSplashDone = true;
+		}
+		showSplash = false;
+	}
 
 	onMount(() => {
 		auth.captureXsrfFromUrl();
@@ -25,9 +45,9 @@
 	<title>INDIG</title>
 </svelte:head>
 
-<main>
+<main class:skip-intro={shouldRunSplash}>
 	<div class="hero-brand">
-		<div class="title-wrap">
+		<div bind:this={titleWrapEl} class="title-wrap" class:is-hidden={!titleRevealed}>
 			<FdTitle />
 		</div>
 
@@ -81,6 +101,14 @@
 	{@render children()}
 {/if}
 
+{#if showSplash}
+	<FdTitleSplash
+		targetEl={titleWrapEl}
+		onreveal={handleSplashReveal}
+		ondone={handleSplashDone}
+	/>
+{/if}
+
 <!-- 배경화면 -->
 <div class="vinyl-bg">
 	<FluidVinyl
@@ -131,6 +159,10 @@
 		animation: heroIntro 1s ease-in-out;
 	}
 
+	main.skip-intro {
+		animation: none;
+	}
+
 	@keyframes heroIntro {
 		from {
 			opacity: 0;
@@ -159,6 +191,10 @@
 		justify-content: center;
 		box-sizing: border-box;
 		padding: 0;
+	}
+
+	.title-wrap.is-hidden {
+		opacity: 0;
 	}
 
 	.hero-brand p {

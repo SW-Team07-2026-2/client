@@ -17,6 +17,10 @@
 		skeletonCount?: number;
 		minCardWidth?: number;
 		mobileMinCardWidth?: number;
+		columnGap?: string;
+		rowGap?: string;
+		mobileColumnGap?: string;
+		mobileRowGap?: string;
 		skeletonAspect?: string;
 		skeletonRadius?: string;
 		onRetry?: () => void;
@@ -39,6 +43,10 @@
 		skeletonCount = 12,
 		minCardWidth = 196,
 		mobileMinCardWidth = 148,
+		columnGap = '1.5rem',
+		rowGap = '2.5rem',
+		mobileColumnGap = '1.125rem',
+		mobileRowGap = '2rem',
 		skeletonAspect = '1 / 1',
 		skeletonRadius = '22px',
 		onRetry,
@@ -86,6 +94,10 @@
 	aria-label={ariaLabel}
 	style:--catalog-card-min="{minCardWidth}px"
 	style:--catalog-card-min-mobile="{mobileMinCardWidth}px"
+	style:--catalog-col-gap={columnGap}
+	style:--catalog-row-gap={rowGap}
+	style:--catalog-col-gap-mobile={mobileColumnGap}
+	style:--catalog-row-gap-mobile={mobileRowGap}
 	style:--catalog-skeleton-aspect={skeletonAspect}
 	style:--catalog-skeleton-radius={skeletonRadius}
 >
@@ -169,8 +181,8 @@
 	.catalog-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(var(--catalog-card-min, 196px), 1fr));
-		column-gap: 1.5rem;
-		row-gap: 2.5rem;
+		column-gap: var(--catalog-col-gap, 1.5rem);
+		row-gap: var(--catalog-row-gap, 2.5rem);
 		align-items: start;
 		width: 100%;
 	}
@@ -345,8 +357,8 @@
 	@media (max-width: 640px) {
 		.catalog-grid {
 			grid-template-columns: repeat(auto-fill, minmax(var(--catalog-card-min-mobile, 148px), 1fr));
-			column-gap: 1.125rem;
-			row-gap: 2rem;
+			column-gap: var(--catalog-col-gap-mobile, 1.125rem);
+			row-gap: var(--catalog-row-gap-mobile, 2rem);
 		}
 
 		.catalog-state-box {

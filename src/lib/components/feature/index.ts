@@ -1,5 +1,5 @@
 export { default as FdBgmPlayer } from '../ui/FdBgmPlayer.svelte';
-export { default as ContentFilterArea } from './ContentFilterArea.svelte';
+export * from './filter';
 export { default as FdContentSearchInput } from './FdContentSearchInput.svelte';
 export { default as FdProfileButton } from './FdProfileButton.svelte';
 export { default as WelcomeAgreeModal } from './welcome/WelcomeAgreeModal.svelte';

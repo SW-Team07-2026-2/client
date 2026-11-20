@@ -29,8 +29,6 @@
 		onClose?: () => void;
 		/** AI 챗봇 백엔드 스트리밍 엔드포인트 URL (기본값: /api/chatbot/chat) */
 		apiUrl?: string;
-		/** 유저 식별자 (기본값: guest_user) */
-		userId?: string;
 		/** 봇 이름 */
 		botName?: string;
 		/** 추가 클래스 */
@@ -42,7 +40,6 @@
 		botState = $bindable('idle'),
 		onClose,
 		apiUrl = DEFAULT_CHAT_API_URL,
-		userId = 'guest_user',
 		botName = '딘디',
 		class: className = ''
 	}: Props = $props();

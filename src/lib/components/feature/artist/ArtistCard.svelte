@@ -3,12 +3,13 @@
 </script>
 
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import FdButton from '#lib/components/ui/FdButton.svelte';
 	import FdImage from '#lib/components/ui/FdImage.svelte';
 	import { FluidSetting } from '#lib/fluid/setting';
 	import { resolveArtistImageUrl, type CatalogArtist } from '#lib/config/artists';
-	import { artistTransition } from '#lib/stores';
+	import { artistTransition, isMobile } from '#lib/stores';
 
 	interface Props {
 		/** 아티스트 데이터 (명세서 C2 CatalogArtistItem 호환) */
@@ -19,7 +20,7 @@
 		followLoading?: boolean;
 		/** 유체 물결 커스텀 설정 */
 		setting?: FluidSetting | Partial<FluidSetting>;
-		/** 팔로우/팔로우 취소 버튼 클릭 콜백 */
+		/** 팔로우 토글 콜백 */
 		onFollowToggle?: (artist: CatalogArtist, nextFollowing: boolean) => void | Promise<void>;
 		/** 카드(이미지/이름) 클릭 콜백 */
 		onclick?: (artist: CatalogArtist) => void;
@@ -42,42 +43,82 @@
 	let cardHovered = $state(false);
 	let imageHovered = $state(false);
 	let focused = $state(false);
-	let extractedWaveColor = $state('#a78bfa');
+	let lastInputWasTouch = $state(false);
+	let buttonMounted = $state(false);
+	let buttonVisible = $state(false);
+	let extractedWaveColor = $state('var(--muted-wave)');
 	let photoProxyEl = $state<HTMLDivElement | null>(null);
 
-	const isActive = $derived(cardHovered || imageHovered || focused);
+	let enterRaf = 0;
+	let unmountTimer: ReturnType<typeof setTimeout> | undefined;
+
+	const allowHoverOverlay = $derived(!isMobile.current && !lastInputWasTouch);
+	const isActive = $derived(focused || (allowHoverOverlay && (cardHovered || imageHovered)));
 	const portraitInset = $derived(FluidSetting.from(setting).computedInset);
 	const isVtTarget = $derived(artistTransition.vtArtistId === artist.id);
 
+	// 호버 시 지연 마운트 -> 다음 프레임에 가시화(부드러운 등장), 이탈 시 페이드아웃 후 언마운트
+	$effect(() => {
+		if (isActive && !isVtTarget) {
+			clearTimeout(unmountTimer);
+			if (!buttonMounted) {
+				buttonMounted = true;
+				cancelAnimationFrame(enterRaf);
+				enterRaf = requestAnimationFrame(() => {
+					buttonVisible = true;
+				});
+			} else {
+				buttonVisible = true;
+			}
+		} else {
+			cancelAnimationFrame(enterRaf);
+			buttonVisible = false;
+			if (buttonMounted) {
+				clearTimeout(unmountTimer);
+				unmountTimer = setTimeout(() => {
+					buttonMounted = false;
+				}, 300);
+			}
+		}
+	});
+
+	onDestroy(() => {
+		cancelAnimationFrame(enterRaf);
+		clearTimeout(unmountTimer);
+	});
+
 	const followBtnSetting = $derived.by(() => {
-		const compactBase = {
-			inset: 6,
-			layers: 1,
-			layerGap: 2,
-			waveAmp: 1.8,
+		const base = {
+			radius: 999,
+			inset: 8,
 			bulge: 4,
-			reach: 24
+			reach: 26,
+			waveLength: 56,
+			borderWidth: 0,
+			color: 'var(--white-2)',
+			hoverColor: 'var(--white)',
+			pressColor: 'var(--white-3)',
+			textColor: 'var(--bg)'
 		};
 		if (following) {
 			return new FluidSetting({
-				...compactBase,
-				color: 'rgba(255, 255, 255, 0.1)',
-				hoverColor: 'rgba(244, 63, 94, 0.24)',
-				pressColor: 'rgba(244, 63, 94, 0.36)',
-				waveColor: 'rgba(251, 113, 133, 0.55)',
-				borderWidth: 1,
-				borderColor: 'rgba(255, 255, 255, 0.22)',
-				hoverBorderColor: 'rgba(251, 113, 133, 0.72)',
-				textColor: '#ffffff'
+				...base,
+				layers: 2,
+				layerGap: 2.6,
+				waveAmp: 2.6,
+				spin: 1.3,
+				pauseWhenIdle: false,
+				waveColor: extractedWaveColor
 			});
 		}
 		return new FluidSetting({
-			...compactBase,
-			color: '#ffffff',
-			hoverColor: '#f4f4f6',
-			pressColor: '#e4e4e7',
-			waveColor: extractedWaveColor,
-			textColor: '#09090d'
+			...base,
+			layers: 1,
+			layerGap: 0,
+			waveAmp: 0,
+			spin: 1.1,
+			pauseWhenIdle: true,
+			waveColor: 'var(--white-3)'
 		});
 	});
 
@@ -92,6 +133,11 @@
 
 	function handleFollowClick(e: MouseEvent) {
 		e.stopPropagation();
+		// 마우스 클릭으로 포커스가 남아 마우스 이탈 후에도 호버 상태가 풀리지 않는 현상 방지
+		if (e.detail > 0) {
+			(e.currentTarget as HTMLElement | null)?.blur();
+			focused = false;
+		}
 		if (followLoading) return;
 		const next = !following;
 		if (onFollowToggle) {
@@ -108,15 +154,35 @@
 	class:is-following={following}
 	class:is-vt-target={isVtTarget}
 	data-artist-card={artist.id}
-	style="--artist-dot-color:{extractedWaveColor};"
-	onpointerenter={() => {
-		cardHovered = true;
+	onpointerdown={(e) => {
+		if (e.pointerType !== 'mouse') {
+			lastInputWasTouch = true;
+			cardHovered = false;
+		} else {
+			lastInputWasTouch = false;
+		}
+	}}
+	onpointerenter={(e) => {
+		if (e.pointerType === 'mouse' && !isMobile.current) {
+			lastInputWasTouch = false;
+			cardHovered = true;
+		}
+	}}
+	onpointermove={(e) => {
+		if (e.pointerType === 'mouse' && lastInputWasTouch && !isMobile.current) {
+			lastInputWasTouch = false;
+		}
 	}}
 	onpointerleave={() => {
 		cardHovered = false;
 	}}
-	onfocusin={() => {
-		focused = true;
+	onpointercancel={() => {
+		cardHovered = false;
+	}}
+	onfocusin={(e) => {
+		if ((e.target as HTMLElement | null)?.matches?.(':focus-visible')) {
+			focused = true;
+		}
 	}}
 	onfocusout={(e) => {
 		const nextTarget = e.relatedTarget as Node | null;
@@ -125,9 +191,10 @@
 		}
 	}}
 >
-	<!-- 상단 아티스트 이미지: FdImage 기반 (원형 -> hover 시 약간 둥근 사각형 모핑 + 앞면 이미지/뒷면 2겹 물결 파동) -->
+	<!-- 상단 아티스트 이미지: FdImage 기반 (hover 시에도 원형 유지 + 물결 파동) -->
 	<div
 		class="artist-stage"
+		svg
 		role="button"
 		tabindex="0"
 		aria-label={`${artist.name} 아티스트`}
@@ -139,10 +206,13 @@
 			}
 		}}
 	>
-		<!-- 이미 팔로우 중인 경우 오른쪽 윗공간에 표시되는 작은 점 (hover 시 사각형으로 변하며 자연스럽게 가려짐) -->
-		{#if following}
-			<span class="follow-indicator-dot" title="팔로우 중" aria-label="팔로우 중"></span>
-		{/if}
+		<!-- 팔로우 상태 표시 점 (순수 CSS scale/opacity 애니메이션) -->
+		<span
+			class="follow-indicator-dot"
+			class:is-visible={following && !isVtTarget}
+			title={following ? '팔로우 중' : undefined}
+			aria-hidden={!following || isVtTarget}
+		></span>
 
 		<!-- View Transition 시 캔버스 여백/물결 없이 깔끔한 사진 좌표만 분리해 모핑하기 위한 프록시 레이어 -->
 		<div
@@ -150,7 +220,7 @@
 			class="artist-photo-proxy"
 			data-artist-photo={artist.id}
 			style:inset="{portraitInset}px"
-			style:border-radius={isActive ? '28px' : '999px'}
+			style:border-radius="999px"
 			aria-hidden="true"
 		>
 			<img src={resolvedImageSrc} alt="" draggable="false" />
@@ -160,32 +230,48 @@
 			class="artist-fd-image"
 			src={resolvedImageSrc}
 			alt={artist.name}
+			objectPosition="50% 40%"
 			{setting}
-			hoverRadius={28}
 			active={isActive}
 			bind:hovered={imageHovered}
 			bind:extractedWaveColor
 			fullWidth
 		/>
+
+		<!-- 호버 시 원형 이미지 중앙에 부드럽게 나타나는 팔로우 버튼 -->
+		{#if buttonMounted}
+			<div class="follow-center-slot" class:is-visible={buttonVisible} aria-hidden={!buttonVisible}>
+				<FdButton
+					class="artist-follow-center-btn"
+					setting={followBtnSetting}
+					aria-disabled={followLoading || undefined}
+					aria-busy={followLoading || undefined}
+					tabindex={buttonVisible ? 0 : -1}
+					aria-pressed={following}
+					onclick={handleFollowClick}
+					onkeydown={(e) => {
+						if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+					}}
+				>
+					<span class="follow-label">
+						<span>팔로우</span><span
+							class="follow-suffix-shell"
+							class:is-active={following}
+							aria-hidden={!following}
+						>
+							<span class="follow-suffix-inner">&nbsp;중</span>
+						</span>
+					</span>
+				</FdButton>
+			</div>
+		{/if}
 	</div>
 
-	<!-- 하단 이름 및 팔로우/팔로우 취소 버튼 영역 -->
+	<!-- 하단 이름 영역 -->
 	<div class="artist-footer">
 		<button type="button" class="artist-name-btn" tabindex="-1" onclick={handleCardClick}>
 			<span class="artist-name">{artist.name}</span>
 		</button>
-
-		<div class="follow-action-slot" aria-hidden={!isActive}>
-			<FdButton
-				class="artist-follow-btn"
-				setting={followBtnSetting}
-				disabled={followLoading}
-				tabindex={isActive ? 0 : -1}
-				onclick={handleFollowClick}
-			>
-				{following ? '팔로우 취소' : '팔로우'}
-			</FdButton>
-		</div>
 	</div>
 </article>
 
@@ -220,10 +306,12 @@
 	.artist-stage:focus-visible {
 		outline: 2px solid rgba(255, 255, 255, 0.75);
 		outline-offset: 6px;
-		border-radius: 28px;
+		border-radius: 999px;
 	}
 
-	:global(.artist-fd-image) {
+	.artist-stage :global(.fd-image-wrap.artist-fd-image) {
+		position: absolute;
+		inset: 0;
 		width: 100%;
 		height: 100%;
 		z-index: 1;
@@ -243,6 +331,7 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+		object-position: 50% 40%;
 		pointer-events: none;
 	}
 
@@ -251,26 +340,44 @@
 		view-transition-name: artist-hero-photo;
 	}
 
-	.artist-card.is-vt-target :global(.artist-fd-image),
-	.artist-card.is-vt-target .follow-indicator-dot {
+	.artist-card.is-vt-target :global(.artist-fd-image) {
 		opacity: 0;
 	}
 
-	/* 원형 이미지 바깥 오른쪽 윗공간에 위치하는 작은 팔로우 표시 점
-	   z-index: 0 이므로 hover 시 원형이 둥근 사각형으로 변하며 확장될 때 자연스럽게 가려짐 */
+	/* 원형 이미지 바깥 오른쪽 상단에 위치하는 하얀색 팔로우 표시 점 */
 	.follow-indicator-dot {
 		position: absolute;
-		top: 13.5%;
-		right: 13.5%;
+		top: 9.5%;
+		right: 9.5%;
 		width: 9px;
 		height: 9px;
 		border-radius: 999px;
-		background: var(--artist-dot-color, #a78bfa);
+		background: var(--white);
 		box-shadow:
-			0 0 10px var(--artist-dot-color, rgba(167, 139, 250, 0.85)),
-			0 0 0 2px rgba(7, 7, 9, 0.9);
-		z-index: 0;
+			0 0 10px color-mix(in srgb, var(--white) 55%, transparent),
+			0 0 0 2px var(--bg);
+		z-index: 3;
+		opacity: 0;
+		transform: scale(0);
 		pointer-events: none;
+		transition:
+			transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+			opacity 0.18s ease;
+	}
+
+	.follow-indicator-dot.is-visible {
+		opacity: 1;
+		transform: scale(1);
+		transition:
+			transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+			opacity 0.2s ease;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.follow-indicator-dot,
+		.follow-indicator-dot.is-visible {
+			transition: none;
+		}
 	}
 
 	.artist-footer {
@@ -314,31 +421,71 @@
 		word-break: keep-all;
 	}
 
-	.follow-action-slot {
+	.follow-center-slot {
 		position: absolute;
-		top: 100%;
+		top: 50%;
 		left: 50%;
-		margin-top: 0.1rem;
+		z-index: 4;
 		opacity: 0;
-		transform: translate(-50%, -0.2rem) scale(0.92);
+		filter: blur(4px);
+		transform: translate(-50%, -50%) scale(0.84);
 		pointer-events: none;
-		z-index: 15;
 		transition:
-			opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1),
-			transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+			opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+			transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+			filter 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 	}
 
-	.artist-card.is-active .follow-action-slot {
+	.follow-center-slot.is-visible {
 		opacity: 1;
-		transform: translate(-50%, 0.25rem) scale(1);
+		filter: blur(0px);
+		transform: translate(-50%, -50%) scale(1);
 		pointer-events: auto;
 	}
 
-	:global(.artist-follow-btn) {
-		padding: 0.32rem 0.9rem !important;
-		font-size: 0.8rem !important;
+	:global(.artist-follow-center-btn) {
+		padding: 0.42rem 0.92rem !important;
+		font-size: 0.82rem !important;
 		font-weight: 700 !important;
 		letter-spacing: -0.01em;
 		white-space: nowrap;
+	}
+
+	.follow-label {
+		display: inline-flex;
+		align-items: center;
+		white-space: nowrap;
+	}
+
+	.follow-suffix-shell {
+		display: inline-grid;
+		grid-template-columns: 0fr;
+		opacity: 0;
+		filter: blur(3px);
+		transform: translateX(-3px);
+		transition:
+			grid-template-columns 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+			opacity 0.22s ease,
+			filter 0.24s ease,
+			transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
+	.follow-suffix-shell.is-active {
+		grid-template-columns: 1fr;
+		opacity: 1;
+		filter: blur(0px);
+		transform: translateX(0);
+	}
+
+	.follow-suffix-inner {
+		min-width: 0;
+		overflow: hidden;
+		white-space: pre;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.follow-suffix-shell {
+			transition: none;
+		}
 	}
 </style>

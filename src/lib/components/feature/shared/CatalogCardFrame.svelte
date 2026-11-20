@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import FdImage from '#lib/components/ui/FdImage.svelte';
 	import { FluidSetting } from '#lib/fluid/setting';
 
@@ -40,8 +40,13 @@
 	let cardHovered = $state(false);
 	let imageHovered = $state(false);
 	let focused = $state(false);
+	let actionMounted = $state(untrack(() => active));
 
 	const isActive = $derived(active || cardHovered || imageHovered || focused);
+
+	$effect(() => {
+		if (isActive && !actionMounted) actionMounted = true;
+	});
 
 	const resolvedSetting = $derived.by(() => {
 		const base = new FluidSetting({
@@ -120,7 +125,9 @@
 
 		{#if action}
 			<div class="catalog-action-slot" aria-hidden={!isActive}>
-				{@render action({ isActive, waveColor: extractedWaveColor })}
+				{#if actionMounted}
+					{@render action({ isActive, waveColor: extractedWaveColor })}
+				{/if}
 			</div>
 		{/if}
 	</div>

@@ -2,14 +2,10 @@
 	import { fade, scale } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import FdButton from '../../ui/FdButton.svelte';
-	import {
-		DEFAULT_WELCOME_TERMS,
-		type TermsItem,
-		type WelcomeAgreementsMap
-	} from './welcome';
+	import type { TermsItem, WelcomeAgreementsMap } from './welcome';
 
 	interface Props {
-		/** 약관 목록 (미지정 시 기본 껍데기 약관 사용) */
+		/** 약관 목록 */
 		termsList?: TermsItem[];
 		/** 항목별 동의 여부 맵 (뒤로가기 시 상태 보존을 위해 부모에서 바인딩) */
 		agreements?: WelcomeAgreementsMap;
@@ -26,7 +22,7 @@
 	}
 
 	let {
-		termsList = DEFAULT_WELCOME_TERMS,
+		termsList = [],
 		agreements = $bindable<WelcomeAgreementsMap>({}),
 		isSubmitting = false,
 		onBack,

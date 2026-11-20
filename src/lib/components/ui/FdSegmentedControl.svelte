@@ -16,6 +16,7 @@
 	const DOCK_TRAIL = [150, 16] as const;
 	const DOCK_SYNC = [600, 44] as const;
 	const DOCK_NOM = [380, 34] as const;
+	const SLOT_TUNE = [380, 36] as const;
 
 	export interface SegmentOption {
 		/** 항목 고유 값 */
@@ -24,6 +25,15 @@
 		label: string;
 		/** 개별 비활성화 여부 */
 		disabled?: boolean;
+	}
+
+	export interface SegmentMergeConfig {
+		/** 병합 상태 여부 (true면 targetValues 항목들이 하나로 모아지며 mergedOption으로 전환) */
+		active: boolean;
+		/** 하나로 합쳐질 연속 항목들의 value 목록 */
+		targetValues: string[];
+		/** 병합되었을 때 표시할 단일 항목 */
+		mergedOption: SegmentOption;
 	}
 
 	export type SegmentInput = string | SegmentOption;
@@ -35,6 +45,8 @@
 		value?: string;
 		/** 배치 방향 ('horizontal' | 'vertical') */
 		orientation?: 'horizontal' | 'vertical';
+		/** 특정 연속 항목들을 하나의 항목으로 자연스럽게 모으거나 펼치는 설정 */
+		merge?: SegmentMergeConfig;
 		/** 다른 버튼이 선택되었을 때 호출되는 콜백 */
 		onchange?: (value: string, item: SegmentOption, index: number) => void;
 		/** 페이지 이동/새로고침 후에도 마지막 선택을 유지할 스토리지 키 (미지정 시 유지 안 함) */
@@ -54,6 +66,10 @@
 		/** 뒤쪽 FdDiv 인디케이터 설정 (개별 prop과 함께 지정 시 개별 prop 우선) */
 		setting?: FluidSetting | Partial<FluidSetting>;
 		radius?: number;
+		reach?: number;
+		bulge?: number;
+		bulgeWidth?: number;
+		bulgeReactive?: boolean;
 		color?: string;
 		hoverColor?: string;
 		waveColor?: string;
@@ -78,6 +94,7 @@
 		items = [],
 		value = $bindable<string | undefined>(undefined),
 		orientation = 'horizontal',
+		merge,
 		onchange,
 		persistKey,
 		storage = 'local',
@@ -85,6 +102,10 @@
 		rubberDock = false,
 		setting,
 		radius,
+		reach,
+		bulge,
+		bulgeWidth,
+		bulgeReactive,
 		color,
 		hoverColor,
 		waveColor,
@@ -106,6 +127,56 @@
 		items.map((item) => (typeof item === 'string' ? { value: item, label: item } : item))
 	);
 
+	const mergeSlice = $derived.by(() => {
+		if (!merge || merge.targetValues.length === 0 || orientation !== 'horizontal') {
+			return {
+				hasMerge: false,
+				active: false,
+				start: -1,
+				before: normalizedItems,
+				group: [] as SegmentOption[],
+				after: [] as SegmentOption[]
+			};
+		}
+		const start = normalizedItems.findIndex((item) => item.value === merge.targetValues[0]);
+		if (start < 0 || start + merge.targetValues.length > normalizedItems.length) {
+			return {
+				hasMerge: false,
+				active: false,
+				start: -1,
+				before: normalizedItems,
+				group: [] as SegmentOption[],
+				after: [] as SegmentOption[]
+			};
+		}
+		const matchesAll = merge.targetValues.every(
+			(val, offset) => normalizedItems[start + offset]?.value === val
+		);
+		if (!matchesAll) {
+			return {
+				hasMerge: false,
+				active: false,
+				start: -1,
+				before: normalizedItems,
+				group: [] as SegmentOption[],
+				after: [] as SegmentOption[]
+			};
+		}
+		return {
+			hasMerge: true,
+			active: merge.active,
+			start,
+			before: normalizedItems.slice(0, start),
+			group: normalizedItems.slice(start, start + merge.targetValues.length),
+			after: normalizedItems.slice(start + merge.targetValues.length)
+		};
+	});
+
+	const visibleItems = $derived.by(() => {
+		if (!mergeSlice.hasMerge || !mergeSlice.active || !merge) return normalizedItems;
+		return [...mergeSlice.before, merge.mergedOption, ...mergeSlice.after];
+	});
+
 	function getStorage(): Storage | null {
 		if (typeof window === 'undefined' || !persistKey) return null;
 		try {
@@ -122,7 +193,7 @@
 
 	// 초기/목록 변경 시 유효한 선택값 보장 (기본값: 가장 앞 버튼)
 	$effect(() => {
-		const list = normalizedItems;
+		const list = visibleItems;
 		if (list.length === 0) return;
 
 		const exists = value !== undefined && list.some((item) => item.value === value && !item.disabled);
@@ -131,15 +202,20 @@
 		}
 	});
 
-	const activeIndex = $derived.by(() => {
-		if (normalizedItems.length === 0) return -1;
-		const idx = normalizedItems.findIndex((item) => item.value === value);
-		return idx >= 0 ? idx : findFirstEnabledIndex(normalizedItems);
+	const activeVisibleIndex = $derived.by(() => {
+		if (visibleItems.length === 0) return -1;
+		const idx = visibleItems.findIndex((item) => item.value === value);
+		return idx >= 0 ? idx : findFirstEnabledIndex(visibleItems);
 	});
+
+	const activeKey = $derived(activeVisibleIndex >= 0 ? visibleItems[activeVisibleIndex]?.value : undefined);
 
 	let hoveredIndex = $state<number | null>(null);
 	let containerEl: HTMLDivElement | undefined = $state(undefined);
 	let buttonEls: Array<HTMLButtonElement | undefined> = $state([]);
+	let mergeSlotEl: HTMLDivElement | undefined = $state(undefined);
+	let expandedGroupEl: HTMLDivElement | undefined = $state(undefined);
+	let mergedBtnEl: HTMLButtonElement | undefined = $state(undefined);
 
 	interface IndicatorRect {
 		x: number;
@@ -184,6 +260,10 @@
 		};
 
 		if (radius !== undefined) patch.radius = radius;
+		if (reach !== undefined) patch.reach = reach;
+		if (bulge !== undefined) patch.bulge = bulge;
+		if (bulgeWidth !== undefined) patch.bulgeWidth = bulgeWidth;
+		if (bulgeReactive !== undefined) patch.bulgeReactive = bulgeReactive;
 		if (color !== undefined) patch.color = color;
 		if (hoverColor !== undefined) patch.hoverColor = hoverColor;
 		if (waveColor !== undefined) patch.waveColor = waveColor;
@@ -200,7 +280,7 @@
 
 	const indicatorInset = $derived(resolvedSetting.computedInset);
 
-	// ── Rubber Dock 스프링 상태 (rubberDock = true 전용) ──
+	// ── Rubber Dock + 병합 슬롯 폭 스프링 상태 ──
 	const makeSpring = (x = 0, k = 400, c = 30): SpringState => ({ x, v: 0, t: x, k, c });
 	const L = makeSpring();
 	const R = makeSpring();
@@ -208,10 +288,13 @@
 	const B = makeSpring();
 	const NomW = makeSpring();
 	const NomH = makeSpring();
-	const allSprings = [L, R, T, B, NomW, NomH];
+	const SlotW = makeSpring(0, SLOT_TUNE[0], SLOT_TUNE[1]);
+	const allSprings = [L, R, T, B, NomW, NomH, SlotW];
 
 	let springReady = false;
-	let lastSpringActiveIndex = -1;
+	let slotSpringReady = false;
+	let rubberInFlight = false;
+	let lastSpringActiveKey: string | undefined = undefined;
 	let springRafId = 0;
 	let springLastTime = 0;
 	let prefersReducedMotion = false;
@@ -235,6 +318,113 @@
 		if (springRafId) {
 			cancelAnimationFrame(springRafId);
 			springRafId = 0;
+		}
+	}
+
+	function getRelativeRect(el: HTMLElement, container: HTMLElement) {
+		let left = 0;
+		let top = 0;
+		let cur: HTMLElement | null = el;
+		while (cur && cur !== container) {
+			left += cur.offsetLeft;
+			top += cur.offsetTop;
+			cur = cur.offsetParent as HTMLElement | null;
+		}
+		return {
+			left,
+			top,
+			width: el.offsetWidth,
+			height: el.offsetHeight
+		};
+	}
+
+	function findButtonElByKey(key: string | undefined): HTMLButtonElement | undefined {
+		if (key === undefined) return undefined;
+		if (mergeSlice.hasMerge && mergeSlice.active && merge && key === merge.mergedOption.value) {
+			return mergedBtnEl;
+		}
+		const idx = normalizedItems.findIndex((item) => item.value === key);
+		return idx >= 0 ? buttonEls[idx] : undefined;
+	}
+
+	function measureMergeTargetWidth(): number | null {
+		if (!mergeSlice.hasMerge || !expandedGroupEl || !mergedBtnEl) return null;
+		const targetW = mergeSlice.active ? mergedBtnEl.offsetWidth : expandedGroupEl.offsetWidth;
+		return targetW > 0 ? targetW : null;
+	}
+
+	function isSlotMoving(): boolean {
+		return (
+			mergeSlice.hasMerge &&
+			slotSpringReady &&
+			(Math.abs(SlotW.x - SlotW.t) > 0.1 || Math.abs(SlotW.v) > 0.2)
+		);
+	}
+
+	function syncSlotSpringTarget(): boolean {
+		if (!mergeSlice.hasMerge) {
+			slotSpringReady = false;
+			SlotW.x = SlotW.t = 0;
+			SlotW.v = 0;
+			if (mergeSlotEl) mergeSlotEl.style.width = '';
+			return false;
+		}
+		const targetW = measureMergeTargetWidth();
+		if (targetW === null) return false;
+
+		if (!slotSpringReady || prefersReducedMotion) {
+			slotSpringReady = true;
+			SlotW.x = SlotW.t = targetW;
+			SlotW.v = 0;
+			if (mergeSlotEl) mergeSlotEl.style.width = `${targetW.toFixed(2)}px`;
+			return false;
+		}
+
+		tuneSpring(SlotW, SLOT_TUNE);
+		SlotW.t = targetW;
+		return Math.abs(SlotW.x - SlotW.t) > 0.25;
+	}
+
+	function syncIndicatorWithShiftedEl(el: HTMLElement, snapImmediate: boolean) {
+		if (!containerEl) return;
+		if (snapImmediate) {
+			syncIndicatorTargetsToEl(el, true);
+			return;
+		}
+		const rect = getRelativeRect(el, containerEl);
+		const deltaL = rect.left - L.t;
+		const deltaR = rect.left + rect.width - R.t;
+		L.x += deltaL;
+		R.x += deltaR;
+		syncIndicatorTargetsToEl(el, false);
+	}
+
+	function syncIndicatorTargetsToEl(el: HTMLElement, snapImmediate: boolean) {
+		if (!containerEl) return;
+		const rect = getRelativeRect(el, containerEl);
+		const targetL = rect.left;
+		const targetR = rect.left + rect.width;
+		const targetT = rect.top;
+		const targetB = rect.top + rect.height;
+		L.t = targetL;
+		R.t = targetR;
+		T.t = targetT;
+		B.t = targetB;
+		NomW.t = rect.width;
+		NomH.t = rect.height;
+		if (snapImmediate) {
+			L.x = targetL;
+			L.v = 0;
+			R.x = targetR;
+			R.v = 0;
+			T.x = targetT;
+			T.v = 0;
+			B.x = targetB;
+			B.v = 0;
+			NomW.x = rect.width;
+			NomW.v = 0;
+			NomH.x = rect.height;
+			NomH.v = 0;
 		}
 	}
 
@@ -274,6 +464,7 @@
 
 	function snapSprings(left: number, right: number, top: number, bottom: number) {
 		stopSpringLoop();
+		rubberInFlight = false;
 		const w = Math.max(0, right - left);
 		const h = Math.max(0, bottom - top);
 		L.x = L.t = left;
@@ -305,19 +496,40 @@
 			}
 		}
 
-		let settled = true;
-		for (let i = 0; i < allSprings.length; i++) {
+		const slotMovingNow = isSlotMoving();
+		if (mergeSlice.hasMerge && mergeSlotEl && slotSpringReady) {
+			mergeSlotEl.style.width = `${Math.max(0, SlotW.x).toFixed(2)}px`;
+		}
+
+		const activeBtn = findButtonElByKey(activeKey);
+		if (activeBtn && containerEl && mergeSlice.hasMerge && slotMovingNow) {
+			syncIndicatorWithShiftedEl(activeBtn, !rubberInFlight);
+		}
+
+		let indicatorSettled = true;
+		for (let i = 0; i < 6; i++) {
 			const s = allSprings[i];
 			if (Math.abs(s.x - s.t) > 0.05 || Math.abs(s.v) > 0.2) {
-				settled = false;
+				indicatorSettled = false;
 				break;
 			}
 		}
+		if (indicatorSettled) {
+			rubberInFlight = false;
+		}
+
+		const settled = indicatorSettled && !slotMovingNow;
 
 		if (settled) {
 			for (let i = 0; i < allSprings.length; i++) {
 				allSprings[i].x = allSprings[i].t;
 				allSprings[i].v = 0;
+			}
+			if (mergeSlice.hasMerge && mergeSlotEl && slotSpringReady) {
+				mergeSlotEl.style.width = `${Math.max(0, SlotW.t).toFixed(2)}px`;
+				if (activeBtn && containerEl) {
+					syncIndicatorTargetsToEl(activeBtn, true);
+				}
 			}
 			applyRubberRect();
 			return;
@@ -334,39 +546,62 @@
 	}
 
 	function measureIndicator() {
-		if (!containerEl || activeIndex < 0) {
+		const slotNeedsAnim = syncSlotSpringTarget();
+
+		if (!containerEl || activeKey === undefined) {
 			stopSpringLoop();
 			springReady = false;
-			lastSpringActiveIndex = -1;
+			lastSpringActiveKey = undefined;
 			indicatorRect = { x: 0, y: 0, width: 0, height: 0, ready: false };
 			return;
 		}
 
-		const activeBtn = buttonEls[activeIndex];
+		const activeBtn = findButtonElByKey(activeKey);
 		if (!activeBtn) {
 			stopSpringLoop();
 			springReady = false;
-			lastSpringActiveIndex = -1;
+			lastSpringActiveKey = undefined;
 			indicatorRect = { x: 0, y: 0, width: 0, height: 0, ready: false };
 			return;
 		}
 
+		const rect = getRelativeRect(activeBtn, containerEl);
+
 		if (rubberDock) {
-			const targetL = activeBtn.offsetLeft;
-			const targetR = targetL + activeBtn.offsetWidth;
-			const targetT = activeBtn.offsetTop;
-			const targetB = targetT + activeBtn.offsetHeight;
-			const targetW = Math.max(0, targetR - targetL);
-			const targetH = Math.max(0, targetB - targetT);
+			const targetL = rect.left;
+			const targetR = rect.left + rect.width;
+			const targetT = rect.top;
+			const targetB = rect.top + rect.height;
+			const targetW = rect.width;
+			const targetH = rect.height;
 
 			if (!springReady) {
 				springReady = true;
-				lastSpringActiveIndex = activeIndex;
+				lastSpringActiveKey = activeKey;
 				snapSprings(targetL, targetR, targetT, targetB);
 				return;
 			}
 
-			if (activeIndex === lastSpringActiveIndex) {
+			if (activeKey === lastSpringActiveKey) {
+				if (slotNeedsAnim || isSlotMoving()) {
+					if (rubberInFlight) {
+						const nearlySettled = Math.abs(L.x - L.t) < 6 && Math.abs(R.x - R.t) < 6;
+						if (nearlySettled) {
+							rubberInFlight = false;
+							syncIndicatorTargetsToEl(activeBtn, true);
+						} else {
+							// 슬롯 폭 전환 도중 잔여 러버독 이동이 남아 있으면 대칭 동기화 스프링으로 전환해 화면 좌표 기준 반동 방지
+							tuneSpring(L, DOCK_SYNC);
+							tuneSpring(R, DOCK_SYNC);
+							syncIndicatorWithShiftedEl(activeBtn, false);
+						}
+					} else {
+						syncIndicatorTargetsToEl(activeBtn, true);
+					}
+					applyRubberRect();
+					wakeSprings();
+					return;
+				}
 				const changed =
 					Math.abs(L.t - targetL) > 0.5 ||
 					Math.abs(R.t - targetR) > 0.5 ||
@@ -387,7 +622,8 @@
 				return;
 			}
 
-			lastSpringActiveIndex = activeIndex;
+			lastSpringActiveKey = activeKey;
+			rubberInFlight = true;
 
 			if (orientation === 'horizontal') {
 				const dir = Math.sign((targetL + targetR) / 2 - (L.x + R.x) / 2);
@@ -434,20 +670,28 @@
 
 		stopSpringLoop();
 		springReady = false;
-		lastSpringActiveIndex = activeIndex;
+		lastSpringActiveKey = activeKey;
 
 		const hoverBtn =
-			hoveredIndex !== null && hoveredIndex !== activeIndex ? buttonEls[hoveredIndex] : undefined;
+			hoveredIndex === -2
+				? mergeSlice.active
+					? mergedBtnEl
+					: undefined
+				: hoveredIndex !== null
+					? buttonEls[hoveredIndex]
+					: undefined;
+		const validHoverBtn = hoverBtn && hoverBtn !== activeBtn ? hoverBtn : undefined;
+		const hoverRect = validHoverBtn ? getRelativeRect(validHoverBtn, containerEl) : null;
 
 		// 활성화 버튼과 호버 버튼을 모두 감싸는 bounding box 계산
-		const minLeft = hoverBtn ? Math.min(activeBtn.offsetLeft, hoverBtn.offsetLeft) : activeBtn.offsetLeft;
-		const minTop = hoverBtn ? Math.min(activeBtn.offsetTop, hoverBtn.offsetTop) : activeBtn.offsetTop;
-		const maxRight = hoverBtn
-			? Math.max(activeBtn.offsetLeft + activeBtn.offsetWidth, hoverBtn.offsetLeft + hoverBtn.offsetWidth)
-			: activeBtn.offsetLeft + activeBtn.offsetWidth;
-		const maxBottom = hoverBtn
-			? Math.max(activeBtn.offsetTop + activeBtn.offsetHeight, hoverBtn.offsetTop + hoverBtn.offsetHeight)
-			: activeBtn.offsetTop + activeBtn.offsetHeight;
+		const minLeft = hoverRect ? Math.min(rect.left, hoverRect.left) : rect.left;
+		const minTop = hoverRect ? Math.min(rect.top, hoverRect.top) : rect.top;
+		const maxRight = hoverRect
+			? Math.max(rect.left + rect.width, hoverRect.left + hoverRect.width)
+			: rect.left + rect.width;
+		const maxBottom = hoverRect
+			? Math.max(rect.top + rect.height, hoverRect.top + hoverRect.height)
+			: rect.top + rect.height;
 
 		indicatorRect = {
 			x: minLeft,
@@ -471,7 +715,7 @@
 		if (store && persistKey) {
 			const saved = store.getItem(persistKey);
 			if (saved !== null) {
-				const matched = normalizedItems.find((item) => item.value === saved && !item.disabled);
+				const matched = visibleItems.find((item) => item.value === saved && !item.disabled);
 				if (matched) {
 					value = matched.value;
 				}
@@ -493,6 +737,8 @@
 		for (const btn of buttonEls) {
 			if (btn) ro.observe(btn);
 		}
+		if (expandedGroupEl) ro.observe(expandedGroupEl);
+		if (mergedBtnEl) ro.observe(mergedBtnEl);
 
 		return () => {
 			reduceMq.removeEventListener('change', handleReduceChange);
@@ -501,9 +747,11 @@
 		};
 	});
 
-	// 선택 인덱스, 호버 인덱스, 방향, 항목, 이동 모드 변경 시 인디케이터 위치 재계산
+	// 선택 키, 병합 상태, 호버 인덱스, 방향, 항목, 이동 모드 변경 시 인디케이터 위치 재계산
 	$effect(() => {
-		void activeIndex;
+		void activeKey;
+		void mergeSlice.hasMerge;
+		void mergeSlice.active;
 		void hoveredIndex;
 		void orientation;
 		void normalizedItems.length;
@@ -521,8 +769,9 @@
 			hoveredIndex = index;
 		}
 
+		const isMergedItem = mergeSlice.hasMerge && merge && item.value === merge.mergedOption.value;
 		const store = getStorage();
-		if (store && persistKey) {
+		if (store && persistKey && !isMergedItem) {
 			try {
 				store.setItem(persistKey, item.value);
 			} catch {
@@ -577,21 +826,112 @@
 		</div>
 	{/if}
 
-	{#each normalizedItems as item, idx (item.value)}
-		{@const isActive = idx === activeIndex}
-		<button
-			bind:this={buttonEls[idx]}
-			type="button"
-			role="radio"
-			aria-checked={isActive}
-			disabled={disabled || item.disabled}
-			class="fd-seg-btn {buttonClass} {isActive ? `is-active ${activeButtonClass}` : ''}"
-			onpointerenter={(e) => handleButtonPointerEnter(e, idx, item)}
-			onclick={() => handleSelect(item, idx)}
+	{#if mergeSlice.hasMerge && merge}
+		{#each mergeSlice.before as item, idx (item.value)}
+			{@const isActive = item.value === activeKey}
+			<button
+				bind:this={buttonEls[idx]}
+				type="button"
+				role="radio"
+				aria-checked={isActive}
+				disabled={disabled || item.disabled}
+				class="fd-seg-btn {buttonClass} {isActive ? `is-active ${activeButtonClass}` : ''}"
+				onpointerenter={(e) => handleButtonPointerEnter(e, idx, item)}
+				onclick={() => handleSelect(item, idx)}
+			>
+				<span class="fd-seg-label">{item.label}</span>
+			</button>
+		{/each}
+
+		{@const isMergedActive = mergeSlice.active && merge.mergedOption.value === activeKey}
+		<div
+			bind:this={mergeSlotEl}
+			class="fd-seg-merge-slot"
+			class:is-merged={mergeSlice.active}
 		>
-			{item.label}
-		</button>
-	{/each}
+			<div
+				bind:this={expandedGroupEl}
+				class="fd-seg-merge-expanded"
+				aria-hidden={mergeSlice.active}
+				inert={mergeSlice.active || undefined}
+			>
+				{#each mergeSlice.group as item, offset (item.value)}
+					{@const idx = mergeSlice.start + offset}
+					{@const isActive = !mergeSlice.active && item.value === activeKey}
+					<button
+						bind:this={buttonEls[idx]}
+						type="button"
+						role={mergeSlice.active ? undefined : 'radio'}
+						aria-checked={mergeSlice.active ? undefined : isActive}
+						tabindex={mergeSlice.active ? -1 : undefined}
+						disabled={disabled || item.disabled}
+						class="fd-seg-btn fd-seg-merge-source {buttonClass} {isActive ? `is-active ${activeButtonClass}` : ''}"
+						onpointerenter={(e) => {
+							if (!mergeSlice.active) handleButtonPointerEnter(e, idx, item);
+						}}
+						onclick={() => {
+							if (!mergeSlice.active) handleSelect(item, idx);
+						}}
+					>
+						<span class="fd-seg-label">{item.label}</span>
+					</button>
+				{/each}
+			</div>
+
+			<button
+				bind:this={mergedBtnEl}
+				type="button"
+				role={mergeSlice.active ? 'radio' : undefined}
+				aria-checked={mergeSlice.active ? isMergedActive : undefined}
+				tabindex={!mergeSlice.active ? -1 : undefined}
+				disabled={disabled || merge.mergedOption.disabled}
+				class="fd-seg-btn fd-seg-merged-btn {buttonClass} {isMergedActive ? `is-active ${activeButtonClass}` : ''}"
+				aria-hidden={!mergeSlice.active}
+				inert={!mergeSlice.active || undefined}
+				onpointerenter={(e) => {
+					if (mergeSlice.active) handleButtonPointerEnter(e, -2, merge.mergedOption);
+				}}
+				onclick={() => {
+					if (mergeSlice.active) handleSelect(merge.mergedOption, mergeSlice.start);
+				}}
+			>
+				<span class="fd-seg-label">{merge.mergedOption.label}</span>
+			</button>
+		</div>
+
+		{#each mergeSlice.after as item, offset (item.value)}
+			{@const idx = mergeSlice.start + mergeSlice.group.length + offset}
+			{@const isActive = item.value === activeKey}
+			<button
+				bind:this={buttonEls[idx]}
+				type="button"
+				role="radio"
+				aria-checked={isActive}
+				disabled={disabled || item.disabled}
+				class="fd-seg-btn {buttonClass} {isActive ? `is-active ${activeButtonClass}` : ''}"
+				onpointerenter={(e) => handleButtonPointerEnter(e, idx, item)}
+				onclick={() => handleSelect(item, idx)}
+			>
+				<span class="fd-seg-label">{item.label}</span>
+			</button>
+		{/each}
+	{:else}
+		{#each normalizedItems as item, idx (item.value)}
+			{@const isActive = idx === activeVisibleIndex}
+			<button
+				bind:this={buttonEls[idx]}
+				type="button"
+				role="radio"
+				aria-checked={isActive}
+				disabled={disabled || item.disabled}
+				class="fd-seg-btn {buttonClass} {isActive ? `is-active ${activeButtonClass}` : ''}"
+				onpointerenter={(e) => handleButtonPointerEnter(e, idx, item)}
+				onclick={() => handleSelect(item, idx)}
+			>
+				<span class="fd-seg-label">{item.label}</span>
+			</button>
+		{/each}
+	{/if}
 </div>
 
 <style>
@@ -663,6 +1003,7 @@
 		margin: 0;
 		padding: var(--fd-seg-btn-padding, 0.45em 0.9em);
 		font: inherit;
+		font-weight: var(--fw-medium, 500);
 		color: var(--fd-seg-color, var(--muted, inherit));
 		cursor: pointer;
 		white-space: nowrap;
@@ -681,5 +1022,110 @@
 	.fd-seg-btn:disabled {
 		cursor: not-allowed;
 		opacity: 0.5;
+	}
+
+	.fd-seg-label {
+		display: inline-block;
+		will-change: transform, opacity, filter;
+	}
+
+	.fd-seg-merge-slot {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		flex-shrink: 0;
+		overflow: visible;
+	}
+
+	.fd-seg-merge-expanded {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--fd-seg-gap, 4px);
+		width: max-content;
+		flex-shrink: 0;
+	}
+
+	.fd-seg-merge-slot.is-merged .fd-seg-merge-expanded {
+		pointer-events: none;
+	}
+
+	/* 병합 전 왼쪽 그룹(추천, 인기): 모아질 때 중앙으로 수렴하며 블러 페이드아웃 */
+	.fd-seg-merge-source .fd-seg-label {
+		opacity: 1;
+		filter: blur(0px);
+		transform: translate3d(0, 0, 0) scale(1);
+		transition:
+			opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1) 0.05s,
+			filter 0.26s cubic-bezier(0.22, 1, 0.36, 1) 0.05s,
+			transform 0.32s cubic-bezier(0.22, 1, 0.36, 1) 0.04s;
+	}
+
+	.fd-seg-merge-source:first-child .fd-seg-label {
+		transform-origin: center center;
+	}
+
+	.fd-seg-merge-source:nth-child(2) .fd-seg-label {
+		transform-origin: left center;
+	}
+
+	.fd-seg-merge-slot.is-merged .fd-seg-merge-source:first-child .fd-seg-label {
+		opacity: 0;
+		filter: blur(3px);
+		transform: translate3d(8px, 0, 0) scale(0.84);
+		transition:
+			opacity 0.18s ease,
+			filter 0.2s ease,
+			transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+	}
+
+	.fd-seg-merge-slot.is-merged .fd-seg-merge-source:nth-child(n + 2) .fd-seg-label {
+		opacity: 0;
+		filter: blur(3px);
+		transform: translate3d(-34px, 0, 0) scale(0.84);
+		transition:
+			opacity 0.2s ease,
+			filter 0.22s ease,
+			transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+	}
+
+	/* 병합 후 단일 버튼(전체): 왼쪽 슬롯에 고정 배치되어 수렴 지점에서 등장 */
+	.fd-seg-merged-btn {
+		position: absolute;
+		left: 0;
+		top: 0;
+		height: 100%;
+		width: max-content;
+		pointer-events: none;
+	}
+
+	.fd-seg-merge-slot.is-merged .fd-seg-merged-btn {
+		pointer-events: auto;
+	}
+
+	.fd-seg-merged-btn .fd-seg-label {
+		opacity: 0;
+		filter: blur(3px);
+		transform: translate3d(8px, 0, 0) scale(0.86);
+		transition:
+			opacity 0.16s ease,
+			filter 0.16s ease,
+			transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+	}
+
+	.fd-seg-merge-slot.is-merged .fd-seg-merged-btn .fd-seg-label {
+		opacity: 1;
+		filter: blur(0px);
+		transform: translate3d(0, 0, 0) scale(1);
+		transition:
+			opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1) 0.07s,
+			filter 0.28s cubic-bezier(0.22, 1, 0.36, 1) 0.07s,
+			transform 0.32s cubic-bezier(0.22, 1, 0.36, 1) 0.06s;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.fd-seg-merge-source .fd-seg-label,
+		.fd-seg-merged-btn .fd-seg-label {
+			transition: none;
+		}
 	}
 </style>

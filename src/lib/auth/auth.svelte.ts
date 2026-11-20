@@ -254,49 +254,6 @@ class AuthStore {
 	}
 
 	/**
-	 * 로컬 전용 가짜 로그인 (GET /dev/login?nickname=로컬유저)
-	 * - 기존 회원: { userId, nickname, newUser: false, xsrfToken } + 쿠키 3종
-	 * - 처음: { newUser: true, xsrfToken } + SIGNUP 쿠키 -> G13
-	 */
-	async devLogin(nickname: string = '로컬유저'): Promise<{ ok: boolean; newUser?: boolean }> {
-		this.isLoading = true;
-		try {
-			const res = await fetch(
-				`${this.apiBaseUrl}/dev/login?nickname=${encodeURIComponent(nickname)}`,
-				{
-					method: 'GET',
-					credentials: 'include'
-				}
-			);
-
-			if (!res.ok) {
-				return { ok: false };
-			}
-
-			const body = await res.json().catch(() => null);
-			this.captureXsrfFromResponse(res, body);
-			const data = body?.result ?? body;
-			if (!data) return { ok: false };
-
-			if (typeof data.xsrfToken === 'string') {
-				this.xsrfToken = data.xsrfToken;
-			}
-
-			if (data.newUser) {
-				return { ok: true, newUser: true };
-			}
-
-			await this.checkAuth(false);
-			return { ok: true, newUser: false };
-		} catch (err) {
-			console.error('Dev login error:', err);
-			return { ok: false };
-		} finally {
-			this.isLoading = false;
-		}
-	}
-
-	/**
 	 * G5 ✅ 토큰 재발급 (POST /api/auth/refresh)
 	 * - 동시 다발적인 401 응답 시 단일 요청으로 병합(single-flight)하여 RT 중복 사용(REFRESH_REUSED) 방지
 	 * - 200: 새 쿠키 발급 -> 'OK'

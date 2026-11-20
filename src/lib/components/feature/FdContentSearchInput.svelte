@@ -2,12 +2,15 @@
 	import { onMount, tick } from 'svelte';
 	import { FluidSetting } from '#lib/fluid/setting';
 	import FdDiv from '../ui/FdDiv.svelte';
+	import SearchIcon from '../ui/SearchIcon.svelte';
 
 	type Modifier = 'mod' | 'ctrl' | 'alt' | 'shift';
 
 	interface Props {
 		/** 검색창 입력 값 (양방향 바인딩) */
 		value?: string;
+		/** 검색창 열림(활성화) 상태 (양방향 바인딩) */
+		open?: boolean;
 		/** 닫힘 상태에서 버튼에 표시할 라벨 */
 		label?: string;
 		/** 검색 열기 단축키 ('mod+k', 'ctrl+k' 등) */
@@ -36,6 +39,7 @@
 
 	let {
 		value = $bindable(''),
+		open = $bindable(false),
 		label = '아티스트 검색',
 		shortcut = 'mod+k',
 		placeholder = '검색어를 입력하세요...',
@@ -99,9 +103,10 @@
 	let measureEl: HTMLSpanElement | undefined = $state(undefined);
 	let measurePrefixEl: HTMLSpanElement | undefined = $state(undefined);
 	let inputEl: HTMLInputElement | undefined = $state(undefined);
+	let closedIconRef: ReturnType<typeof SearchIcon> | undefined = $state(undefined);
+	let openIconRef: ReturnType<typeof SearchIcon> | undefined = $state(undefined);
 
 	let mac = $state(false);
-	let open = $state(false);
 	let hovered = $state(false);
 	let closedWidth = $state(132);
 	let prefixTargetWidth = $state(60);
@@ -328,15 +333,24 @@
 		wakeSprings();
 	}
 
-	function openWith(trusted: boolean) {
+	function openWith(trusted: boolean, playIcon = false) {
 		if (open) return;
 		open = true;
 		setPress(false);
 		syncWidthTarget(true);
-		if (trusted) {
+		if (trusted || playIcon) {
 			void tick().then(() => {
-				inputEl?.focus({ preventScroll: true });
+				if (trusted) inputEl?.focus({ preventScroll: true });
+				if (playIcon) openIconRef?.play();
 			});
+		}
+	}
+
+	function handleStagePointerEnter() {
+		if (open) {
+			openIconRef?.play();
+		} else {
+			closedIconRef?.play();
 		}
 	}
 
@@ -365,9 +379,7 @@
 		}
 		// Svelte out 전환은 (1 - progress)에 easing을 적용하므로 cubicIn으로 초반에 빠르게 소거
 		const easing =
-			mode === 'out'
-				? (t: number) => t * t * t
-				: (t: number) => 1 - Math.pow(1 - t, 3);
+			mode === 'out' ? (t: number) => t * t * t : (t: number) => 1 - Math.pow(1 - t, 3);
 		return {
 			delay,
 			duration,
@@ -376,19 +388,20 @@
 		};
 	}
 
-	// FdDiv 설정 (ContentHeader 필터 버튼 및 CommandButton 톤에 맞춘 평면 + 유체 물결)
+	// FdDiv 설정 (ContentHeader 필터 버튼 및 CommandButton 톤에 맞춘 평면 + 유체 물결 + 닫힘 상태 근접 돌출)
 	const shellSetting = $derived(
 		new FluidSetting({
 			radius: 999,
-			reach: 0,
-			bulge: 0,
+			reach: open ? 0 : 32,
+			bulge: open ? 0 : 6,
+			bulgeWidth: 18,
 			layers: 2,
 			waveLength: 90,
 			spin: 1.0,
 			inset: 12,
 			staticFrontWave: true,
 			hoverReactive: !open,
-			bulgeReactive: false,
+			bulgeReactive: !open,
 			clickReactive: false,
 			pressDeform: { x: 0, y: 0 },
 			pauseWhenIdle: !open && !hovered,
@@ -461,6 +474,8 @@
 
 		const onDocPointerDown = (e: PointerEvent) => {
 			if (!open) return;
+			const targetEl = e.target instanceof Element ? e.target : null;
+			if (targetEl?.closest('[data-keep-search-open]')) return;
 			if (!rootEl?.contains(e.target as Node) && !value.trim()) {
 				close(false);
 			}
@@ -524,12 +539,13 @@
 <div bind:this={rootEl} class="cmd-search-root {klass}" style:transform="scale({currentScale})">
 	<!-- 닫힘 상태 버튼 너비 측정용 숨김 엘리먼트 -->
 	<span bind:this={measureEl} class="cmd-measure" aria-hidden="true">
-		<svg class="cmd-search-icon" viewBox="0 0 24 24" aria-hidden="true">
-			<circle cx="11" cy="11" r="7" />
-			<path d="m20 20-3.5-3.5" />
-		</svg>
+		<span class="cmd-search-icon">
+			<SearchIcon size={15} />
+		</span>
 		<span class="cmd-measure-label">
-			<span bind:this={measurePrefixEl} class="cmd-measure-prefix">{labelParts.prefix}</span><span>{labelParts.suffix}</span>
+			<span bind:this={measurePrefixEl} class="cmd-measure-prefix">{labelParts.prefix}</span><span
+				>{labelParts.suffix}</span
+			>
 		</span>
 	</span>
 
@@ -539,8 +555,17 @@
 		staticFrontWave={true}
 		class="cmd-fd-wrap"
 		bodyClass="cmd-fd-body"
-		onpointerdown={() => {
-			if (!open) setPress(true);
+		onpointerenter={handleStagePointerEnter}
+		onpointerdown={(e: PointerEvent) => {
+			if (!open) {
+				setPress(true);
+				return;
+			}
+			openIconRef?.play();
+			if (e.target !== inputEl) {
+				e.preventDefault();
+				inputEl?.focus({ preventScroll: true });
+			}
 		}}
 		onpointerup={() => setPress(false)}
 		onpointerleave={() => setPress(false)}
@@ -557,18 +582,9 @@
 					in:blurSwap={{ delay: 60, duration: 180, mode: 'in' }}
 					out:blurSwap={{ duration: 130, mode: 'out' }}
 				>
-					<svg
-						class="cmd-search-icon"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						aria-hidden="true"
-					>
-						<circle cx="11" cy="11" r="7" />
-						<path d="m20 20-3.5-3.5" />
-					</svg>
+					<span class="cmd-search-icon" aria-hidden="true">
+						<SearchIcon bind:this={openIconRef} size={15} />
+					</span>
 
 					<div class="cmd-input-wrap">
 						<input
@@ -611,22 +627,13 @@
 					].join('+')}
 					aria-expanded={false}
 					aria-label={ariaLabel}
-					onclick={(e) => openWith(e.isTrusted)}
+					onclick={(e) => openWith(e.isTrusted, true)}
 					in:blurSwap={{ delay: 60, duration: 180, mode: 'in' }}
 					out:blurSwap={{ duration: 130, mode: 'out' }}
 				>
-					<svg
-						class="cmd-search-icon"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						aria-hidden="true"
-					>
-						<circle cx="11" cy="11" r="7" />
-						<path d="m20 20-3.5-3.5" />
-					</svg>
+					<span class="cmd-search-icon" aria-hidden="true">
+						<SearchIcon bind:this={closedIconRef} size={15} />
+					</span>
 
 					<span class="cmd-btn-label-row">
 						<span class="cmd-prefix-slot" style:width="{currentPrefixWidth}px">
@@ -774,6 +781,9 @@
 	}
 
 	.cmd-search-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		width: 15px;
 		height: 15px;
 		flex-shrink: 0;
