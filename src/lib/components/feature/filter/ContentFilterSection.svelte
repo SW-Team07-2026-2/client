@@ -2,6 +2,8 @@
 	import { onDestroy, onMount, tick, untrack, type Snippet } from 'svelte';
 	import {
 		ALBUM_FORM_OPTIONS,
+		ARTIST_GENDER_OPTIONS,
+		ARTIST_TYPE_OPTIONS,
 		CONCERT_REGION_OPTIONS,
 		CONCERT_STATUS_OPTIONS,
 		CONCERT_TYPE_OPTIONS,
@@ -27,6 +29,7 @@
 		type SlideDirection
 	} from '#lib/utils/directionalBlur';
 	import FilterChipPart from './FilterChipPart.svelte';
+	import FilterTogglePart from './FilterTogglePart.svelte';
 	import PriceRangePart from './PriceRangePart.svelte';
 	import SortPart from './SortPart.svelte';
 
@@ -40,11 +43,14 @@
 	function extractSlice(state: ContentFilterState): CategoryFilterSlice {
 		return {
 			genres: [...state.genres],
+			artistGenders: [...(state.artistGenders ?? [])],
+			artistTypes: [...(state.artistTypes ?? [])],
 			regions: [...state.regions],
 			statuses: [...state.statuses],
 			concertTypes: [...state.concertTypes],
 			forms: [...state.forms],
-			priceRange: state.priceRange ? [state.priceRange[0], state.priceRange[1]] : null
+			priceRange: state.priceRange ? [state.priceRange[0], state.priceRange[1]] : null,
+			excludeSoldOut: Boolean(state.excludeSoldOut)
 		};
 	}
 
@@ -499,8 +505,23 @@
 							aria-hidden={!isActive || undefined}
 							inert={!isActive || undefined}
 						>
-							<div class="filter-grid-cell span-12">
-								{@render genrePartFor('Artist')}
+							<div class="filter-grid-cell span-6">
+								<FilterChipPart
+									title="성별"
+									class="artist-gender-part"
+									items={ARTIST_GENDER_OPTIONS}
+									selected={paneStates.Artist.artistGenders}
+									onchange={(next) => updatePaneField('Artist', 'artistGenders', next)}
+								/>
+							</div>
+							<div class="filter-grid-cell span-6">
+								<FilterChipPart
+									title="구성"
+									class="artist-type-part"
+									items={ARTIST_TYPE_OPTIONS}
+									selected={paneStates.Artist.artistTypes}
+									onchange={(next) => updatePaneField('Artist', 'artistTypes', next)}
+								/>
 							</div>
 						</div>
 					{/if}
@@ -536,7 +557,7 @@
 					{#if mountedPanes.Album}
 						{@const isActive = activePaneKey === 'Album'}
 						<div
-							class="filter-parts-grid primary-row category-parts-pane {paneClass('Album')}"
+							class="filter-parts-grid primary-row has-bottom-toggle category-parts-pane {paneClass('Album')}"
 							aria-hidden={!isActive || undefined}
 							inert={!isActive || undefined}
 						>
@@ -555,13 +576,21 @@
 									onchange={(next) => updatePaneField('Album', 'priceRange', next)}
 								/>
 							</div>
+							<div class="filter-grid-cell span-12">
+								<FilterTogglePart
+									title="품절 제외"
+									description="현재 구매 가능한 음반만 표시합니다"
+									checked={paneStates.Album.excludeSoldOut}
+									onchange={(next) => updatePaneField('Album', 'excludeSoldOut', next)}
+								/>
+							</div>
 						</div>
 					{/if}
 
 					{#if mountedPanes.Merchandise}
 						{@const isActive = activePaneKey === 'Merchandise'}
 						<div
-							class="filter-parts-grid primary-row category-parts-pane {paneClass('Merchandise')}"
+							class="filter-parts-grid primary-row has-bottom-toggle category-parts-pane {paneClass('Merchandise')}"
 							aria-hidden={!isActive || undefined}
 							inert={!isActive || undefined}
 						>
@@ -578,6 +607,14 @@
 								<PriceRangePart
 									value={paneStates.Merchandise.priceRange}
 									onchange={(next) => updatePaneField('Merchandise', 'priceRange', next)}
+								/>
+							</div>
+							<div class="filter-grid-cell span-12">
+								<FilterTogglePart
+									title="품절 제외"
+									description="현재 구매 가능한 굿즈만 표시합니다"
+									checked={paneStates.Merchandise.excludeSoldOut}
+									onchange={(next) => updatePaneField('Merchandise', 'excludeSoldOut', next)}
 								/>
 							</div>
 						</div>
@@ -604,27 +641,43 @@
 				</div>
 			</div>
 
-			{#if mountedPanes.Concert}
-				{@const concertActive = activePaneKey === 'Concert'}
-				<div class="secondary-parts-stage" class:is-active={concertActive}>
-					<div
-						class="filter-parts-grid secondary-row category-parts-pane {paneClass('Concert')}"
-						aria-hidden={!concertActive || undefined}
-						inert={!concertActive || undefined}
-					>
-						<div class="filter-grid-cell span-12">
-							<FilterChipPart
-								title="지역"
-								class="region-part"
-								items={CONCERT_REGION_OPTIONS}
-								selected={paneStates.Concert.regions}
-								onchange={(next) => updatePaneField('Concert', 'regions', next)}
-							/>
+			{#if mountedPanes.Artist || mountedPanes.Concert}
+				{@const hasSecondary = activePaneKey === 'Artist' || activePaneKey === 'Concert'}
+				<div class="secondary-parts-stage" class:is-active={hasSecondary}>
+					{#if mountedPanes.Artist}
+						{@const artistActive = activePaneKey === 'Artist'}
+						<div
+							class="filter-parts-grid secondary-row category-parts-pane {paneClass('Artist')}"
+							aria-hidden={!artistActive || undefined}
+							inert={!artistActive || undefined}
+						>
+							<div class="filter-grid-cell span-12">
+								{@render genrePartFor('Artist')}
+							</div>
 						</div>
-						<div class="filter-grid-cell span-12">
-							{@render genrePartFor('Concert')}
+					{/if}
+
+					{#if mountedPanes.Concert}
+						{@const concertActive = activePaneKey === 'Concert'}
+						<div
+							class="filter-parts-grid secondary-row category-parts-pane {paneClass('Concert')}"
+							aria-hidden={!concertActive || undefined}
+							inert={!concertActive || undefined}
+						>
+							<div class="filter-grid-cell span-12">
+								<FilterChipPart
+									title="지역"
+									class="region-part"
+									items={CONCERT_REGION_OPTIONS}
+									selected={paneStates.Concert.regions}
+									onchange={(next) => updatePaneField('Concert', 'regions', next)}
+								/>
+							</div>
+							<div class="filter-grid-cell span-12">
+								{@render genrePartFor('Concert')}
+							</div>
 						</div>
-					</div>
+					{/if}
 				</div>
 			{/if}
 
@@ -665,6 +718,7 @@
 		position: relative;
 		flex: 1 1 0%;
 		min-width: 0;
+		overflow-x: clip;
 		display: flex;
 		flex-direction: column;
 	}
@@ -672,6 +726,7 @@
 	.secondary-parts-stage {
 		position: relative;
 		width: 100%;
+		overflow-x: clip;
 		margin-top: 0;
 	}
 
@@ -693,6 +748,11 @@
 		flex: 1 1 auto;
 		height: 100%;
 		grid-auto-rows: minmax(0, 1fr);
+	}
+
+	.primary-parts-stage > .category-parts-pane.is-active.has-bottom-toggle {
+		grid-auto-rows: auto;
+		grid-template-rows: minmax(0, 1fr) auto;
 	}
 
 	.category-parts-pane.is-active.is-switching {

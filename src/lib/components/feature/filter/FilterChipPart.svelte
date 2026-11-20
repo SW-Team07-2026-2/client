@@ -13,6 +13,8 @@
 		items: readonly FilterOption[];
 		selected?: string[];
 		multiple?: boolean;
+		showAll?: boolean;
+		allLabel?: string;
 		showHeader?: boolean;
 		showCount?: boolean;
 		onchange?: (selected: string[]) => void;
@@ -24,14 +26,26 @@
 		items = [],
 		selected = $bindable<string[]>([]),
 		multiple = true,
+		showAll = true,
+		allLabel = '전체',
 		showHeader = true,
-		showCount = true,
+		showCount = false,
 		onchange,
 		class: klass = ''
 	}: Props = $props();
 
 	const mobile = $derived(isMobile.current);
 	const selectedSet = $derived(new Set(selected));
+	const isAllSelected = $derived(
+		selected.length === 0 ||
+			(items.length > 0 && items.every((item) => selectedSet.has(item.value)))
+	);
+
+	function handleAllToggle() {
+		if (selected.length === 0) return;
+		selected = [];
+		onchange?.([]);
+	}
 
 	function handleToggle(val: string, nextChecked: boolean) {
 		let next: string[];
@@ -41,17 +55,15 @@
 			} else {
 				next = selected.filter((v) => v !== val);
 			}
+			// 모든 개별 칩이 선택되면 사실상 '전체' 상태이므로 []로 정규화
+			if (items.length > 0 && items.every((item) => next.includes(item.value))) {
+				next = [];
+			}
 		} else {
 			next = nextChecked ? [val] : [];
 		}
 		selected = next;
 		onchange?.(next);
-	}
-
-	function handleReset() {
-		if (selected.length === 0) return;
-		selected = [];
-		onchange?.([]);
 	}
 </script>
 
@@ -59,17 +71,30 @@
 	class="chip-part {klass}"
 	{title}
 	{showHeader}
-	{showCount}
+	showCount={showCount && !showAll}
 	activeCount={selected.length}
-	onReset={handleReset}
 >
 	<div class="filter-chip-list" class:is-mobile={mobile}>
+		{#if showAll}
+			<FdCheckButton
+				{...FILTER_CHIP_STYLE_PROPS}
+				preventAutoToggle
+				checked={isAllSelected}
+				onchange={handleAllToggle}
+			>
+				{allLabel}
+			</FdCheckButton>
+			{#if items.length > 0}
+				<span class="filter-chip-divider" aria-hidden="true"></span>
+			{/if}
+		{/if}
 		{#each items as item, idx (item.value)}
 			{#if idx > 0 && item.group && item.group !== items[idx - 1].group}
 				<span class="filter-chip-divider" aria-hidden="true"></span>
 			{/if}
 			<FdCheckButton
 				{...(item.isProvince ? FILTER_PROVINCE_CHIP_STYLE_PROPS : FILTER_CHIP_STYLE_PROPS)}
+				preventAutoToggle
 				checked={selectedSet.has(item.value)}
 				onchange={(next) => handleToggle(item.value, next)}
 			>

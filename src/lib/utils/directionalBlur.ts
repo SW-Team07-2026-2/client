@@ -5,23 +5,23 @@ import { prefersReducedMotion } from '#lib/fluid/spring';
 export type SlideDirection = 1 | -1;
 
 /**
- * 좌우 블러 슬라이드 전환 공통 모션 상수.
+ * 좌우 슬라이드 전환 공통 모션 상수.
  * JS(rAF/Svelte transition)와 layout.css의 `--dir-blur-*` CSS 변수와 값을 일치시킵니다.
  */
 export const DIRECTIONAL_BLUR_MOTION = {
-	distance: 38,
-	blur: 6,
-	enterDuration: 420,
-	exitDuration: 320,
-	easeCss: 'cubic-bezier(0.22, 1, 0.36, 1)'
+	distance: 100,
+	blur: 0,
+	enterDuration: 480,
+	exitDuration: 480,
+	easeCss: 'cubic-bezier(0.32, 0.72, 0, 1)'
 } as const;
 
 export interface DirectionalBlurParams {
 	/** 1: 다음(오른쪽에서 등장, 왼쪽으로 퇴장), -1: 이전(왼쪽에서 등장, 오른쪽으로 퇴장) */
 	dir?: SlideDirection;
-	/** 수평 이동 거리 (px) */
+	/** 수평 이동 거리 (%) */
 	distance?: number;
-	/** 블러 강도 (px) */
+	/** 미사용(하위 호환) */
 	blur?: number;
 	/** 전환 시간 (ms) */
 	duration?: number;
@@ -41,7 +41,7 @@ export function easeOutCubic(t: number): number {
 }
 
 /**
- * Svelte `in:` 트랜지션 — 진행 방향에서 블러를 풀며 제자리로 슬라이드 인.
+ * Svelte `in:` 트랜지션 — 진행 방향에서 제자리로 좌우 슬라이드 인.
  * `out:directionalBlurOut`과 함께 쓸 때는 부모를 `display: grid` + 자식 `grid-area: 1 / 1`로 겹치면 자연스럽습니다.
  */
 export function directionalBlurIn(
@@ -53,19 +53,17 @@ export function directionalBlurIn(
 	const {
 		dir = 1,
 		distance = DIRECTIONAL_BLUR_MOTION.distance,
-		blur = DIRECTIONAL_BLUR_MOTION.blur,
 		duration = DIRECTIONAL_BLUR_MOTION.enterDuration,
 		easing = cubicOut
 	} = params;
 
 	const el = node as HTMLElement;
-	el.style.willChange = 'transform, opacity, filter';
+	el.style.willChange = 'transform';
 
 	return {
 		duration,
 		easing,
-		css: (t, u) =>
-			`opacity: ${t.toFixed(4)}; filter: ${u > 0.008 ? `blur(${(u * blur).toFixed(2)}px)` : 'none'}; transform: translate3d(${(u * dir * distance).toFixed(2)}px, 0, 0);`,
+		css: (_t, u) => `transform: translate3d(${(u * dir * distance).toFixed(2)}%, 0, 0);`,
 		tick: (t) => {
 			if (t === 1) el.style.willChange = '';
 		}
@@ -73,7 +71,7 @@ export function directionalBlurIn(
 }
 
 /**
- * Svelte `out:` 트랜지션 — 진행 반대 방향으로 블러되며 슬라이드 아웃.
+ * Svelte `out:` 트랜지션 — 진행 반대 방향으로 좌우 슬라이드 아웃.
  */
 export function directionalBlurOut(
 	node: Element,
@@ -84,19 +82,17 @@ export function directionalBlurOut(
 	const {
 		dir = 1,
 		distance = DIRECTIONAL_BLUR_MOTION.distance,
-		blur = DIRECTIONAL_BLUR_MOTION.blur,
 		duration = DIRECTIONAL_BLUR_MOTION.exitDuration,
 		easing = cubicOut
 	} = params;
 
 	const el = node as HTMLElement;
-	el.style.willChange = 'transform, opacity, filter';
+	el.style.willChange = 'transform';
 	el.style.pointerEvents = 'none';
 
 	return {
 		duration,
 		easing,
-		css: (t, u) =>
-			`opacity: ${t.toFixed(4)}; filter: ${u > 0.008 ? `blur(${(u * blur).toFixed(2)}px)` : 'none'}; transform: translate3d(${(-u * dir * distance).toFixed(2)}px, 0, 0);`
+		css: (_t, u) => `transform: translate3d(${(-u * dir * distance).toFixed(2)}%, 0, 0);`
 	};
 }

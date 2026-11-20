@@ -62,12 +62,12 @@
 	--toast-success-fg: #bbf7d0;
 	--toast-success-wave: #22c55e;
 
-	/* Motion: Directional Blur Slide */
-	--dir-blur-distance: 38px;
-	--dir-blur-radius: 6px;
-	--dir-blur-enter-duration: 420ms;
-	--dir-blur-exit-duration: 320ms;
-	--dir-blur-ease: cubic-bezier(0.22, 1, 0.36, 1);
+	/* Motion: Directional Horizontal Slide */
+	--dir-blur-distance: 100%;
+	--dir-blur-radius: 0px;
+	--dir-blur-enter-duration: 480ms;
+	--dir-blur-exit-duration: 480ms;
+	--dir-blur-ease: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 body {
@@ -234,39 +234,33 @@ html.vt-artist-leave::view-transition-new(artist-hero-photo) {
 	}
 }
 
-/* 공통 좌우 블러 슬라이드 전환 (--dir-blur-dir: 1 | -1) */
+/* 공통 좌우 슬라이드 전환 (--dir-blur-dir: 1 | -1) */
 @keyframes fd-dir-blur-enter {
 	from {
-		opacity: 0;
-		filter: blur(var(--dir-blur-radius, 6px));
-		transform: translate3d(calc(var(--dir-blur-dir, 1) * var(--dir-blur-distance, 38px)), 0, 0);
+		transform: translate3d(calc(var(--dir-blur-dir, 1) * var(--dir-blur-distance, 100%)), 0, 0);
 	}
 
 	to {
-		opacity: 1;
-		filter: blur(0px);
 		transform: translate3d(0, 0, 0);
 	}
 }
 
 @keyframes fd-dir-blur-exit {
 	from {
-		opacity: 1;
-		filter: blur(0px);
 		transform: translate3d(0, 0, 0);
 	}
 
 	to {
-		opacity: 0;
-		filter: blur(var(--dir-blur-radius, 6px));
-		transform: translate3d(calc(var(--dir-blur-dir, 1) * var(--dir-blur-distance, 38px) * -1), 0, 0);
+		transform: translate3d(calc(var(--dir-blur-dir, 1) * var(--dir-blur-distance, 100%) * -1), 0, 0);
 	}
 }
 
 .dir-blur-enter {
-	animation: fd-dir-blur-enter var(--dir-blur-enter-duration, 420ms) var(--dir-blur-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+	will-change: transform;
+	animation: fd-dir-blur-enter var(--dir-blur-enter-duration, 480ms) var(--dir-blur-ease, cubic-bezier(0.32, 0.72, 0, 1)) both;
 }
 
 .dir-blur-exit {
-	animation: fd-dir-blur-exit var(--dir-blur-exit-duration, 320ms) var(--dir-blur-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+	will-change: transform;
+	animation: fd-dir-blur-exit var(--dir-blur-exit-duration, 480ms) var(--dir-blur-ease, cubic-bezier(0.32, 0.72, 0, 1)) both;
 }

@@ -36,8 +36,9 @@
 	// 본 SVG viewBox(-4 -4 886 239) 대비 실제 글자 폭(878) 비율
 	const SVG_GLYPH_RATIO = 878 / 886;
 
-	// 외곽선(0 ~ 1.86s) + 채움(1.72 ~ 2.48s) 완료 시점
+	// 외곽선(0 ~ 1.86s) + 채움(1.72 ~ 2.48s) 완료 시점 + 완료 후 로고 유지 시간
 	const SVG_COMPLETE_MS = 2480;
+	const POST_COMPLETE_HOLD_MS = 500;
 	const MAX_LOAD_WAIT_MS = 10000;
 	const DOCK_DURATION_MS = 800;
 	const FADE_DURATION_MS = 180;
@@ -69,10 +70,13 @@
 						timers.push(setTimeout(resolve, MAX_LOAD_WAIT_MS));
 					});
 
-		// SSR HTML 시점부터 이미 흐른 시간(performance.now())을 빼서 느린 네트워크에서 중복 대기 방지
-		const remainingSvgMs = Math.max(0, SVG_COMPLETE_MS - performance.now());
+		// SVG 렌더링 완료 후에도 최소 POST_COMPLETE_HOLD_MS(0.5초) 동안 완성된 로고를 유지
+		const l5FillAnim = logoEl?.querySelector('.l5-fill')?.getAnimations?.()[0];
+		const elapsedSvgMs =
+			typeof l5FillAnim?.currentTime === 'number' ? l5FillAnim.currentTime : performance.now();
+		const remainingHoldMs = Math.max(0, SVG_COMPLETE_MS + POST_COMPLETE_HOLD_MS - elapsedSvgMs);
 
-		void Promise.all([waitMs(remainingSvgMs), waitWindowLoad]).then(() => {
+		void Promise.all([waitMs(remainingHoldMs), waitWindowLoad]).then(() => {
 			if (cancelled) return;
 
 			if (logoEl && targetEl) {

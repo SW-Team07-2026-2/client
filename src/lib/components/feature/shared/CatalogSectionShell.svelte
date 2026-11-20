@@ -25,6 +25,7 @@
 		skeletonRadius?: string;
 		onRetry?: () => void;
 		onLoadMore?: () => void;
+		active?: boolean;
 		children?: Snippet;
 		class?: string;
 	}
@@ -51,6 +52,7 @@
 		skeletonRadius = '22px',
 		onRetry,
 		onLoadMore,
+		active = true,
 		children,
 		class: klass = ''
 	}: Props = $props();
@@ -72,7 +74,7 @@
 	});
 
 	$effect(() => {
-		if (!sentinelEl || !hasNext || isLoadingMore || isLoading || !onLoadMore) return;
+		if (!active || !sentinelEl || !hasNext || isLoadingMore || isLoading || !onLoadMore) return;
 		const observer = new IntersectionObserver(
 			(entries) => {
 				const entry = entries[0];

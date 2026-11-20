@@ -10,10 +10,17 @@
 	} from '#lib/config/catalogFeed';
 	import {
 		mapGoodsItem,
+		resolveGoodsImageUrl,
 		type CatalogGoods,
 		type GoodsItemDto
 	} from '#lib/config/goods';
-	import { countActiveFilters, type ContentFilterState } from '#lib/config/filter';
+	import {
+		cloneContentFilterState,
+		countActiveFilters,
+		getSavedCategorySlice,
+		type ContentFilterState
+	} from '#lib/config/filter';
+	import { prewarmFdImages } from '#lib/components/ui/FdImage.svelte';
 	import {
 		buildCatalogRequestKey,
 		catalogFeed,
@@ -33,6 +40,7 @@
 		pageSize?: number;
 		onGoodsClick?: (goods: CatalogGoods) => void;
 		onWishlistChange?: (goods: CatalogGoods, wishlisted: boolean) => void;
+		active?: boolean;
 		class?: string;
 	}
 
@@ -46,6 +54,7 @@
 		pageSize = CATALOG_DEFAULT_PAGE_SIZE,
 		onGoodsClick,
 		onWishlistChange,
+		active = true,
 		class: klass = ''
 	}: Props = $props();
 
@@ -69,14 +78,30 @@
 			category === undefined &&
 			filterState === undefined
 	);
-	const canSync = $derived(isCatalogCategoryReady('goods', isUsingStore));
+	const canSync = $derived(active && isCatalogCategoryReady('goods', isUsingStore));
+
+	let ownFilterState = $state<ContentFilterState>(
+		untrack(() => ({
+			...getSavedCategorySlice('Merchandise'),
+			sort: catalogFeed.filterState.sort
+		}))
+	);
+
+	$effect.pre(() => {
+		if (canSync && isUsingStore) {
+			ownFilterState = cloneContentFilterState(catalogFeed.filterState);
+		}
+	});
+
 	const activeFeedMode = $derived<CatalogFeedMode>(feedMode ?? catalogFeed.resolvedFeedMode);
 	const activeQuery = $derived(query ?? catalogFeed.debouncedQuery);
 	const activeFilterState = $derived<Partial<ContentFilterState>>(
 		filterState ??
 			(category?.trim()
-				? { ...catalogFeed.filterState, forms: [category.trim()] }
-				: catalogFeed.filterState)
+				? { ...(canSync ? catalogFeed.filterState : ownFilterState), forms: [category.trim()] }
+				: canSync
+					? catalogFeed.filterState
+					: ownFilterState)
 	);
 	const activeRefreshTick = $derived(isUsingStore ? catalogFeed.refreshTick : 0);
 
@@ -130,6 +155,9 @@
 			goodsList = append ? [...goodsList, ...res.items] : res.items;
 			currentPage = res.page;
 			hasNext = res.hasNext;
+			if (!append && !canSync && !res.degraded && res.items.length > 0) {
+				prewarmFdImages(res.items.map(resolveGoodsImageUrl), 8);
+			}
 			if (res.degraded) {
 				if (append) {
 					loadMoreErrorMessage = '일시적으로 추가 굿즈를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.';
@@ -177,7 +205,8 @@
 	let lastLoadedKey = untrack(() => (hasLoadedInitial ? requestKey : ''));
 
 	$effect(() => {
-		if (!canSync) return;
+		if (!canSync && hasLoadedInitial) return;
+		if (active && !canSync) return;
 		const key = requestKey;
 
 		if (hasLoadedInitial && key === lastLoadedKey) return;
@@ -228,6 +257,7 @@
 <CatalogSectionShell
 	class={klass}
 	ariaLabel="굿즈 목록"
+	{active}
 	{isLoading}
 	isEmpty={goodsList.length === 0}
 	{errorMessage}

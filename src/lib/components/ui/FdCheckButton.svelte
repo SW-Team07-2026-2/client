@@ -10,6 +10,8 @@
 		disabled?: boolean;
 		/** 활성(체크) 상태 여부 (bind:checked 양방향 바인딩 지원) */
 		checked?: boolean;
+		/** true 시 클릭 시 내부 checked를 자동 반전하지 않고 onchange 콜백만 호출 (제어형 사용 시) */
+		preventAutoToggle?: boolean;
 		/** 체크 상태 변경 콜백 */
 		onchange?: (checked: boolean) => void;
 
@@ -50,6 +52,7 @@
 		children,
 		disabled = false,
 		checked = $bindable(false),
+		preventAutoToggle = false,
 		onchange,
 		onclick,
 		setting,
@@ -172,8 +175,11 @@
 
 	function handleClick(e: MouseEvent & { currentTarget: EventTarget & HTMLButtonElement }) {
 		if (disabled) return;
-		checked = !checked;
-		onchange?.(checked);
+		const next = !checked;
+		if (!preventAutoToggle) {
+			checked = next;
+		}
+		onchange?.(next);
 		onclick?.(e);
 	}
 

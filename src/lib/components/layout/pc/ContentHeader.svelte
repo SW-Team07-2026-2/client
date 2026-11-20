@@ -10,8 +10,8 @@
 	import ContentFilterSection from '../../feature/filter/ContentFilterSection.svelte';
 	import {
 		DIRECTIONAL_BLUR_MOTION,
-		easeOutCubic,
-		resolveSlideDirection
+		resolveSlideDirection,
+		type SlideDirection
 	} from '#lib/utils/directionalBlur';
 	import {
 		clearSavedCategoryFilter,
@@ -173,75 +173,57 @@
 		uid: number;
 		text: string;
 		phase: 'idle' | 'entering' | 'exiting';
-		x: number;
-		opacity: number;
-		blur: number;
-		fromX: number;
-		toX: number;
-		fromOpacity: number;
-		toOpacity: number;
-		fromBlur: number;
-		toBlur: number;
-		startTime: number;
-		duration: number;
+		dir: SlideDirection;
 	}
 
 	let subtitleItems = $state<SubtitleItem[]>([]);
 	let nextSubtitleUid = 1;
 	let lastSubtitleCategoryIndex: number | null = null;
-	let subtitleRafId = 0;
+	let subtitleCleanupTimer: ReturnType<typeof setTimeout> | undefined;
 
-	function stopSubtitleLoop() {
-		if (subtitleRafId) {
-			cancelAnimationFrame(subtitleRafId);
-			subtitleRafId = 0;
-		}
-	}
+	function animateSubtitle(node: HTMLElement, params: { phase: SubtitleItem['phase']; dir: SlideDirection }) {
+		let currentPhase = params.phase;
 
-	function tickSubtitles(now: number) {
-		subtitleRafId = 0;
-		let hasAnimating = false;
-		let hasFinishedExit = false;
-
-		for (const item of subtitleItems) {
-			if (item.phase === 'idle') continue;
-
-			const raw =
-				item.duration > 0 ? Math.min(1, Math.max(0, (now - item.startTime) / item.duration)) : 1;
-			const eased = easeOutCubic(raw);
-
-			item.x = item.fromX + (item.toX - item.fromX) * eased;
-			item.opacity = item.fromOpacity + (item.toOpacity - item.fromOpacity) * eased;
-			item.blur = item.fromBlur + (item.toBlur - item.fromBlur) * eased;
-
-			if (raw >= 1) {
-				item.x = item.toX;
-				item.opacity = item.toOpacity;
-				item.blur = item.toBlur;
-				if (item.phase === 'entering') {
-					item.phase = 'idle';
-				} else {
-					hasFinishedExit = true;
-				}
-			} else {
-				hasAnimating = true;
+		function play(next: { phase: SubtitleItem['phase']; dir: SlideDirection }) {
+			if (prefersReducedMotion()) return;
+			const { enterDuration, exitDuration, easeCss } = DIRECTIONAL_BLUR_MOTION;
+			if (next.phase === 'entering') {
+				node.getAnimations().forEach((a) => a.cancel());
+				node.animate(
+					[
+						{ transform: `translate3d(${next.dir * 100}%, 0, 0)` },
+						{ transform: 'translate3d(0, 0, 0)' }
+					],
+					{ duration: enterDuration, easing: easeCss, fill: 'backwards' }
+				);
+			} else if (next.phase === 'exiting') {
+				const computed = getComputedStyle(node).transform;
+				const startTransform = computed && computed !== 'none' ? computed : 'translate3d(0, 0, 0)';
+				node.getAnimations().forEach((a) => a.cancel());
+				node.animate(
+					[
+						{ transform: startTransform },
+						{ transform: `translate3d(${-next.dir * 100}%, 0, 0)` }
+					],
+					{ duration: exitDuration, easing: easeCss, fill: 'forwards' }
+				);
 			}
 		}
 
-		if (hasFinishedExit) {
-			subtitleItems = subtitleItems.filter(
-				(item) => !(item.phase === 'exiting' && item.opacity <= 0.001)
-			);
+		if (currentPhase !== 'idle') {
+			play(params);
 		}
 
-		if (hasAnimating) {
-			subtitleRafId = requestAnimationFrame(tickSubtitles);
-		}
-	}
-
-	function startSubtitleLoop() {
-		if (typeof window === 'undefined' || subtitleRafId) return;
-		subtitleRafId = requestAnimationFrame(tickSubtitles);
+		return {
+			update(next: { phase: SubtitleItem['phase']; dir: SlideDirection }) {
+				if (next.phase !== currentPhase) {
+					currentPhase = next.phase;
+					if (next.phase === 'exiting') {
+						play(next);
+					}
+				}
+			}
+		};
 	}
 
 	$effect.pre(() => {
@@ -250,31 +232,21 @@
 
 		untrack(() => {
 			if (!text) {
-				stopSubtitleLoop();
+				clearTimeout(subtitleCleanupTimer);
 				subtitleItems = [];
 				lastSubtitleCategoryIndex = idx;
 				return;
 			}
 
 			if (lastSubtitleCategoryIndex === null || prefersReducedMotion()) {
-				stopSubtitleLoop();
+				clearTimeout(subtitleCleanupTimer);
 				lastSubtitleCategoryIndex = idx;
 				subtitleItems = [
 					{
 						uid: nextSubtitleUid++,
 						text,
 						phase: 'idle',
-						x: 0,
-						opacity: 1,
-						blur: 0,
-						fromX: 0,
-						toX: 0,
-						fromOpacity: 1,
-						toOpacity: 1,
-						fromBlur: 0,
-						toBlur: 0,
-						startTime: 0,
-						duration: 0
+						dir: 1
 					}
 				];
 				return;
@@ -287,50 +259,35 @@
 
 			const dir = resolveSlideDirection(lastSubtitleCategoryIndex, idx);
 			lastSubtitleCategoryIndex = idx;
-			const now = performance.now();
-			const { distance, blur, enterDuration, exitDuration } = DIRECTIONAL_BLUR_MOTION;
 
-			// 기존 활성 텍스트는 현재 프레임의 실제 위치·투명도·블러에서 자연스럽게 반대 방향으로 퇴장
-			const updated = subtitleItems.map((item) => {
-				if (item.phase === 'exiting') return item;
-				return {
+			const updated: SubtitleItem[] = subtitleItems
+				.filter((item) => item.phase !== 'exiting')
+				.map((item) => ({
 					...item,
 					phase: 'exiting' as const,
-					fromX: item.x,
-					toX: -dir * distance,
-					fromOpacity: item.opacity,
-					toOpacity: 0,
-					fromBlur: item.blur,
-					toBlur: blur,
-					startTime: now,
-					duration: exitDuration
-				};
-			});
+					dir
+				}));
 
-			updated.push({
+			const enterItem: SubtitleItem = {
 				uid: nextSubtitleUid++,
 				text,
 				phase: 'entering',
-				x: dir * distance,
-				opacity: 0,
-				blur,
-				fromX: dir * distance,
-				toX: 0,
-				fromOpacity: 0,
-				toOpacity: 1,
-				fromBlur: blur,
-				toBlur: 0,
-				startTime: now,
-				duration: enterDuration
-			});
-
+				dir
+			};
+			updated.push(enterItem);
 			subtitleItems = updated;
-			startSubtitleLoop();
+
+			clearTimeout(subtitleCleanupTimer);
+			subtitleCleanupTimer = setTimeout(() => {
+				subtitleItems = subtitleItems
+					.filter((item) => item.phase !== 'exiting')
+					.map((item) => (item.phase === 'entering' ? { ...item, phase: 'idle' as const } : item));
+			}, Math.max(DIRECTIONAL_BLUR_MOTION.enterDuration, DIRECTIONAL_BLUR_MOTION.exitDuration));
 		});
 	});
 
 	onDestroy(() => {
-		stopSubtitleLoop();
+		clearTimeout(subtitleCleanupTimer);
 	});
 
 	$effect(() => {
@@ -555,11 +512,9 @@
 						{#each subtitleItems as item (item.uid)}
 							<p
 								class="category-subtitle"
+								use:animateSubtitle={{ phase: item.phase, dir: item.dir }}
 								aria-hidden={item.phase === 'exiting' || undefined}
 								style:pointer-events={item.phase === 'exiting' ? 'none' : undefined}
-								style:opacity={item.opacity}
-								style:filter={item.blur > 0.05 ? `blur(${item.blur.toFixed(2)}px)` : 'none'}
-								style:transform="translate3d({item.x.toFixed(2)}px, 0, 0)"
 							>
 								{item.text}
 							</p>
@@ -811,6 +766,7 @@
 
 	.category-subtitle {
 		grid-area: 1 / 1;
+		width: 100%;
 		margin: 0;
 		font-size: 1.1625rem;
 		font-weight: var(--fw-medium);
@@ -818,7 +774,7 @@
 		text-align: center;
 		line-height: 1;
 
-		will-change: transform, opacity, filter;
+		will-change: transform;
 	}
 
 	/* 가로 컨트롤/필터 영역 */

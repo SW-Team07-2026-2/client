@@ -15,11 +15,14 @@ export const DEFAULT_PRICE_STEP = 5000;
 
 export interface ContentFilterState {
 	genres: string[];
+	artistGenders: string[];
+	artistTypes: string[];
 	regions: string[];
 	statuses: string[];
 	concertTypes: string[];
 	forms: string[];
 	priceRange: [number, number] | null;
+	excludeSoldOut: boolean;
 	sort: string;
 }
 
@@ -28,23 +31,29 @@ export const DEFAULT_FOLLOW_SORT = 'RECENT_FOLLOW';
 export function createDefaultFilterState(): ContentFilterState {
 	return {
 		genres: [],
+		artistGenders: [],
+		artistTypes: [],
 		regions: [],
 		statuses: [],
 		concertTypes: [],
 		forms: [],
 		priceRange: null,
+		excludeSoldOut: false,
 		sort: ''
 	};
 }
 
-export function countActiveFilters(state: ContentFilterState): number {
+export function countActiveFilters(state: Partial<ContentFilterState>): number {
 	return (
-		state.genres.length +
-		state.regions.length +
-		state.statuses.length +
-		state.concertTypes.length +
-		state.forms.length +
-		(state.priceRange !== null ? 1 : 0)
+		(state.genres?.length ?? 0) +
+		(state.artistGenders?.length ?? 0) +
+		(state.artistTypes?.length ?? 0) +
+		(state.regions?.length ?? 0) +
+		(state.statuses?.length ?? 0) +
+		(state.concertTypes?.length ?? 0) +
+		(state.forms?.length ?? 0) +
+		(state.priceRange !== undefined && state.priceRange !== null ? 1 : 0) +
+		(state.excludeSoldOut ? 1 : 0)
 	);
 }
 
@@ -55,22 +64,28 @@ const categoryFilterMemory = new Map<string, CategoryFilterSlice>();
 function cloneSlice(source: CategoryFilterSlice): CategoryFilterSlice {
 	return {
 		genres: [...source.genres],
+		artistGenders: [...(source.artistGenders ?? [])],
+		artistTypes: [...(source.artistTypes ?? [])],
 		regions: [...source.regions],
 		statuses: [...source.statuses],
 		concertTypes: [...source.concertTypes],
 		forms: [...source.forms],
-		priceRange: source.priceRange ? [source.priceRange[0], source.priceRange[1]] : null
+		priceRange: source.priceRange ? [source.priceRange[0], source.priceRange[1]] : null,
+		excludeSoldOut: Boolean(source.excludeSoldOut)
 	};
 }
 
 export function createEmptyFilterSlice(): CategoryFilterSlice {
 	return {
 		genres: [],
+		artistGenders: [],
+		artistTypes: [],
 		regions: [],
 		statuses: [],
 		concertTypes: [],
 		forms: [],
-		priceRange: null
+		priceRange: null,
+		excludeSoldOut: false
 	};
 }
 
@@ -85,6 +100,8 @@ function stringArraysEqual(a: string[], b: string[]): boolean {
 function slicesEqual(a: CategoryFilterSlice, b: CategoryFilterSlice): boolean {
 	return (
 		stringArraysEqual(a.genres, b.genres) &&
+		stringArraysEqual(a.artistGenders ?? [], b.artistGenders ?? []) &&
+		stringArraysEqual(a.artistTypes ?? [], b.artistTypes ?? []) &&
 		stringArraysEqual(a.regions, b.regions) &&
 		stringArraysEqual(a.statuses, b.statuses) &&
 		stringArraysEqual(a.concertTypes, b.concertTypes) &&
@@ -93,13 +110,31 @@ function slicesEqual(a: CategoryFilterSlice, b: CategoryFilterSlice): boolean {
 			(a.priceRange !== null &&
 				b.priceRange !== null &&
 				a.priceRange[0] === b.priceRange[0] &&
-				a.priceRange[1] === b.priceRange[1]))
+				a.priceRange[1] === b.priceRange[1])) &&
+		Boolean(a.excludeSoldOut) === Boolean(b.excludeSoldOut)
 	);
 }
 
 export function getSavedCategorySlice(category: string): CategoryFilterSlice {
 	const saved = categoryFilterMemory.get(category);
 	return saved ? cloneSlice(saved) : createEmptyFilterSlice();
+}
+
+export function cloneContentFilterState(
+	state: Partial<ContentFilterState> = {}
+): ContentFilterState {
+	return {
+		genres: state.genres ? [...state.genres] : [],
+		artistGenders: state.artistGenders ? [...state.artistGenders] : [],
+		artistTypes: state.artistTypes ? [...state.artistTypes] : [],
+		regions: state.regions ? [...state.regions] : [],
+		statuses: state.statuses ? [...state.statuses] : [],
+		concertTypes: state.concertTypes ? [...state.concertTypes] : [],
+		forms: state.forms ? [...state.forms] : [],
+		priceRange: state.priceRange ? [state.priceRange[0], state.priceRange[1]] : null,
+		excludeSoldOut: Boolean(state.excludeSoldOut),
+		sort: state.sort ?? ''
+	};
 }
 
 export function saveCategoryFilter(
@@ -141,6 +176,19 @@ export const FOLLOW_SORT_OPTIONS: readonly FilterOption[] = [
 	{ value: 'RECENT_FOLLOW', label: '최근 팔로우순' },
 	{ value: 'FOLLOWERS', label: '팔로워순' },
 	{ value: 'UPDATED', label: '업데이트순' }
+];
+
+/** 아티스트 성별 필터 (남자 / 여자 / 혼성) */
+export const ARTIST_GENDER_OPTIONS: readonly FilterOption[] = [
+	{ value: 'MALE', label: '남자' },
+	{ value: 'FEMALE', label: '여자' },
+	{ value: 'MIXED', label: '혼성' }
+];
+
+/** 아티스트 구성 필터 (솔로 / 팀) */
+export const ARTIST_TYPE_OPTIONS: readonly FilterOption[] = [
+	{ value: 'SOLO', label: '솔로' },
+	{ value: 'TEAM', label: '팀' }
 ];
 
 /** 공연 지역 필터 (권역별 그룹핑: 도 단위 우선 배치 + 소속 광역/특별시) */

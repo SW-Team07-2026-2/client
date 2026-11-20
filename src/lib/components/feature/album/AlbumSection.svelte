@@ -10,10 +10,17 @@
 	} from '#lib/config/catalogFeed';
 	import {
 		mapPhysicalItem,
+		resolveAlbumCoverUrl,
 		type CatalogAlbum,
 		type PhysicalItemDto
 	} from '#lib/config/albums';
-	import { countActiveFilters, type ContentFilterState } from '#lib/config/filter';
+	import {
+		cloneContentFilterState,
+		countActiveFilters,
+		getSavedCategorySlice,
+		type ContentFilterState
+	} from '#lib/config/filter';
+	import { prewarmFdImages } from '#lib/components/ui/FdImage.svelte';
 	import {
 		buildCatalogRequestKey,
 		catalogFeed,
@@ -33,6 +40,7 @@
 		pageSize?: number;
 		onAlbumClick?: (album: CatalogAlbum) => void;
 		onWishlistChange?: (album: CatalogAlbum, wishlisted: boolean) => void;
+		active?: boolean;
 		class?: string;
 	}
 
@@ -46,6 +54,7 @@
 		pageSize = CATALOG_DEFAULT_PAGE_SIZE,
 		onAlbumClick,
 		onWishlistChange,
+		active = true,
 		class: klass = ''
 	}: Props = $props();
 
@@ -69,11 +78,25 @@
 			genre === undefined &&
 			filterState === undefined
 	);
-	const canSync = $derived(isCatalogCategoryReady('album', isUsingStore));
+	const canSync = $derived(active && isCatalogCategoryReady('album', isUsingStore));
+
+	let ownFilterState = $state<ContentFilterState>(
+		untrack(() => ({
+			...getSavedCategorySlice('Album'),
+			sort: catalogFeed.filterState.sort
+		}))
+	);
+
+	$effect.pre(() => {
+		if (canSync && isUsingStore) {
+			ownFilterState = cloneContentFilterState(catalogFeed.filterState);
+		}
+	});
+
 	const activeFeedMode = $derived<CatalogFeedMode>(feedMode ?? catalogFeed.resolvedFeedMode);
 	const activeQuery = $derived(query ?? catalogFeed.debouncedQuery);
 	const activeFilterState = $derived<Partial<ContentFilterState>>(
-		filterState ?? catalogFeed.filterState
+		filterState ?? (canSync ? catalogFeed.filterState : ownFilterState)
 	);
 	const activeRefreshTick = $derived(isUsingStore ? catalogFeed.refreshTick : 0);
 
@@ -129,6 +152,9 @@
 			albums = append ? [...albums, ...res.items] : res.items;
 			currentPage = res.page;
 			hasNext = res.hasNext;
+			if (!append && !canSync && !res.degraded && res.items.length > 0) {
+				prewarmFdImages(res.items.map(resolveAlbumCoverUrl), 8);
+			}
 			if (res.degraded) {
 				if (append) {
 					loadMoreErrorMessage = '일시적으로 추가 음반을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.';
@@ -176,7 +202,8 @@
 	let lastLoadedKey = untrack(() => (hasLoadedInitial ? requestKey : ''));
 
 	$effect(() => {
-		if (!canSync) return;
+		if (!canSync && hasLoadedInitial) return;
+		if (active && !canSync) return;
 		const key = requestKey;
 
 		if (hasLoadedInitial && key === lastLoadedKey) return;
@@ -227,6 +254,7 @@
 <CatalogSectionShell
 	class={klass}
 	ariaLabel="음반 및 LP 목록"
+	{active}
 	{isLoading}
 	isEmpty={albums.length === 0}
 	{errorMessage}

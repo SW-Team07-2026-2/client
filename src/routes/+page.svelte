@@ -1,10 +1,13 @@
 <script lang="ts">
-	import { onMount, type Snippet } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { onMount, untrack, type Snippet } from 'svelte';
+	import { goto, preloadCode } from '$app/navigation';
 	import { FdTitle, FdButton, FdBgmPlayer } from '#lib/components';
 	import FdTitleSplash from '#lib/components/ui/FdTitleSplash.svelte';
 	import FluidVinyl from '#lib/components/layout/FdBackground.svelte';
 	import { auth, clearSignupFlow } from '#lib/auth';
+	import { mapArtistItem, type ArtistItemDto, type CatalogArtist } from '#lib/config/artists';
+	import { CATALOG_DEFAULT_PAGE_SIZE, fetchCatalogPage } from '#lib/config/catalogFeed';
+	import { artistTransition, buildCatalogRequestKey, catalogFeed } from '#lib/stores';
 
 	let { children }: { children?: Snippet } = $props();
 
@@ -15,6 +18,7 @@
 	let titleWrapEl: HTMLDivElement | undefined = $state(undefined);
 	let showSplash = $state(shouldRunSplash);
 	let titleRevealed = $state(!shouldRunSplash);
+	let artistPreloadStarted = false;
 
 	function handleSplashReveal() {
 		titleRevealed = true;
@@ -26,6 +30,90 @@
 		}
 		showSplash = false;
 	}
+
+	async function warmupArtistRoute() {
+		try {
+			await preloadCode('/(user)/(main)/artist');
+		} catch {
+			// 코드 프리로드 실패 시 실제 이동 시점 로드로 폴백
+		}
+
+		if (!auth.isLoggedIn || artistTransition.getFeedSnapshot()) return;
+
+		const feedMode = catalogFeed.resolvedFeedMode;
+		const query = catalogFeed.debouncedQuery;
+		const filterState = catalogFeed.filterState;
+		const requestKey = buildCatalogRequestKey('artist', {
+			feedMode,
+			query,
+			filterState,
+			refreshTick: catalogFeed.refreshTick,
+			authKey: `${auth.isLoggedIn}:${auth.isVerified}`
+		});
+
+		try {
+			const res = await fetchCatalogPage<CatalogArtist, ArtistItemDto>({
+				category: 'artist',
+				feedMode,
+				page: 0,
+				pageSize: CATALOG_DEFAULT_PAGE_SIZE,
+				query,
+				filterState,
+				mapItem: mapArtistItem
+			});
+			if (
+				!auth.isLoggedIn ||
+				res.degraded ||
+				res.items.length === 0 ||
+				artistTransition.getFeedSnapshot()
+			) {
+				return;
+			}
+			artistTransition.cacheArtists(res.items);
+			artistTransition.saveFeedSnapshot({
+				artists: res.items,
+				currentPage: res.page,
+				hasNext: res.hasNext,
+				query: query.trim(),
+				genre: (filterState.genres ?? []).join(','),
+				requestKey
+			});
+		} catch {
+			// 데이터 프리페치 실패 시 /artist 진입 후 ArtistSection에서 재조회
+		}
+	}
+
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		if (children || showSplash || !auth.isLoggedIn || !auth.isVerified || artistPreloadStarted) {
+			return;
+		}
+		artistPreloadStarted = true;
+
+		let idleId: number | undefined;
+		let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+		const win = window as Window & {
+			requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+			cancelIdleCallback?: (id: number) => void;
+		};
+
+		const run = () => {
+			untrack(() => {
+				void warmupArtistRoute();
+			});
+		};
+
+		if (typeof win.requestIdleCallback === 'function') {
+			idleId = win.requestIdleCallback(run, { timeout: 1200 });
+		} else {
+			fallbackTimer = setTimeout(run, 150);
+		}
+
+		return () => {
+			if (idleId !== undefined) win.cancelIdleCallback?.(idleId);
+			if (fallbackTimer !== undefined) clearTimeout(fallbackTimer);
+		};
+	});
 
 	onMount(() => {
 		auth.captureXsrfFromUrl();
@@ -102,11 +190,7 @@
 {/if}
 
 {#if showSplash}
-	<FdTitleSplash
-		targetEl={titleWrapEl}
-		onreveal={handleSplashReveal}
-		ondone={handleSplashDone}
-	/>
+	<FdTitleSplash targetEl={titleWrapEl} onreveal={handleSplashReveal} ondone={handleSplashDone} />
 {/if}
 
 <!-- 배경화면 -->

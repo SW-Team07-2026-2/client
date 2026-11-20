@@ -5,7 +5,73 @@
 		accent: string;
 	}
 
+	const WHITE_WAVE_COLORS: ExtractedWaveColors = {
+		inner: 'rgb(255, 255, 255)',
+		outer: 'rgb(255, 255, 255)',
+		accent: 'rgb(255, 255, 255)'
+	};
+
 	const waveColorCache = new Map<string, ExtractedWaveColors>();
+	const corsBlockedOrigins = new Set<string>();
+	const warmedImageUrls = new Set<string>();
+
+	function getUrlOrigin(url: string): string | null {
+		if (typeof window === 'undefined') return null;
+		try {
+			const parsed = new URL(url, window.location.href);
+			if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+				return parsed.origin;
+			}
+		} catch {
+			// 잘못된 URL 형식은 origin 판별 생략
+		}
+		return null;
+	}
+
+	function isInlineImageUrl(url: string): boolean {
+		return url.startsWith('data:') || url.startsWith('blob:');
+	}
+
+	export function prewarmFdImages(urls: readonly string[], limit = 8): void {
+		if (typeof window === 'undefined') return;
+		let queued = 0;
+		for (const raw of urls) {
+			if (queued >= limit) break;
+			const url = raw.trim();
+			if (!url || isInlineImageUrl(url) || warmedImageUrls.has(url)) continue;
+			warmedImageUrls.add(url);
+			queued += 1;
+
+			const img = new Image();
+			img.decoding = 'async';
+			const origin = getUrlOrigin(url);
+			const corsBlocked = Boolean(
+				origin && origin !== window.location.origin && corsBlockedOrigins.has(origin)
+			);
+			if (!corsBlocked) {
+				img.crossOrigin = 'anonymous';
+				img.onload = () => {
+					void img.decode?.().catch(() => {});
+				};
+				img.onerror = () => {
+					if (origin && origin !== window.location.origin) {
+						corsBlockedOrigins.add(origin);
+					}
+					const retry = new Image();
+					retry.decoding = 'async';
+					retry.onload = () => {
+						void retry.decode?.().catch(() => {});
+					};
+					retry.src = url;
+				};
+			} else {
+				img.onload = () => {
+					void img.decode?.().catch(() => {});
+				};
+			}
+			img.src = url;
+		}
+	}
 
 	function setBoundedColorCache(key: string, value: ExtractedWaveColors, limit = 240) {
 		if (waveColorCache.size >= limit && !waveColorCache.has(key)) {
@@ -125,7 +191,7 @@
 		pressed = $bindable(false),
 		ready = $bindable(false),
 		imageLoaded = $bindable(false),
-		extractedWaveColor = $bindable('#8b8b99'),
+		extractedWaveColor = $bindable(WHITE_WAVE_COLORS.accent),
 		class: klass = '',
 		bodyClass = '',
 		style,
@@ -174,8 +240,14 @@
 
 	let wrap: HTMLDivElement;
 	let box: HTMLDivElement;
-	let imgEl: HTMLImageElement;
+	let imgEl: HTMLImageElement | undefined = $state(undefined);
 	let canvas: HTMLCanvasElement | undefined = $state(undefined);
+	let useCorsFallback = $state(false);
+
+	const imgCrossOrigin = $derived<'anonymous' | undefined>(
+		!src || isInlineImageUrl(src) || useCorsFallback ? undefined : 'anonymous'
+	);
+	const imgRenderKey = $derived(`${src}|${imgCrossOrigin ?? 'nocors'}`);
 
 	// 평소(유휴)에는 순수 <img>만 렌더링하고, 근접·호버·클릭·상시 물결 시에만 물결 전용 <canvas> 활성화
 	let canvasActive = $state(untrack(() => active || !cfg.pauseWhenIdle));
@@ -186,45 +258,23 @@
 	let relayout: (() => void) | undefined;
 	let syncSetting: (() => void) | undefined;
 
-	let autoWaveInner = $state('rgb(148, 163, 184)');
-	let autoWaveOuter = $state('rgb(100, 116, 139)');
+	let autoWaveInner = $state(WHITE_WAVE_COLORS.inner);
+	let autoWaveOuter = $state(WHITE_WAVE_COLORS.outer);
 
 	/* ───────── 이미지 전체 평균색 추출 유틸 ───────── */
-
-	function fallbackColorFromSrc(source: string): [number, number, number] {
-		let hash = 2166136261;
-		for (let i = 0; i < source.length; i++) {
-			hash ^= source.charCodeAt(i);
-			hash = Math.imul(hash, 16777619);
-		}
-		const hue = Math.abs(hash) % 360;
-		const s = 0.24;
-		const l = 0.38;
-		const c = (1 - Math.abs(2 * l - 1)) * s;
-		const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
-		const m = l - c / 2;
-		let r1 = 0,
-			g1 = 0,
-			b1 = 0;
-		if (hue < 60) [r1, g1, b1] = [c, x, 0];
-		else if (hue < 120) [r1, g1, b1] = [x, c, 0];
-		else if (hue < 180) [r1, g1, b1] = [0, c, x];
-		else if (hue < 240) [r1, g1, b1] = [0, x, c];
-		else if (hue < 300) [r1, g1, b1] = [x, 0, c];
-		else [r1, g1, b1] = [c, 0, x];
-		return [
-			Math.round((r1 + m) * 255),
-			Math.round((g1 + m) * 255),
-			Math.round((b1 + m) * 255)
-		];
-	}
 
 	function formatRgbForWaves(r: number, g: number, b: number): ExtractedWaveColors {
 		const color = `rgb(${r}, ${g}, ${b})`;
 		return { inner: color, outer: color, accent: color };
 	}
 
-	function extractAverageWaveColors(img: HTMLImageElement, sourceUrl: string): ExtractedWaveColors {
+	function applyWaveColors(colors: ExtractedWaveColors) {
+		autoWaveInner = colors.inner;
+		autoWaveOuter = colors.outer;
+		extractedWaveColor = hasExplicitWaveColor ? (cfg.waveColor ?? colors.accent) : colors.accent;
+	}
+
+	function extractAverageWaveColors(img: HTMLImageElement): ExtractedWaveColors | null {
 		try {
 			const size = 32;
 			const off = document.createElement('canvas');
@@ -269,67 +319,97 @@
 				}
 			}
 		} catch {
-			// 외부 이미지 CORS 발생 시 폴백 색상 사용
+			// Tainted Canvas 등 픽셀 읽기 불가 시 null 반환 -> 하얀색 기본값 적용
 		}
 
-		const [fr, fg, fb] = fallbackColorFromSrc(sourceUrl);
-		return formatRgbForWaves(fr, fg, fb);
+		return null;
 	}
 
-	// src 변경 시 평균 물결 색상 추출 및 이미지 로드 상태 동기화 (표시 자체는 네이티브 <img>가 담당)
+	function resolveLoadedImgWaveColors(targetImg: HTMLImageElement, currentSrc: string) {
+		const cacheKey = `${fit}:${currentSrc}`;
+		const cached = waveColorCache.get(cacheKey);
+		if (cached) {
+			applyWaveColors(cached);
+			syncSetting?.();
+			return;
+		}
+		if (useCorsFallback) {
+			applyWaveColors(WHITE_WAVE_COLORS);
+			syncSetting?.();
+			return;
+		}
+		const runExtract = () => {
+			if (src !== currentSrc) return;
+			const extracted = extractAverageWaveColors(targetImg);
+			const nextColors = extracted ?? WHITE_WAVE_COLORS;
+			if (extracted) {
+				setBoundedColorCache(cacheKey, extracted, 240);
+			}
+			applyWaveColors(nextColors);
+			syncSetting?.();
+		};
+		const win = window as Window & {
+			requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+		};
+		if (typeof win.requestIdleCallback === 'function') {
+			win.requestIdleCallback(runExtract, { timeout: 600 });
+		} else {
+			setTimeout(runExtract, 80);
+		}
+	}
+
+	function handleImgLoad() {
+		imageLoaded = true;
+		ready = true;
+		if (typeof window === 'undefined' || !src || !imgEl) return;
+		resolveLoadedImgWaveColors(imgEl, src);
+	}
+
+	function handleImgError() {
+		imageLoaded = false;
+		ready = false;
+		if (typeof window === 'undefined' || !src || useCorsFallback || isInlineImageUrl(src)) {
+			applyWaveColors(WHITE_WAVE_COLORS);
+			return;
+		}
+		const origin = getUrlOrigin(src);
+		if (origin && origin !== window.location.origin) {
+			corsBlockedOrigins.add(origin);
+		}
+		useCorsFallback = true;
+		applyWaveColors(WHITE_WAVE_COLORS);
+	}
+
+	// src 변경 시 CORS 지원 여부 확인 및 <img> 단일 요청 기반 상태 동기화
 	$effect(() => {
 		const currentSrc = src;
 		void fit;
 		if (typeof window === 'undefined' || !currentSrc) {
+			useCorsFallback = false;
 			imageLoaded = false;
 			ready = false;
+			applyWaveColors(WHITE_WAVE_COLORS);
 			return;
 		}
 
-		let cancelled = false;
+		const origin = getUrlOrigin(currentSrc);
+		useCorsFallback = Boolean(
+			origin && origin !== window.location.origin && corsBlockedOrigins.has(origin)
+		);
+
 		const cacheKey = `${fit}:${currentSrc}`;
 		const cachedColors = waveColorCache.get(cacheKey);
-		const initial =
-			cachedColors ??
-			(() => {
-				const [fr, fg, fb] = fallbackColorFromSrc(currentSrc);
-				return formatRgbForWaves(fr, fg, fb);
-			})();
-		autoWaveInner = initial.inner;
-		autoWaveOuter = initial.outer;
-		extractedWaveColor = hasExplicitWaveColor ? (cfg.waveColor ?? initial.accent) : initial.accent;
+		applyWaveColors(cachedColors ?? WHITE_WAVE_COLORS);
 
-		if (imgEl && imgEl.complete && imgEl.naturalWidth > 0) {
+		const currentImgEl = untrack(() => imgEl);
+		if (currentImgEl && currentImgEl.complete && currentImgEl.naturalWidth > 0) {
 			imageLoaded = true;
 			ready = true;
+			resolveLoadedImgWaveColors(currentImgEl, currentSrc);
 		} else {
 			imageLoaded = false;
 			ready = false;
 		}
-
-		if (cachedColors) return;
-
-		// 미캐시 이미지만 백그라운드에서 CORS 안전하게 32x32 평균색 추출
-		const probe = new Image();
-		if (!currentSrc.startsWith('data:') && !currentSrc.startsWith('blob:')) {
-			probe.crossOrigin = 'anonymous';
-		}
-		probe.onload = () => {
-			if (cancelled) return;
-			const extracted = extractAverageWaveColors(probe, currentSrc);
-			setBoundedColorCache(cacheKey, extracted, 240);
-			autoWaveInner = extracted.inner;
-			autoWaveOuter = extracted.outer;
-			extractedWaveColor = hasExplicitWaveColor
-				? (cfg.waveColor ?? extracted.accent)
-				: extracted.accent;
-			syncSetting?.();
-		};
-		probe.src = currentSrc;
-
-		return () => {
-			cancelled = true;
-		};
 	});
 
 	$effect(() => {
@@ -1009,8 +1089,7 @@
 					bi = b[i] > cap ? cap : b[i];
 				}
 
-				const wScale =
-					grow <= 0 && curBulge > 0 ? Math.max(0, 1 - Math.max(0, bi) / curBulge) : 1;
+				const wScale = grow <= 0 && curBulge > 0 ? Math.max(0, 1 - Math.max(0, bi) / curBulge) : 1;
 				let off = grow;
 				if (wave) off += wave * wScale * computeFluidWave(rx[i], ry[i], TAU * (i / n), k, s, seed);
 				xs[i] = rx[i] * sx + nx[i] * off + bdx * bi;
@@ -1416,29 +1495,26 @@
 	{style}
 >
 	{#if canvasActive}
-		<canvas
-			bind:this={canvas}
-			aria-hidden="true"
-			style:left="{-SAFE}px"
-			style:top="{-SAFE}px"
+		<canvas bind:this={canvas} aria-hidden="true" style:left="{-SAFE}px" style:top="{-SAFE}px"
 		></canvas>
 	{/if}
 
 	<div bind:this={box} class="fd-body fd-image-body {bodyClass}" style={bodyStyle} {...rest}>
-		<img
-			bind:this={imgEl}
-			class="fd-img"
-			{src}
-			{alt}
-			style:object-fit={fit}
-			style:object-position={objectPosition}
-			draggable="false"
-			loading="lazy"
-			onload={() => {
-				imageLoaded = true;
-				ready = true;
-			}}
-		/>
+		{#key imgRenderKey}
+			<img
+				bind:this={imgEl}
+				class="fd-img"
+				{src}
+				{alt}
+				crossorigin={imgCrossOrigin}
+				style:object-fit={fit}
+				style:object-position={objectPosition}
+				draggable="false"
+				loading="lazy"
+				onload={handleImgLoad}
+				onerror={handleImgError}
+			/>
+		{/key}
 		{#if cfg.borderWidth > 0 && !canvasActive}
 			<span class="fd-image-idle-border" aria-hidden="true"></span>
 		{/if}

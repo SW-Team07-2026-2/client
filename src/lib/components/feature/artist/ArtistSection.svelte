@@ -6,6 +6,7 @@
 	import { api, auth } from '#lib/auth/auth.svelte';
 	import {
 		mapArtistItem,
+		resolveArtistImageUrl,
 		type ArtistItemDto,
 		type CatalogArtist
 	} from '#lib/config/artists';
@@ -16,7 +17,13 @@
 		resolveCatalogErrorMessage,
 		type CatalogFeedMode
 	} from '#lib/config/catalogFeed';
-	import { countActiveFilters, type ContentFilterState } from '#lib/config/filter';
+	import {
+		cloneContentFilterState,
+		countActiveFilters,
+		getSavedCategorySlice,
+		type ContentFilterState
+	} from '#lib/config/filter';
+	import { prewarmFdImages } from '#lib/components/ui/FdImage.svelte';
 	import {
 		artistTransition,
 		buildCatalogRequestKey,
@@ -54,6 +61,8 @@
 		onArtistClick?: (artist: CatalogArtist) => void;
 		/** 팔로우 상태 변경 시 호출되는 콜백 */
 		onFollowChange?: (artist: CatalogArtist, following: boolean) => void;
+		/** 활성화 여부 (Keep-Alive 비활성 패널 시 Observer/필터 반응 중단) */
+		active?: boolean;
 		/** 추가 클래스 */
 		class?: string;
 	}
@@ -68,6 +77,7 @@
 		pageSize = CATALOG_DEFAULT_PAGE_SIZE,
 		onArtistClick,
 		onFollowChange,
+		active = true,
 		class: klass = ''
 	}: Props = $props();
 
@@ -77,11 +87,25 @@
 			genre === undefined &&
 			filterState === undefined
 	);
-	const canSync = $derived(isCatalogCategoryReady('artist', isUsingStore));
+	const canSync = $derived(active && isCatalogCategoryReady('artist', isUsingStore));
+
+	let ownFilterState = $state<ContentFilterState>(
+		untrack(() => ({
+			...getSavedCategorySlice('Artist'),
+			sort: catalogFeed.filterState.sort
+		}))
+	);
+
+	$effect.pre(() => {
+		if (canSync && isUsingStore) {
+			ownFilterState = cloneContentFilterState(catalogFeed.filterState);
+		}
+	});
+
 	const activeFeedMode = $derived<CatalogFeedMode>(feedMode ?? catalogFeed.resolvedFeedMode);
 	const activeQuery = $derived(query ?? catalogFeed.debouncedQuery);
 	const activeFilterState = $derived<Partial<ContentFilterState>>(
-		filterState ?? catalogFeed.filterState
+		filterState ?? (canSync ? catalogFeed.filterState : ownFilterState)
 	);
 	const activeGenreList = $derived(
 		activeFilterState.genres && activeFilterState.genres.length > 0
@@ -203,6 +227,9 @@
 			}
 			currentPage = res.page;
 			hasNext = res.hasNext;
+			if (!append && !canSync && !res.degraded && res.items.length > 0) {
+				prewarmFdImages(res.items.map(resolveArtistImageUrl), 8);
+			}
 			if (res.degraded) {
 				if (append) {
 					loadMoreErrorMessage = '일시적으로 추가 아티스트를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.';
@@ -353,7 +380,8 @@
 	let lastLoadedKey = untrack(() => (hasLoadedInitial ? requestKey : ''));
 
 	$effect(() => {
-		if (!canSync) return;
+		if (!canSync && hasLoadedInitial) return;
+		if (active && !canSync) return;
 		const key = requestKey;
 
 		if (hasLoadedInitial && key === lastLoadedKey) return;
@@ -413,6 +441,7 @@
 <CatalogSectionShell
 	class={klass}
 	ariaLabel="아티스트 목록"
+	{active}
 	{isLoading}
 	isEmpty={artists.length === 0}
 	{errorMessage}

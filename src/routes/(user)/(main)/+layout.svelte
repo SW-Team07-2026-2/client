@@ -1,11 +1,15 @@
 <script lang="ts">
-	import { onMount, type Snippet } from 'svelte';
+	import { onMount, tick, untrack, type Snippet } from 'svelte';
 	import type { TransitionConfig } from 'svelte/transition';
 	import { page } from '$app/state';
-	import { beforeNavigate, afterNavigate } from '$app/navigation';
+	import { beforeNavigate, afterNavigate, preloadCode } from '$app/navigation';
 	import { MainLayout } from '#lib/components';
 	import BotArea from '#lib/ai/BotArea.svelte';
-	import { artistTransition, catalogFeed } from '#lib/stores';
+	import ArtistSection from '#lib/components/feature/artist/ArtistSection.svelte';
+	import ConcertSection from '#lib/components/feature/concert/ConcertSection.svelte';
+	import AlbumSection from '#lib/components/feature/album/AlbumSection.svelte';
+	import GoodsSection from '#lib/components/feature/goods/GoodsSection.svelte';
+	import { artistTransition, catalogFeed, isMobile } from '#lib/stores';
 	import type { CatalogCategoryKey } from '#lib/config/catalogFeed';
 	import {
 		DIRECTIONAL_BLUR_MOTION,
@@ -126,10 +130,135 @@
 	let currentCatalogCategory = $derived(resolveCatalogCategoryByPath(page.url.pathname));
 	let currentHeaderCategory = $derived(resolveCatalogCategoryByTitle(activeMeta?.title));
 
+	const KEEP_ALIVE_CATEGORIES: readonly CatalogCategoryKey[] = [
+		'artist',
+		'concert',
+		'album',
+		'goods'
+	];
+
+	const KEEP_ALIVE_ROUTE_IDS = {
+		artist: '/(user)/(main)/artist',
+		concert: '/(user)/(main)/concert',
+		album: '/(user)/(main)/album',
+		goods: '/(user)/(main)/goods'
+	} as const;
+
+	const CATEGORY_TITLES: Record<CatalogCategoryKey, string> = {
+		artist: 'INDIG - 아티스트',
+		concert: 'INDIG - 공연',
+		album: 'INDIG - 음반∙LP',
+		goods: 'INDIG - 굿즈'
+	};
+
+	const initialCategory = untrack(() => resolveCatalogCategoryByPath(page.url.pathname));
+	let mountedCategories = $state<Record<CatalogCategoryKey, boolean>>({
+		artist: initialCategory === 'artist',
+		concert: initialCategory === 'concert',
+		album: initialCategory === 'album',
+		goods: initialCategory === 'goods'
+	});
+
+	let paneEls = $state<Partial<Record<CatalogCategoryKey, HTMLDivElement>>>({});
+	let exitingCategory = $state<CatalogCategoryKey | null>(null);
+	let exitingScrollOffset = $state(0);
+	let exitClearTimer: ReturnType<typeof setTimeout> | undefined;
+	let lastTrackedCategory: CatalogCategoryKey | null = initialCategory;
+	let lastTrackedPath: string = untrack(() => page.url.pathname);
+
 	$effect.pre(() => {
-		catalogFeed.activeCategory = currentCatalogCategory;
+		const activeCat = currentCatalogCategory;
+		if (activeCat && !mountedCategories[activeCat]) {
+			mountedCategories[activeCat] = true;
+		}
+		catalogFeed.activeCategory = activeCat;
 		catalogFeed.headerCategory = currentHeaderCategory;
 	});
+
+	function animateKeepAlivePane(
+		el: HTMLElement | undefined,
+		kind: 'in' | 'out',
+		dir: SlideDirection
+	) {
+		if (!el || prefersReducedMotion()) return;
+		el.getAnimations().forEach((a) => a.cancel());
+
+		const offsetX = `${(kind === 'in' ? dir : -dir) * DIRECTIONAL_BLUR_MOTION.distance}%`;
+		const keyframes =
+			kind === 'in'
+				? [
+						{ transform: `translate3d(${offsetX}, 0, 0)` },
+						{ transform: 'translate3d(0, 0, 0)' }
+					]
+				: [
+						{ transform: 'translate3d(0, 0, 0)' },
+						{ transform: `translate3d(${offsetX}, 0, 0)` }
+					];
+
+		el.animate(keyframes, {
+			duration:
+				kind === 'in'
+					? DIRECTIONAL_BLUR_MOTION.enterDuration
+					: DIRECTIONAL_BLUR_MOTION.exitDuration,
+			easing: DIRECTIONAL_BLUR_MOTION.easeCss,
+			fill: kind === 'in' ? 'backwards' : 'forwards'
+		});
+	}
+
+	$effect(() => {
+		const nextCat = currentCatalogCategory;
+		const nextPath = page.url.pathname;
+		if (nextPath === lastTrackedPath && nextCat === lastTrackedCategory) return;
+
+		const prevCat = lastTrackedCategory;
+		const prevPath = lastTrackedPath;
+		lastTrackedCategory = nextCat;
+		lastTrackedPath = nextPath;
+
+		untrack(() => {
+			if (isArtistDetailPair(prevPath, nextPath) || artistTransition.vtPhase !== 'idle') {
+				clearTimeout(exitClearTimer);
+				exitingCategory = null;
+				exitingScrollOffset = 0;
+				return;
+			}
+
+			clearTimeout(exitClearTimer);
+			if (prevCat && prevCat !== nextCat) {
+				exitingCategory = prevCat;
+				exitingScrollOffset = isFullHeaderSlide && slideScrollOffset > 0 ? slideScrollOffset : 0;
+				const prevEl = paneEls[prevCat];
+				animateKeepAlivePane(prevEl, 'out', routeDir);
+				exitClearTimer = setTimeout(() => {
+					if (exitingCategory === prevCat) {
+						exitingCategory = null;
+						exitingScrollOffset = 0;
+					}
+					void tick().then(() => {
+						prevEl?.getAnimations().forEach((a) => a.cancel());
+					});
+				}, DIRECTIONAL_BLUR_MOTION.exitDuration);
+			} else {
+				exitingCategory = null;
+				exitingScrollOffset = 0;
+			}
+
+			if (nextCat && nextCat !== prevCat) {
+				animateKeepAlivePane(paneEls[nextCat], 'in', routeDir);
+			}
+		});
+	});
+
+	function buildProximityPreloadOrder(anchor: CatalogCategoryKey | null): CatalogCategoryKey[] {
+		const center = anchor ? KEEP_ALIVE_CATEGORIES.indexOf(anchor) : 0;
+		return [...KEEP_ALIVE_CATEGORIES]
+			.filter((cat) => cat !== anchor)
+			.sort((a, b) => {
+				const da = Math.abs(KEEP_ALIVE_CATEGORIES.indexOf(a) - center);
+				const db = Math.abs(KEEP_ALIVE_CATEGORIES.indexOf(b) - center);
+				return da - db || KEEP_ALIVE_CATEGORIES.indexOf(a) - KEEP_ALIVE_CATEGORIES.indexOf(b);
+			});
+	}
 
 	$effect(() => {
 		catalogFeed.syncSearchQuery(catalogFeed.searchQuery);
@@ -205,13 +334,9 @@
 		headerEl.animate(
 			[
 				{
-					opacity: 0,
-					filter: `blur(${DIRECTIONAL_BLUR_MOTION.blur}px)`,
-					transform: `translate3d(${dir * DIRECTIONAL_BLUR_MOTION.distance}px, 0, 0)`
+					transform: `translate3d(${dir * DIRECTIONAL_BLUR_MOTION.distance}%, 0, 0)`
 				},
 				{
-					opacity: 1,
-					filter: 'blur(0px)',
 					transform: 'translate3d(0, 0, 0)'
 				}
 			],
@@ -307,13 +432,63 @@
 	}
 
 	onMount(() => {
+		let cancelled = false;
+		const queue = buildProximityPreloadOrder(currentCatalogCategory);
+		const timers: ReturnType<typeof setTimeout>[] = [];
+		const idleIds: number[] = [];
+		const win = window as Window & {
+			requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+			cancelIdleCallback?: (id: number) => void;
+		};
+
+		const scheduleStep = (stepIdx: number) => {
+			if (cancelled || stepIdx >= queue.length) return;
+			const cat = queue[stepIdx];
+
+			const runStep = () => {
+				if (cancelled) return;
+				void preloadCode(KEEP_ALIVE_ROUTE_IDS[cat]).catch(() => {});
+				if (!mountedCategories[cat]) {
+					mountedCategories[cat] = true;
+				}
+				const nextTimer = setTimeout(() => scheduleStep(stepIdx + 1), 380);
+				timers.push(nextTimer);
+			};
+
+			if (typeof win.requestIdleCallback === 'function') {
+				const id = win.requestIdleCallback(runStep, { timeout: 1200 });
+				idleIds.push(id);
+			} else {
+				const t = setTimeout(runStep, 200);
+				timers.push(t);
+			}
+		};
+
+		// 첫 화면 우선 렌더링 후 유휴 시간에 인접 카테고리부터 순차 백그라운드 마운트
+		const bootRaf = requestAnimationFrame(() => {
+			if (cancelled) return;
+			const startTimer = setTimeout(() => scheduleStep(0), 420);
+			timers.push(startTimer);
+		});
+
 		return () => {
+			cancelled = true;
+			cancelAnimationFrame(bootRaf);
+			for (const t of timers) clearTimeout(t);
+			for (const id of idleIds) win.cancelIdleCallback?.(id);
+			clearTimeout(exitClearTimer);
 			cancelSmoothScroll();
 			clearTimeout(revealClearTimer);
 			catalogFeed.clearPendingDebounce();
 		};
 	});
 </script>
+
+<svelte:head>
+	{#if currentCatalogCategory}
+		<title>{CATEGORY_TITLES[currentCatalogCategory]}</title>
+	{/if}
+</svelte:head>
 
 <MainLayout
 	bind:headerEl
@@ -333,11 +508,46 @@
 	headerTransform={headerInlineTransform}
 >
 	<div class="route-stage" style:min-height={stageMinHeight || undefined}>
-		{#key page.url.pathname}
-			<div class="route-transition-pane" in:contentBlurIn out:contentBlurOut>
-				{@render children()}
-			</div>
-		{/key}
+		{#each KEEP_ALIVE_CATEGORIES as category (category)}
+			{#if mountedCategories[category]}
+				{@const isActive = currentCatalogCategory === category}
+				{@const isExiting = exitingCategory === category}
+				{@const isParked = !isActive && !isExiting}
+				<div
+					bind:this={paneEls[category]}
+					class="keepalive-pane"
+					class:is-active={isActive}
+					class:is-exiting={isExiting}
+					class:is-parked={isParked}
+					inert={!isActive ? true : undefined}
+					aria-hidden={!isActive ? true : undefined}
+					style:position={isExiting && exitingScrollOffset > 0 ? 'absolute' : undefined}
+					style:top={isExiting && exitingScrollOffset > 0 ? `${-exitingScrollOffset}px` : undefined}
+					style:left={isExiting && exitingScrollOffset > 0 ? '0' : undefined}
+					style:right={isExiting && exitingScrollOffset > 0 ? '0' : undefined}
+				>
+					<main class="catalog-container" class:is-mobile={isMobile.current}>
+						{#if category === 'artist'}
+							<ArtistSection active={isActive} />
+						{:else if category === 'concert'}
+							<ConcertSection active={isActive} />
+						{:else if category === 'album'}
+							<AlbumSection active={isActive} />
+						{:else}
+							<GoodsSection active={isActive} />
+						{/if}
+					</main>
+				</div>
+			{/if}
+		{/each}
+
+		{#if currentCatalogCategory === null}
+			{#key page.url.pathname}
+				<div class="route-transition-pane" in:contentBlurIn out:contentBlurOut>
+					{@render children()}
+				</div>
+			{/key}
+		{/if}
 	</div>
 
 	{#snippet overlay()}
@@ -357,11 +567,56 @@
 		overflow-x: clip;
 	}
 
-	.route-transition-pane {
+	.route-transition-pane,
+	.keepalive-pane {
 		grid-area: 1 / 1;
 		position: relative;
 		z-index: 2;
 		width: 100%;
 		min-width: 0;
+		contain: layout style;
+		backface-visibility: hidden;
+	}
+
+	.keepalive-pane.is-active,
+	.keepalive-pane.is-exiting {
+		will-change: transform;
+	}
+
+	.keepalive-pane.is-exiting {
+		z-index: 1;
+		pointer-events: none;
+	}
+
+	.keepalive-pane.is-parked {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		overflow: hidden;
+		visibility: hidden;
+		pointer-events: none;
+		contain: layout style paint;
+	}
+
+	.catalog-container {
+		width: 100%;
+		max-width: var(--content-max-width);
+		margin: 0 auto;
+		min-height: calc(100dvh - 60px);
+		padding: 1.25rem var(--content-padding-x) 3.5rem;
+		box-sizing: border-box;
+		color: var(--fg);
+	}
+
+	.catalog-container.is-mobile {
+		padding: 0.75rem var(--content-padding-x-mobile) 2.5rem;
+	}
+
+	@media (max-width: 768px) {
+		.catalog-container {
+			padding: 0.75rem var(--content-padding-x-mobile) 2.5rem;
+		}
 	}
 </style>
