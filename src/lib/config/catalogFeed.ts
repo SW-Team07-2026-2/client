@@ -5,10 +5,19 @@ import {
 	DEFAULT_PRICE_MIN,
 	type ContentFilterState
 } from '#lib/config/filter';
+import { prefersReducedMotion } from '#lib/fluid/spring';
 import { FluidSetting } from '#lib/fluid/setting';
 
 export type CatalogCategoryKey = 'artist' | 'concert' | 'album' | 'goods';
 export type CatalogFeedMode = 'recommend' | 'popular' | 'all' | 'follow';
+
+export const CATALOG_TRANSITION_TIMING = {
+	contentExitMs: 160,
+	skeletonEnterMs: 180,
+	skeletonMinMs: 180,
+	skeletonExitMs: 130,
+	contentEnterMs: 280
+} as const;
 
 export interface CatalogPageResult<T> {
 	items: T[];
@@ -253,4 +262,34 @@ export async function fetchCatalogPage<T, R = T>(opts: {
 		hasNext: degraded ? false : Boolean(res?.hasNext),
 		degraded
 	};
+}
+
+/**
+ * 필터·검색 재조회 시 기존 콘텐츠가 부드럽게 퇴장하고 최소 로딩 스켈레톤이 노출되도록
+ * API 요청과 전환 대기 시간을 병렬로 맞춥니다.
+ */
+export async function fetchCatalogPageWithTransition<T, R = T>(
+	opts: Parameters<typeof fetchCatalogPage<T, R>>[0],
+	shouldStageTransition: boolean
+): Promise<CatalogPageResult<T>> {
+	const minStageMs =
+		shouldStageTransition && !prefersReducedMotion()
+			? CATALOG_TRANSITION_TIMING.contentExitMs + CATALOG_TRANSITION_TIMING.skeletonMinMs
+			: 0;
+
+	if (minStageMs <= 0) {
+		return fetchCatalogPage<T, R>(opts);
+	}
+
+	const waitStage = new Promise<void>((resolve) => {
+		setTimeout(resolve, minStageMs);
+	});
+
+	try {
+		const [res] = await Promise.all([fetchCatalogPage<T, R>(opts), waitStage]);
+		return res;
+	} catch (err) {
+		await waitStage;
+		throw err;
+	}
 }

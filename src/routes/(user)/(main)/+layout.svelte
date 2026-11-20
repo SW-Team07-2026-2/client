@@ -9,7 +9,18 @@
 	import ConcertSection from '#lib/components/feature/concert/ConcertSection.svelte';
 	import AlbumSection from '#lib/components/feature/album/AlbumSection.svelte';
 	import GoodsSection from '#lib/components/feature/goods/GoodsSection.svelte';
-	import { artistTransition, catalogFeed, isMobile } from '#lib/stores';
+	import ContentFilterSection from '#lib/components/feature/filter/ContentFilterSection.svelte';
+	import {
+		DEFAULT_FOLLOW_SORT,
+		clearSavedCategoryFilter,
+		cloneContentFilterState,
+		createEmptyFilterSlice,
+		getSavedCategorySlice,
+		getSavedFollowSort,
+		saveFollowSort,
+		type ContentFilterState
+	} from '#lib/config/filter';
+	import { catalogFeed, isMobile } from '#lib/stores';
 	import type { CatalogCategoryKey } from '#lib/config/catalogFeed';
 	import {
 		DIRECTIONAL_BLUR_MOTION,
@@ -87,20 +98,8 @@
 		}
 	};
 
-	function isArtistDetailRoute(pathname?: string | null): boolean {
-		return Boolean(pathname && /^\/artist\/\d+\/?$/.test(pathname));
-	}
-
-	function isArtistDetailPair(fromPath?: string | null, toPath?: string | null): boolean {
-		return (
-			(fromPath === '/artist' && isArtistDetailRoute(toPath)) ||
-			(isArtistDetailRoute(fromPath) && toPath === '/artist')
-		);
-	}
-
 	let currentMeta = $derived.by(() => {
 		const pathname = page.url.pathname;
-		if (isArtistDetailRoute(pathname)) return null;
 		const matchedKey = Object.keys(CATEGORY_MAP).find(
 			(key) => pathname === key || pathname.startsWith(key + '/')
 		);
@@ -151,6 +150,23 @@
 		goods: 'INDIG - 굿즈'
 	};
 
+	const CATEGORY_FILTER_NAME: Record<
+		CatalogCategoryKey,
+		'Artist' | 'Concert' | 'Album' | 'Merchandise'
+	> = {
+		artist: 'Artist',
+		concert: 'Concert',
+		album: 'Album',
+		goods: 'Merchandise'
+	};
+
+	function buildCategoryFilterState(cat: CatalogCategoryKey, sort = ''): ContentFilterState {
+		return {
+			...getSavedCategorySlice(CATEGORY_FILTER_NAME[cat]),
+			sort
+		};
+	}
+
 	const initialCategory = untrack(() => resolveCatalogCategoryByPath(page.url.pathname));
 	let mountedCategories = $state<Record<CatalogCategoryKey, boolean>>({
 		artist: initialCategory === 'artist',
@@ -159,12 +175,121 @@
 		goods: initialCategory === 'goods'
 	});
 
+	let filterOpen = $state(false);
+	let filterMounted = $state(false);
+	let filterUnmountTimer: ReturnType<typeof setTimeout> | undefined;
+	let filterSectionRefs = $state<
+		Partial<Record<CatalogCategoryKey, ReturnType<typeof ContentFilterSection>>>
+	>({});
+	let categoryFilterStates = $state<Record<CatalogCategoryKey, ContentFilterState>>({
+		artist: buildCategoryFilterState('artist', untrack(() => catalogFeed.filterState.sort)),
+		concert: buildCategoryFilterState('concert', untrack(() => catalogFeed.filterState.sort)),
+		album: buildCategoryFilterState('album', untrack(() => catalogFeed.filterState.sort)),
+		goods: buildCategoryFilterState('goods', untrack(() => catalogFeed.filterState.sort))
+	});
+	let syncedFilterCat: CatalogCategoryKey | null = null;
+	let prevFeedFollow = untrack(() => catalogFeed.feedMode === 'follow');
+
+	// 첫 마운트 시 자식 섹션(Artist/Concert/Album/GoodsSection)이 API를 호출하기 전에
+	// 저장된 카테고리 필터·활성 카테고리를 스토어에 즉시 동기화해 새로고침 직후 첫 요청부터 필터를 반영
+	untrack(() => {
+		if (initialCategory) {
+			const sort =
+				catalogFeed.feedMode === 'follow'
+					? catalogFeed.filterState.sort || getSavedFollowSort() || DEFAULT_FOLLOW_SORT
+					: '';
+			const synced = cloneContentFilterState({
+				...categoryFilterStates[initialCategory],
+				sort
+			});
+			categoryFilterStates[initialCategory] = synced;
+			catalogFeed.activeCategory = initialCategory;
+			catalogFeed.headerCategory = initialCategory;
+			catalogFeed.filterState = cloneContentFilterState(synced);
+			syncedFilterCat = initialCategory;
+		}
+	});
+
+	$effect(() => {
+		const isOpen = filterOpen;
+		clearTimeout(filterUnmountTimer);
+		if (isOpen) {
+			filterMounted = true;
+		} else if (filterMounted) {
+			filterUnmountTimer = setTimeout(() => {
+				filterMounted = false;
+			}, 380);
+		}
+	});
+
+	$effect.pre(() => {
+		const follow = catalogFeed.feedMode === 'follow';
+		if (follow === prevFeedFollow) return;
+		prevFeedFollow = follow;
+		untrack(() => {
+			const nextSort = follow
+				? catalogFeed.filterState.sort || getSavedFollowSort() || DEFAULT_FOLLOW_SORT
+				: '';
+			if (catalogFeed.filterState.sort !== nextSort) {
+				catalogFeed.filterState = { ...catalogFeed.filterState, sort: nextSort };
+			}
+			for (const cat of KEEP_ALIVE_CATEGORIES) {
+				if (categoryFilterStates[cat].sort !== nextSort) {
+					categoryFilterStates[cat] = { ...categoryFilterStates[cat], sort: nextSort };
+				}
+			}
+		});
+	});
+
+	function handlePaneFilterChange(cat: CatalogCategoryKey, nextState: ContentFilterState) {
+		if (catalogFeed.feedMode === 'follow' && nextState.sort) {
+			saveFollowSort(nextState.sort);
+		}
+		categoryFilterStates[cat] = cloneContentFilterState(nextState);
+		if (currentCatalogCategory === cat) {
+			catalogFeed.filterState = cloneContentFilterState(nextState);
+		} else if (nextState.sort !== catalogFeed.filterState.sort) {
+			catalogFeed.filterState = { ...catalogFeed.filterState, sort: nextState.sort };
+		}
+	}
+
+	function handleHeaderFilterReset() {
+		const activeCat = currentCatalogCategory;
+		if (!activeCat) return;
+		const ref = filterSectionRefs[activeCat];
+		if (ref) {
+			ref.resetAll();
+			return;
+		}
+		clearSavedCategoryFilter(CATEGORY_FILTER_NAME[activeCat]);
+		const cleared: ContentFilterState = {
+			...createEmptyFilterSlice(),
+			sort: catalogFeed.feedMode === 'follow' ? catalogFeed.filterState.sort : ''
+		};
+		categoryFilterStates[activeCat] = cleared;
+		catalogFeed.filterState = cloneContentFilterState(cleared);
+	}
+
 	let paneEls = $state<Partial<Record<CatalogCategoryKey, HTMLDivElement>>>({});
+	let filterShellEls = $state<Partial<Record<CatalogCategoryKey, HTMLDivElement>>>({});
 	let exitingCategory = $state<CatalogCategoryKey | null>(null);
-	let exitingScrollOffset = $state(0);
+	let exitingDeltaY = $state(0);
+	let isPaneSliding = $state(false);
 	let exitClearTimer: ReturnType<typeof setTimeout> | undefined;
+	let activeSlideToken = 0;
 	let lastTrackedCategory: CatalogCategoryKey | null = initialCategory;
 	let lastTrackedPath: string = untrack(() => page.url.pathname);
+
+	// 카테고리별 독립 스크롤 위치 기억 (아티스트 -> 공연 -> 아티스트 복귀 시 기존 스크롤 복원)
+	const categoryScrollPositions: Record<CatalogCategoryKey, number> = {
+		artist: 0,
+		concert: 0,
+		album: 0,
+		goods: 0
+	};
+	let pendingTargetScrollY: number | null = null;
+	let pendingExitingDeltaY = 0;
+	let isSmoothScrollingToTop = false;
 
 	$effect.pre(() => {
 		const activeCat = currentCatalogCategory;
@@ -173,14 +298,27 @@
 		}
 		catalogFeed.activeCategory = activeCat;
 		catalogFeed.headerCategory = currentHeaderCategory;
+
+		if (activeCat && activeCat !== syncedFilterCat) {
+			syncedFilterCat = activeCat;
+			const sort = catalogFeed.feedMode === 'follow' ? catalogFeed.filterState.sort : '';
+			const synced = cloneContentFilterState({
+				...categoryFilterStates[activeCat],
+				sort
+			});
+			categoryFilterStates[activeCat] = synced;
+			catalogFeed.filterState = cloneContentFilterState(synced);
+		} else if (!activeCat) {
+			syncedFilterCat = null;
+		}
 	});
 
-	function animateKeepAlivePane(
+	function createPaneSlideAnimation(
 		el: HTMLElement | undefined,
 		kind: 'in' | 'out',
 		dir: SlideDirection
-	) {
-		if (!el || prefersReducedMotion()) return;
+	): Animation | null {
+		if (!el) return null;
 		el.getAnimations().forEach((a) => a.cancel());
 
 		const offsetX = `${(kind === 'in' ? dir : -dir) * DIRECTIONAL_BLUR_MOTION.distance}%`;
@@ -195,7 +333,7 @@
 						{ transform: `translate3d(${offsetX}, 0, 0)` }
 					];
 
-		el.animate(keyframes, {
+		const anim = el.animate(keyframes, {
 			duration:
 				kind === 'in'
 					? DIRECTIONAL_BLUR_MOTION.enterDuration
@@ -203,6 +341,78 @@
 			easing: DIRECTIONAL_BLUR_MOTION.easeCss,
 			fill: kind === 'in' ? 'backwards' : 'forwards'
 		});
+		// 첫 페인트·레이어 업로드를 마친 뒤 out/in을 동일 VSync startTime으로 동시 출발시켜 프레임 드롭 방지
+		anim.pause();
+		return anim;
+	}
+
+	function finishKeepAliveSlide(token: number, prevEl?: HTMLElement, nextEl?: HTMLElement) {
+		if (token !== activeSlideToken) return;
+		clearTimeout(exitClearTimer);
+		exitingCategory = null;
+		exitingDeltaY = 0;
+		isPaneSliding = false;
+		if (!isSmoothScrollingToTop) {
+			stageMinHeight = '';
+		}
+		void tick().then(() => {
+			if (token !== activeSlideToken) return;
+			prevEl?.getAnimations().forEach((a) => a.cancel());
+			nextEl?.getAnimations().forEach((a) => a.cancel());
+		});
+	}
+
+	function startKeepAliveSlide(
+		prevEl: HTMLElement | undefined,
+		nextEl: HTMLElement | undefined,
+		dir: SlideDirection
+	) {
+		clearTimeout(exitClearTimer);
+		const token = ++activeSlideToken;
+
+		if (prefersReducedMotion() || (!prevEl && !nextEl)) {
+			finishKeepAliveSlide(token, prevEl, nextEl);
+			return;
+		}
+
+		isPaneSliding = true;
+		const outAnim = createPaneSlideAnimation(prevEl, 'out', dir);
+		const inAnim = createPaneSlideAnimation(nextEl, 'in', dir);
+		const anims = [outAnim, inAnim].filter((a): a is Animation => a !== null);
+		if (anims.length === 0) {
+			finishKeepAliveSlide(token, prevEl, nextEl);
+			return;
+		}
+
+		const fallbackMs = Math.max(
+			DIRECTIONAL_BLUR_MOTION.enterDuration,
+			DIRECTIONAL_BLUR_MOTION.exitDuration
+		) + 120;
+		exitClearTimer = setTimeout(() => {
+			finishKeepAliveSlide(token, prevEl, nextEl);
+		}, fallbackMs);
+
+		void Promise.all(anims.map((a) => a.ready))
+			.then(() => {
+				if (token !== activeSlideToken) {
+					for (const a of anims) a.cancel();
+					return;
+				}
+				const syncStart =
+					typeof document !== 'undefined' ? (document.timeline?.currentTime ?? null) : null;
+				for (const a of anims) {
+					a.play();
+					if (syncStart !== null) {
+						a.startTime = syncStart;
+					}
+				}
+				void Promise.allSettled(anims.map((a) => a.finished)).then(() => {
+					finishKeepAliveSlide(token, prevEl, nextEl);
+				});
+			})
+			.catch(() => {
+				finishKeepAliveSlide(token, prevEl, nextEl);
+			});
 	}
 
 	$effect(() => {
@@ -216,35 +426,24 @@
 		lastTrackedPath = nextPath;
 
 		untrack(() => {
-			if (isArtistDetailPair(prevPath, nextPath) || artistTransition.vtPhase !== 'idle') {
-				clearTimeout(exitClearTimer);
-				exitingCategory = null;
-				exitingScrollOffset = 0;
-				return;
-			}
+			const prevEl = prevCat && prevCat !== nextCat ? paneEls[prevCat] : undefined;
+			const nextEl = nextCat && nextCat !== prevCat ? paneEls[nextCat] : undefined;
 
-			clearTimeout(exitClearTimer);
 			if (prevCat && prevCat !== nextCat) {
 				exitingCategory = prevCat;
-				exitingScrollOffset = isFullHeaderSlide && slideScrollOffset > 0 ? slideScrollOffset : 0;
-				const prevEl = paneEls[prevCat];
-				animateKeepAlivePane(prevEl, 'out', routeDir);
-				exitClearTimer = setTimeout(() => {
-					if (exitingCategory === prevCat) {
-						exitingCategory = null;
-						exitingScrollOffset = 0;
-					}
-					void tick().then(() => {
-						prevEl?.getAnimations().forEach((a) => a.cancel());
-					});
-				}, DIRECTIONAL_BLUR_MOTION.exitDuration);
+				exitingDeltaY = pendingExitingDeltaY;
 			} else {
 				exitingCategory = null;
-				exitingScrollOffset = 0;
+				exitingDeltaY = 0;
 			}
+			pendingExitingDeltaY = 0;
 
-			if (nextCat && nextCat !== prevCat) {
-				animateKeepAlivePane(paneEls[nextCat], 'in', routeDir);
+			if (prevEl || nextEl) {
+				startKeepAliveSlide(prevEl, nextEl, routeDir);
+			} else {
+				activeSlideToken += 1;
+				clearTimeout(exitClearTimer);
+				isPaneSliding = false;
 			}
 		});
 	});
@@ -297,11 +496,13 @@
 		if (typeof window === 'undefined') return;
 		const startY = initialY !== undefined ? Math.max(initialY, window.scrollY) : window.scrollY;
 		if (startY <= 2) {
+			isSmoothScrollingToTop = false;
 			stageMinHeight = '';
 			triggerHeaderReveal();
 			return;
 		}
 
+		isSmoothScrollingToTop = true;
 		// 새 페이지 컨텐츠가 짧아도 스크롤 도중 바닥이 붕괴되어 튕기지 않도록 일시적 높이 유지
 		stageMinHeight = `${startY + window.innerHeight}px`;
 
@@ -314,18 +515,26 @@
 				}
 			},
 			onComplete: () => {
+				isSmoothScrollingToTop = false;
 				stageMinHeight = '';
 				triggerHeaderReveal();
 			}
 		});
 	}
 
-	function isHeaderScrolledPastTop(): boolean {
+	function isHeaderScrolledPastTop(activeCat: CatalogCategoryKey | null = currentCatalogCategory): boolean {
 		if (!headerEl || typeof window === 'undefined') return false;
 		const pcHeaderHeight =
 			parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pc-header-height')) ||
 			70;
-		return headerEl.getBoundingClientRect().bottom <= pcHeaderHeight;
+		let bottom = headerEl.getBoundingClientRect().bottom;
+		if (filterOpen && activeCat) {
+			const filterEl = filterShellEls[activeCat];
+			if (filterEl) {
+				bottom = Math.max(bottom, filterEl.getBoundingClientRect().bottom);
+			}
+		}
+		return bottom <= pcHeaderHeight;
 	}
 
 	function playHeaderDirectionalSlide(dir: SlideDirection) {
@@ -352,7 +561,9 @@
 		if (typeof window === 'undefined') return;
 		const fromPath = nav.from?.url.pathname;
 		const toPath = nav.to?.url.pathname;
-		if (isArtistDetailPair(fromPath, toPath)) return;
+
+		const fromCat = resolveCatalogCategoryByPath(fromPath);
+		const toCat = resolveCatalogCategoryByPath(toPath);
 
 		const fromIdx = resolveRouteIndex(fromPath);
 		const toIdx = resolveRouteIndex(toPath);
@@ -362,16 +573,56 @@
 
 		isFullHeaderSlide = false;
 		slideScrollOffset = 0;
+		pendingTargetScrollY = null;
+		pendingExitingDeltaY = 0;
 
-		if (fromPath && toPath && fromPath !== toPath && nav.type !== 'popstate') {
-			preNavScrollY = window.scrollY;
+		if (fromPath && toPath && fromPath !== toPath) {
+			preNavScrollY = Math.max(0, window.scrollY);
+			const pastHeaderAndFilter = isHeaderScrolledPastTop(fromCat);
+			if (fromCat) {
+				// 콘텐츠 헤더·필터 영역이 아직 화면에 보이는 정도라면 스크롤 기억을 비워 복귀 시 최상단처럼 노출
+				const shouldRememberScroll = headerEl ? pastHeaderAndFilter : preNavScrollY > 140;
+				categoryScrollPositions[fromCat] = shouldRememberScroll ? preNavScrollY : 0;
+			}
 
-			// 콘텐츠 헤더가 상단 헤더 위로 완전히 넘어간 경우에는 스크롤 모션 없이 콘텐츠 헤더까지 함께 좌우 블러 전환
-			if (isHeaderScrolledPastTop()) {
+			const targetY = toCat ? categoryScrollPositions[toCat] : 0;
+			if (toCat) {
+				pendingTargetScrollY = targetY;
+			}
+
+			// 저장된 스크롤 위치가 있는 카테고리로 복귀할 때는 해당 Y 위치로 바로 정렬하고
+			// 퇴장 패널만 화면 상 상대 위치가 어긋나지 않도록 보정
+			if (toCat && targetY > 0) {
 				clearTimeout(revealClearTimer);
 				cancelSmoothScroll();
+				isSmoothScrollingToTop = false;
+				isHeaderRevealingFromNav = false;
+				isHeaderConcealedForNav = false;
+				pendingExitingDeltaY = targetY - preNavScrollY;
+				stageMinHeight = `${Math.max(targetY, preNavScrollY) + window.innerHeight}px`;
+				return;
+			}
+
+			if (nav.type === 'popstate') {
+				if (toCat) {
+					clearTimeout(revealClearTimer);
+					cancelSmoothScroll();
+					isSmoothScrollingToTop = false;
+					isHeaderRevealingFromNav = false;
+					isHeaderConcealedForNav = false;
+					pendingExitingDeltaY = -preNavScrollY;
+				}
+				return;
+			}
+
+			// 콘텐츠 헤더와 열린 필터 영역이 상단 헤더 위로 완전히 넘어간 경우에는 스크롤 모션 없이 콘텐츠 헤더까지 함께 좌우 전환
+			if (pastHeaderAndFilter) {
+				clearTimeout(revealClearTimer);
+				cancelSmoothScroll();
+				isSmoothScrollingToTop = false;
 				isFullHeaderSlide = true;
 				slideScrollOffset = preNavScrollY;
+				pendingExitingDeltaY = -preNavScrollY;
 				isHeaderRevealingFromNav = false;
 				isHeaderConcealedForNav = false;
 				stageMinHeight = '';
@@ -394,11 +645,33 @@
 	afterNavigate((nav) => {
 		const fromPath = nav.from?.url.pathname;
 		const toPath = nav.to?.url.pathname;
-		if (isArtistDetailPair(fromPath, toPath)) return;
 		// 초기 로드나 동일 경로가 아닌 실제 페이지 전환 시 처리
-		if (fromPath && toPath && fromPath !== toPath && nav.type !== 'popstate') {
+		if (fromPath && toPath && fromPath !== toPath) {
+			const toCat = resolveCatalogCategoryByPath(toPath);
+			const targetY = pendingTargetScrollY;
+			pendingTargetScrollY = null;
+
+			if (toCat && targetY !== null && (targetY > 0 || nav.type === 'popstate')) {
+				cancelSmoothScroll();
+				isSmoothScrollingToTop = false;
+				isHeaderConcealedForNav = false;
+				isHeaderRevealingFromNav = false;
+				displayedMeta = currentMeta;
+				window.scrollTo({ top: targetY, left: 0, behavior: 'auto' });
+				preNavScrollY = 0;
+				requestAnimationFrame(() => {
+					if (Math.abs(window.scrollY - targetY) > 1) {
+						window.scrollTo({ top: targetY, left: 0, behavior: 'auto' });
+					}
+				});
+				return;
+			}
+
+			if (nav.type === 'popstate') return;
+
 			if (isFullHeaderSlide) {
 				cancelSmoothScroll();
+				isSmoothScrollingToTop = false;
 				stageMinHeight = '';
 				window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
 				playHeaderDirectionalSlide(routeDir);
@@ -415,12 +688,10 @@
 	});
 
 	function contentBlurIn(node: Element): TransitionConfig {
-		if (artistTransition.vtPhase !== 'idle') return { duration: 0 };
 		return directionalBlurIn(node, { dir: routeDir });
 	}
 
 	function contentBlurOut(node: Element): TransitionConfig {
-		if (artistTransition.vtPhase !== 'idle') return { duration: 0 };
 		if (isFullHeaderSlide && slideScrollOffset > 0) {
 			const el = node as HTMLElement;
 			el.style.position = 'absolute';
@@ -473,10 +744,12 @@
 
 		return () => {
 			cancelled = true;
+			activeSlideToken += 1;
 			cancelAnimationFrame(bootRaf);
 			for (const t of timers) clearTimeout(t);
 			for (const id of idleIds) win.cancelIdleCallback?.(id);
 			clearTimeout(exitClearTimer);
+			clearTimeout(filterUnmountTimer);
 			cancelSmoothScroll();
 			clearTimeout(revealClearTimer);
 			catalogFeed.clearPendingDebounce();
@@ -499,7 +772,9 @@
 	badge={activeMeta?.badge}
 	bind:feedMode={catalogFeed.feedMode}
 	bind:searchQuery={catalogFeed.searchQuery}
+	bind:filterOpen
 	bind:filterState={catalogFeed.filterState}
+	onFilterReset={handleHeaderFilterReset}
 	onSearchSubmit={(val) => catalogFeed.commitSearch(val)}
 	onRefresh={() => catalogFeed.triggerRefresh()}
 	headerConcealed={isHeaderConcealedForNav}
@@ -507,7 +782,11 @@
 	headerOpacity={headerInlineOpacity}
 	headerTransform={headerInlineTransform}
 >
-	<div class="route-stage" style:min-height={stageMinHeight || undefined}>
+	<div
+		class="route-stage"
+		class:is-sliding={isPaneSliding}
+		style:min-height={stageMinHeight || undefined}
+	>
 		{#each KEEP_ALIVE_CATEGORIES as category (category)}
 			{#if mountedCategories[category]}
 				{@const isActive = currentCatalogCategory === category}
@@ -521,11 +800,38 @@
 					class:is-parked={isParked}
 					inert={!isActive ? true : undefined}
 					aria-hidden={!isActive ? true : undefined}
-					style:position={isExiting && exitingScrollOffset > 0 ? 'absolute' : undefined}
-					style:top={isExiting && exitingScrollOffset > 0 ? `${-exitingScrollOffset}px` : undefined}
-					style:left={isExiting && exitingScrollOffset > 0 ? '0' : undefined}
-					style:right={isExiting && exitingScrollOffset > 0 ? '0' : undefined}
+					style:position={isExiting && exitingDeltaY !== 0 ? 'absolute' : undefined}
+					style:top={isExiting && exitingDeltaY !== 0 ? `${exitingDeltaY}px` : undefined}
+					style:left={isExiting && exitingDeltaY !== 0 ? '0' : undefined}
+					style:right={isExiting && exitingDeltaY !== 0 ? '0' : undefined}
 				>
+					{#if !isMobile.current}
+						<div bind:this={filterShellEls[category]} class="pane-filter-shell">
+							<div
+								class="pane-filter-drawer"
+								class:is-open={filterOpen}
+								aria-hidden={!filterOpen}
+								inert={!filterOpen || undefined}
+							>
+								<div class="pane-filter-drawer-inner">
+									<div class="pane-filter-drawer-content">
+										{#if filterMounted}
+											<ContentFilterSection
+												bind:this={filterSectionRefs[category]}
+												category={CATEGORY_FILTER_NAME[category]}
+												feedMode={catalogFeed.feedMode}
+												active={isActive}
+												isolatedCategory={true}
+												bind:filterState={categoryFilterStates[category]}
+												onchange={(next) => handlePaneFilterChange(category, next)}
+											/>
+										{/if}
+									</div>
+								</div>
+							</div>
+						</div>
+					{/if}
+
 					<main class="catalog-container" class:is-mobile={isMobile.current}>
 						{#if category === 'artist'}
 							<ArtistSection active={isActive} />
@@ -565,6 +871,7 @@
 		grid-template-columns: 100%;
 		width: 100%;
 		overflow-x: clip;
+		contain: layout style;
 	}
 
 	.route-transition-pane,
@@ -578,13 +885,18 @@
 		backface-visibility: hidden;
 	}
 
-	.keepalive-pane.is-active,
-	.keepalive-pane.is-exiting {
+	.keepalive-pane.is-active {
+		transform: translate3d(0, 0, 0);
 		will-change: transform;
 	}
 
 	.keepalive-pane.is-exiting {
+		will-change: transform;
 		z-index: 1;
+		pointer-events: none;
+	}
+
+	.route-stage.is-sliding .keepalive-pane {
 		pointer-events: none;
 	}
 
@@ -595,9 +907,48 @@
 		width: 100%;
 		height: 100%;
 		overflow: hidden;
-		visibility: hidden;
+		opacity: 0;
+		z-index: 0;
 		pointer-events: none;
 		contain: layout style paint;
+	}
+
+	.pane-filter-shell {
+		width: 100%;
+		max-width: var(--content-max-width);
+		margin: 0 auto;
+		padding: 0 var(--content-header-padding-x);
+		box-sizing: border-box;
+	}
+
+	.pane-filter-drawer {
+		display: grid;
+		grid-template-rows: 0fr;
+		opacity: 0;
+		width: 100%;
+		transition:
+			grid-template-rows 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+			opacity 0.26s ease;
+	}
+
+	.pane-filter-drawer.is-open {
+		grid-template-rows: 1fr;
+		opacity: 1;
+	}
+
+	.keepalive-pane.is-parked .pane-filter-drawer,
+	.keepalive-pane.is-exiting .pane-filter-drawer {
+		transition: none;
+	}
+
+	.pane-filter-drawer-inner {
+		min-height: 0;
+		overflow: hidden;
+	}
+
+	.pane-filter-drawer-content {
+		padding: 0.25rem 12px 0.35rem 8px;
+		box-sizing: border-box;
 	}
 
 	.catalog-container {

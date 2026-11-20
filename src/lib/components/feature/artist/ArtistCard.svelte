@@ -4,12 +4,11 @@
 
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { goto } from '$app/navigation';
 	import FdButton from '#lib/components/ui/FdButton.svelte';
 	import FdImage from '#lib/components/ui/FdImage.svelte';
 	import { FluidSetting } from '#lib/fluid/setting';
 	import { resolveArtistImageUrl, type CatalogArtist } from '#lib/config/artists';
-	import { artistTransition, isMobile } from '#lib/stores';
+	import { isMobile } from '#lib/stores';
 
 	interface Props {
 		/** 아티스트 데이터 (명세서 C2 CatalogArtistItem 호환) */
@@ -47,19 +46,16 @@
 	let buttonMounted = $state(false);
 	let buttonVisible = $state(false);
 	let extractedWaveColor = $state('var(--muted-wave)');
-	let photoProxyEl = $state<HTMLDivElement | null>(null);
 
 	let enterRaf = 0;
 	let unmountTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const allowHoverOverlay = $derived(!isMobile.current && !lastInputWasTouch);
 	const isActive = $derived(focused || (allowHoverOverlay && (cardHovered || imageHovered)));
-	const portraitInset = $derived(FluidSetting.from(setting).computedInset);
-	const isVtTarget = $derived(artistTransition.vtArtistId === artist.id);
 
 	// 호버 시 지연 마운트 -> 다음 프레임에 가시화(부드러운 등장), 이탈 시 페이드아웃 후 언마운트
 	$effect(() => {
-		if (isActive && !isVtTarget) {
+		if (isActive) {
 			clearTimeout(unmountTimer);
 			if (!buttonMounted) {
 				buttonMounted = true;
@@ -123,12 +119,7 @@
 	});
 
 	function handleCardClick() {
-		artistTransition.prepareEnter(artist, photoProxyEl, extractedWaveColor, following);
-		if (onclick) {
-			onclick(artist);
-		} else {
-			goto(`/artist/${artist.id}`);
-		}
+		onclick?.(artist);
 	}
 
 	function handleFollowClick(e: MouseEvent) {
@@ -152,8 +143,6 @@
 	class="artist-card {klass}"
 	class:is-active={isActive}
 	class:is-following={following}
-	class:is-vt-target={isVtTarget}
-	data-artist-card={artist.id}
 	onpointerdown={(e) => {
 		if (e.pointerType !== 'mouse') {
 			lastInputWasTouch = true;
@@ -209,27 +198,17 @@
 		<!-- 팔로우 상태 표시 점 (순수 CSS scale/opacity 애니메이션) -->
 		<span
 			class="follow-indicator-dot"
-			class:is-visible={following && !isVtTarget}
+			class:is-visible={following}
 			title={following ? '팔로우 중' : undefined}
-			aria-hidden={!following || isVtTarget}
+			aria-hidden={!following}
 		></span>
-
-		<!-- View Transition 시 캔버스 여백/물결 없이 깔끔한 사진 좌표만 분리해 모핑하기 위한 프록시 레이어 -->
-		<div
-			bind:this={photoProxyEl}
-			class="artist-photo-proxy"
-			data-artist-photo={artist.id}
-			style:inset="{portraitInset}px"
-			style:border-radius="999px"
-			aria-hidden="true"
-		>
-			<img src={resolvedImageSrc} alt="" draggable="false" />
-		</div>
 
 		<FdImage
 			class="artist-fd-image"
 			src={resolvedImageSrc}
 			alt={artist.name}
+			loading="eager"
+			decoding="async"
 			objectPosition="50% 40%"
 			{setting}
 			active={isActive}
@@ -315,33 +294,6 @@
 		width: 100%;
 		height: 100%;
 		z-index: 1;
-	}
-
-	.artist-photo-proxy {
-		position: absolute;
-		z-index: 2;
-		overflow: hidden;
-		opacity: 0;
-		pointer-events: none;
-		user-select: none;
-	}
-
-	.artist-photo-proxy img {
-		display: block;
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		object-position: 50% 40%;
-		pointer-events: none;
-	}
-
-	.artist-card.is-vt-target .artist-photo-proxy {
-		opacity: 1;
-		view-transition-name: artist-hero-photo;
-	}
-
-	.artist-card.is-vt-target :global(.artist-fd-image) {
-		opacity: 0;
 	}
 
 	/* 원형 이미지 바깥 오른쪽 상단에 위치하는 하얀색 팔로우 표시 점 */

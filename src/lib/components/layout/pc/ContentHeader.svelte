@@ -7,9 +7,7 @@
 	import FdSegmentedControl, { type SegmentOption } from '../../ui/FdSegmentedControl.svelte';
 	import RefreshCcwIcon from '../../ui/RefreshCcwIcon.svelte';
 	import FdContentSearchInput from '../../feature/FdContentSearchInput.svelte';
-	import ContentFilterSection from '../../feature/filter/ContentFilterSection.svelte';
 	import {
-		DIRECTIONAL_BLUR_MOTION,
 		resolveSlideDirection,
 		type SlideDirection
 	} from '#lib/utils/directionalBlur';
@@ -17,8 +15,6 @@
 		clearSavedCategoryFilter,
 		countActiveFilters,
 		createDefaultFilterState,
-		restoreCategoryFilterState,
-		saveCategoryFilter,
 		type ContentFilterState
 	} from '#lib/config/filter';
 
@@ -59,6 +55,8 @@
 		onGenreChange?: (genres: string[]) => void;
 		/** 통합 필터 변경 콜백 */
 		onFilterChange?: (state: ContentFilterState) => void;
+		/** 전체 필터 초기화 콜백 */
+		onFilterReset?: () => void;
 		/** 필터 영역 스니펫 (추후 제작될 필터 컴포넌트들을 전달) */
 		filters?: Snippet;
 		/** 우측 상단 액션 영역 (검색, 정렬 셀렉트 등 옵션) */
@@ -90,6 +88,7 @@
 		filterMultiple = true,
 		onGenreChange,
 		onFilterChange,
+		onFilterReset,
 		filters,
 		actions,
 		onRefresh,
@@ -181,29 +180,61 @@
 	let lastSubtitleCategoryIndex: number | null = null;
 	let subtitleCleanupTimer: ReturnType<typeof setTimeout> | undefined;
 
+	const SUBTITLE_BLUR_MOTION = {
+		distance: 38,
+		blur: 6,
+		enterDuration: 420,
+		exitDuration: 320,
+		easeCss: 'cubic-bezier(0.22, 1, 0.36, 1)'
+	} as const;
+
 	function animateSubtitle(node: HTMLElement, params: { phase: SubtitleItem['phase']; dir: SlideDirection }) {
 		let currentPhase = params.phase;
 
 		function play(next: { phase: SubtitleItem['phase']; dir: SlideDirection }) {
 			if (prefersReducedMotion()) return;
-			const { enterDuration, exitDuration, easeCss } = DIRECTIONAL_BLUR_MOTION;
+			const { distance, blur, enterDuration, exitDuration, easeCss } = SUBTITLE_BLUR_MOTION;
 			if (next.phase === 'entering') {
 				node.getAnimations().forEach((a) => a.cancel());
 				node.animate(
 					[
-						{ transform: `translate3d(${next.dir * 100}%, 0, 0)` },
-						{ transform: 'translate3d(0, 0, 0)' }
+						{
+							transform: `translate3d(${next.dir * distance}px, 0, 0)`,
+							opacity: 0,
+							filter: `blur(${blur}px)`
+						},
+						{
+							transform: 'translate3d(0, 0, 0)',
+							opacity: 1,
+							filter: 'blur(0px)'
+						}
 					],
 					{ duration: enterDuration, easing: easeCss, fill: 'backwards' }
 				);
 			} else if (next.phase === 'exiting') {
-				const computed = getComputedStyle(node).transform;
-				const startTransform = computed && computed !== 'none' ? computed : 'translate3d(0, 0, 0)';
+				const computed = getComputedStyle(node);
+				const startTransform =
+					computed.transform && computed.transform !== 'none'
+						? computed.transform
+						: 'translate3d(0, 0, 0)';
+				const parsedOpacity = Number.parseFloat(computed.opacity);
+				const startOpacity = Number.isFinite(parsedOpacity) ? parsedOpacity : 1;
+				const startFilter =
+					computed.filter && computed.filter !== 'none' ? computed.filter : 'blur(0px)';
+
 				node.getAnimations().forEach((a) => a.cancel());
 				node.animate(
 					[
-						{ transform: startTransform },
-						{ transform: `translate3d(${-next.dir * 100}%, 0, 0)` }
+						{
+							transform: startTransform,
+							opacity: startOpacity,
+							filter: startFilter
+						},
+						{
+							transform: `translate3d(${-next.dir * distance}px, 0, 0)`,
+							opacity: 0,
+							filter: `blur(${blur}px)`
+						}
 					],
 					{ duration: exitDuration, easing: easeCss, fill: 'forwards' }
 				);
@@ -282,7 +313,7 @@
 				subtitleItems = subtitleItems
 					.filter((item) => item.phase !== 'exiting')
 					.map((item) => (item.phase === 'entering' ? { ...item, phase: 'idle' as const } : item));
-			}, Math.max(DIRECTIONAL_BLUR_MOTION.enterDuration, DIRECTIONAL_BLUR_MOTION.exitDuration));
+			}, Math.max(SUBTITLE_BLUR_MOTION.enterDuration, SUBTITLE_BLUR_MOTION.exitDuration));
 		});
 	});
 
@@ -290,14 +321,30 @@
 		clearTimeout(subtitleCleanupTimer);
 	});
 
+	// 하위호환 selectedGenres prop이 외부에서 변경된 경우에만 filterState.genres에 반영하고,
+	// 기본 빈 배열([])이 복원된 filterState.genres를 덮어쓰지 않도록 보호
+	let prevSelectedGenres = untrack(() => [...selectedGenres]);
 	$effect(() => {
 		const genres = selectedGenres;
+		const fsGenres = filterState.genres;
 		untrack(() => {
-			if (
-				genres.length !== filterState.genres.length ||
-				genres.some((g, i) => g !== filterState.genres[i])
+			const propChanged =
+				genres.length !== prevSelectedGenres.length ||
+				genres.some((g, i) => g !== prevSelectedGenres[i]);
+			if (propChanged) {
+				prevSelectedGenres = [...genres];
+				if (
+					genres.length !== fsGenres.length ||
+					genres.some((g, i) => g !== fsGenres[i])
+				) {
+					filterState = { ...filterState, genres: [...genres] };
+				}
+			} else if (
+				fsGenres.length !== genres.length ||
+				fsGenres.some((g, i) => g !== genres[i])
 			) {
-				filterState = { ...filterState, genres: [...genres] };
+				prevSelectedGenres = [...fsGenres];
+				selectedGenres = [...fsGenres];
 			}
 		});
 	});
@@ -338,46 +385,6 @@
 
 	let refreshHovered = $state(false);
 	let refreshIconRef: ReturnType<typeof RefreshCcwIcon> | undefined = $state();
-	let filterSectionRef: ReturnType<typeof ContentFilterSection> | undefined = $state();
-
-	// 필터 드로어가 닫혀 있을 때는 수십 개의 캔버스(FdDiv) 마운트/해제를 지연해 카테고리 전환 렉 제거
-	let filterMounted = $state(untrack(() => filterOpen));
-	let filterUnmountTimer: ReturnType<typeof setTimeout> | undefined;
-
-	$effect(() => {
-		const isOpen = filterOpen;
-		clearTimeout(filterUnmountTimer);
-		if (isOpen) {
-			filterMounted = true;
-		} else if (filterMounted) {
-			filterUnmountTimer = setTimeout(() => {
-				filterMounted = false;
-			}, 380);
-		}
-	});
-
-	// 필터 드로어가 언마운트된 상태에서도 카테고리 전환 시 마운트 전에 필터 상태 기억/복원 유지
-	let prevHeaderCategory = untrack(() => targetWord);
-	$effect.pre(() => {
-		const nextCategory = targetWord;
-		if (nextCategory !== prevHeaderCategory) {
-			const leavingCategory = prevHeaderCategory;
-			prevHeaderCategory = nextCategory;
-			untrack(() => {
-				if (filterMounted) return;
-				saveCategoryFilter(leavingCategory, filterState);
-				const restored = restoreCategoryFilterState(nextCategory, filterState);
-				if (restored) {
-					filterState = restored.nextState;
-					if (restored.genresChanged) {
-						selectedGenres = [...restored.nextState.genres];
-						onGenreChange?.([...restored.nextState.genres]);
-					}
-					onFilterChange?.(restored.nextState);
-				}
-			});
-		}
-	});
 
 	// 필터 알약 가로 확장 스프링 (필터 활성 시 오른쪽으로 부드럽게 늘어나 '초기화' 버튼 노출)
 	const FILTER_ICON_WIDTH = 38;
@@ -463,7 +470,6 @@
 	});
 
 	onDestroy(() => {
-		clearTimeout(filterUnmountTimer);
 		if (pillRafId) {
 			cancelAnimationFrame(pillRafId);
 			pillRafId = 0;
@@ -477,19 +483,19 @@
 
 	function handleResetAllFilters(e: MouseEvent) {
 		e.stopPropagation();
-		if (filterSectionRef) {
-			filterSectionRef.resetAll();
-		} else {
-			const next = {
-				...createDefaultFilterState(),
-				sort: feedMode === 'follow' ? filterState.sort : ''
-			};
-			clearSavedCategoryFilter(targetWord);
-			filterState = next;
-			selectedGenres = [];
-			onGenreChange?.([]);
-			onFilterChange?.(next);
+		if (onFilterReset) {
+			onFilterReset();
+			return;
 		}
+		const next = {
+			...createDefaultFilterState(),
+			sort: feedMode === 'follow' ? filterState.sort : ''
+		};
+		clearSavedCategoryFilter(targetWord);
+		filterState = next;
+		selectedGenres = [];
+		onGenreChange?.([]);
+		onFilterChange?.(next);
 	}
 
 	function handleRefreshClick() {
@@ -676,33 +682,6 @@
 						</div>
 					</div>
 				</div>
-
-				<!-- 필터 토글 시 펼쳐지는 필터 패널 (CSS Grid 0fr <-> 1fr + 사전 마운트로 끊김 없는 전환) -->
-				<div
-					class="filter-drawer-panel"
-					class:is-open={filterOpen}
-					aria-hidden={!filterOpen}
-					inert={!filterOpen || undefined}
-				>
-					<div class="filter-drawer-inner">
-						<div class="filter-drawer-content">
-							{#if filterMounted}
-								<ContentFilterSection
-									bind:this={filterSectionRef}
-									category={targetWord}
-									{feedMode}
-									bind:filterState
-									multiple={filterMultiple}
-									onGenreChange={(nextGenres) => {
-										selectedGenres = nextGenres;
-										onGenreChange?.(nextGenres);
-									}}
-									onchange={(nextState) => onFilterChange?.(nextState)}
-								/>
-							{/if}
-						</div>
-					</div>
-				</div>
 			</div>
 
 			<!-- 하단 추가 컨텐츠 슬롯 -->
@@ -720,6 +699,7 @@
 		width: 100%;
 		background: var(--bg);
 		box-sizing: border-box;
+		overflow-x: clip;
 	}
 
 	.header-inner {
@@ -739,6 +719,7 @@
 		text-align: center;
 		width: 100%;
 		min-width: 0;
+		contain: layout style;
 	}
 
 	.category-heading {
@@ -751,6 +732,7 @@
 		line-height: 1;
 		letter-spacing: -0.02em;
 		color: #fafafa;
+		contain: layout style;
 	}
 
 	.subtitle-wrap {
@@ -774,7 +756,7 @@
 		text-align: center;
 		line-height: 1;
 
-		will-change: transform;
+		will-change: transform, opacity, filter;
 	}
 
 	/* 가로 컨트롤/필터 영역 */
@@ -909,31 +891,6 @@
 
 	.filter-reset-pill-btn:hover {
 		color: var(--fg);
-	}
-
-	.filter-drawer-panel {
-		display: grid;
-		grid-template-rows: 0fr;
-		opacity: 0;
-		width: 100%;
-		transition:
-			grid-template-rows 0.36s cubic-bezier(0.22, 1, 0.36, 1),
-			opacity 0.26s ease;
-	}
-
-	.filter-drawer-panel.is-open {
-		grid-template-rows: 1fr;
-		opacity: 1;
-	}
-
-	.filter-drawer-inner {
-		min-height: 0;
-		overflow: hidden;
-	}
-
-	.filter-drawer-content {
-		padding: 0.75rem 12px 0.35rem 8px;
-		box-sizing: border-box;
 	}
 
 	.filter-toggle-icon {

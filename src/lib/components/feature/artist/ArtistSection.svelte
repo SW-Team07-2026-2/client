@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import { goto } from '$app/navigation';
 	import ArtistCard from './ArtistCard.svelte';
 	import CatalogSectionShell from '../shared/CatalogSectionShell.svelte';
 	import { api, auth } from '#lib/auth/auth.svelte';
@@ -12,7 +11,7 @@
 	} from '#lib/config/artists';
 	import {
 		CATALOG_DEFAULT_PAGE_SIZE,
-		fetchCatalogPage,
+		fetchCatalogPageWithTransition,
 		isCatalogAuthError,
 		resolveCatalogErrorMessage,
 		type CatalogFeedMode
@@ -25,7 +24,6 @@
 	} from '#lib/config/filter';
 	import { prewarmFdImages } from '#lib/components/ui/FdImage.svelte';
 	import {
-		artistTransition,
 		buildCatalogRequestKey,
 		catalogFeed,
 		isCatalogCategoryReady
@@ -128,7 +126,7 @@
 	);
 
 	const initialRestoredSnapshot = untrack(() => {
-		const snap = artistTransition.getFeedSnapshot();
+		const snap = catalogFeed.getArtistSnapshot();
 		const activeKey = requestKey;
 		const genreJoined = activeGenreList.join(',');
 		if (
@@ -150,17 +148,7 @@
 			return [];
 		})
 	);
-	let followedIds = $state<Set<number>>(
-		untrack(() => {
-			const base = new Set(initialFollowedIds ?? []);
-			for (const item of artists) {
-				const override = artistTransition.getFollowing(item.id);
-				if (override === true) base.add(item.id);
-				else if (override === false) base.delete(item.id);
-			}
-			return base;
-		})
-	);
+	let followedIds = $state<Set<number>>(untrack(() => new Set(initialFollowedIds ?? [])));
 	let pendingFollowIds = $state<Set<number>>(new Set());
 
 	let currentPage = $state(untrack(() => initialRestoredSnapshot?.currentPage ?? 0));
@@ -173,6 +161,9 @@
 	let isAuthError = $state(false);
 	let loadMoreErrorMessage = $state<string | null>(null);
 	let latestRequestSeq = 0;
+	let hasCompletedInitialLoad = untrack(
+		() => Boolean(initialArtists && initialArtists.length > 0) || Boolean(initialRestoredSnapshot)
+	);
 
 	/**
 	 * v2 검색(/api/catalog/search/artists) · 팔로우(/api/catalog/following/artists) 조회
@@ -189,8 +180,11 @@
 			isAuthError = true;
 			errorMessage = '팔로우한 아티스트 목록을 보려면 로그인이 필요합니다.';
 			loadMoreErrorMessage = null;
+			hasCompletedInitialLoad = true;
 			return;
 		}
+
+		const shouldStage = !append && active && hasCompletedInitialLoad;
 
 		if (append) {
 			isLoadingMore = true;
@@ -203,25 +197,27 @@
 		}
 
 		try {
-			const res = await fetchCatalogPage<CatalogArtist, ArtistItemDto>({
-				category: 'artist',
-				feedMode: activeFeedMode,
-				page,
-				pageSize,
-				query: activeQuery,
-				genre,
-				filterState: activeFilterState,
-				mapItem: mapArtistItem
-			});
+			const res = await fetchCatalogPageWithTransition<CatalogArtist, ArtistItemDto>(
+				{
+					category: 'artist',
+					feedMode: activeFeedMode,
+					page,
+					pageSize,
+					query: activeQuery,
+					genre,
+					filterState: activeFilterState,
+					mapItem: mapArtistItem
+				},
+				shouldStage
+			);
 			if (seq !== latestRequestSeq) return;
 
+			hasCompletedInitialLoad = true;
 			artists = append ? [...artists, ...res.items] : res.items;
-			artistTransition.cacheArtists(artists);
 			if (activeFeedMode === 'follow' && res.items.length > 0) {
 				const synced = new Set(followedIds);
 				for (const item of res.items) {
-					const override = artistTransition.getFollowing(item.id);
-					if (override !== false) synced.add(item.id);
+					synced.add(item.id);
 				}
 				followedIds = synced;
 			}
@@ -239,10 +235,12 @@
 			}
 		} catch (err) {
 			if (seq !== latestRequestSeq) return;
+			hasCompletedInitialLoad = true;
 			const msg = resolveCatalogErrorMessage(err, '아티스트');
 			if (append) {
 				loadMoreErrorMessage = msg;
 			} else {
+				artists = [];
 				isAuthError = isCatalogAuthError(err);
 				errorMessage = msg;
 			}
@@ -310,7 +308,6 @@
 			updated.delete(artist.id);
 		}
 		followedIds = updated;
-		artistTransition.setFollowing(artist.id, nextFollowing);
 		onFollowChange?.(artist, nextFollowing);
 
 		const nextPending = new Set(pendingFollowIds);
@@ -332,7 +329,6 @@
 			console.error('Follow toggle failed:', err);
 			// 서버 에러 시 원래 상태로 롤백
 			followedIds = prevFollowed;
-			artistTransition.setFollowing(artist.id, !nextFollowing);
 			onFollowChange?.(artist, !nextFollowing);
 			alert('팔로우 상태를 변경하지 못했습니다. 잠시 후 다시 시도해 주세요.');
 		} finally {
@@ -352,23 +348,10 @@
 	}
 
 	function handleArtistCardClick(artist: CatalogArtist) {
-		artistTransition.saveFeedSnapshot({
-			artists,
-			currentPage,
-			hasNext,
-			query: activeQuery,
-			genre: activeGenreList.join(','),
-			requestKey
-		});
-		if (onArtistClick) {
-			onArtistClick(artist);
-		} else {
-			goto(`/artist/${artist.id}`);
-		}
+		onArtistClick?.(artist);
 	}
 
 	onMount(() => {
-		artistTransition.cacheArtists(artists);
 		if (!initialFollowedIds && auth.isLoggedIn) {
 			syncMyFollows();
 		}

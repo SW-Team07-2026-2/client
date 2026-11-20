@@ -102,6 +102,15 @@
 		letter-spacing: -0.01em;
 	}
 
+	:global(.route-stage.is-sliding) .album-format-badge {
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+	}
+
+	:global(.route-stage.is-sliding) .album-format-badge:not(.is-soldout) {
+		background: var(--surface-dim);
+	}
+
 	.album-format-badge.is-soldout {
 		background: var(--surface-3);
 		color: var(--muted);

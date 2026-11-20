@@ -3,7 +3,7 @@
 	import { auth } from '#lib/auth/auth.svelte';
 	import {
 		CATALOG_DEFAULT_PAGE_SIZE,
-		fetchCatalogPage,
+		fetchCatalogPageWithTransition,
 		isCatalogAuthError,
 		resolveCatalogErrorMessage,
 		type CatalogFeedMode
@@ -71,6 +71,7 @@
 	let isAuthError = $state(false);
 	let loadMoreErrorMessage = $state<string | null>(null);
 	let latestRequestSeq = 0;
+	let hasCompletedInitialLoad = untrack(() => Boolean(initialAlbums && initialAlbums.length > 0));
 
 	const isUsingStore = $derived(
 		feedMode === undefined &&
@@ -123,8 +124,11 @@
 			isAuthError = true;
 			errorMessage = '팔로우한 아티스트의 음반을 보려면 로그인이 필요합니다.';
 			loadMoreErrorMessage = null;
+			hasCompletedInitialLoad = true;
 			return;
 		}
+
+		const shouldStage = !append && active && hasCompletedInitialLoad;
 
 		if (append) {
 			isLoadingMore = true;
@@ -137,18 +141,22 @@
 		}
 
 		try {
-			const res = await fetchCatalogPage<CatalogAlbum, PhysicalItemDto>({
-				category: 'album',
-				feedMode: activeFeedMode,
-				page,
-				pageSize,
-				query: activeQuery,
-				genre,
-				filterState: activeFilterState,
-				mapItem: mapPhysicalItem
-			});
+			const res = await fetchCatalogPageWithTransition<CatalogAlbum, PhysicalItemDto>(
+				{
+					category: 'album',
+					feedMode: activeFeedMode,
+					page,
+					pageSize,
+					query: activeQuery,
+					genre,
+					filterState: activeFilterState,
+					mapItem: mapPhysicalItem
+				},
+				shouldStage
+			);
 			if (seq !== latestRequestSeq) return;
 
+			hasCompletedInitialLoad = true;
 			albums = append ? [...albums, ...res.items] : res.items;
 			currentPage = res.page;
 			hasNext = res.hasNext;
@@ -164,10 +172,12 @@
 			}
 		} catch (err) {
 			if (seq !== latestRequestSeq) return;
+			hasCompletedInitialLoad = true;
 			const msg = resolveCatalogErrorMessage(err, '음반');
 			if (append) {
 				loadMoreErrorMessage = msg;
 			} else {
+				albums = [];
 				isAuthError = isCatalogAuthError(err);
 				errorMessage = msg;
 			}
@@ -191,11 +201,7 @@
 	}
 
 	function handleAlbumSelect(album: CatalogAlbum) {
-		if (onAlbumClick) {
-			onAlbumClick(album);
-		} else {
-			toast.info(`${album.artistName} — ${album.title}`);
-		}
+		onAlbumClick?.(album);
 	}
 
 	let hasLoadedInitial = untrack(() => Boolean(initialAlbums && initialAlbums.length > 0));

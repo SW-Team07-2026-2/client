@@ -7,7 +7,12 @@
 	import { auth, clearSignupFlow } from '#lib/auth';
 	import { mapArtistItem, type ArtistItemDto, type CatalogArtist } from '#lib/config/artists';
 	import { CATALOG_DEFAULT_PAGE_SIZE, fetchCatalogPage } from '#lib/config/catalogFeed';
-	import { artistTransition, buildCatalogRequestKey, catalogFeed } from '#lib/stores';
+	import {
+		DEFAULT_FOLLOW_SORT,
+		getSavedCategorySlice,
+		getSavedFollowSort
+	} from '#lib/config/filter';
+	import { buildCatalogRequestKey, catalogFeed } from '#lib/stores';
 
 	let { children }: { children?: Snippet } = $props();
 
@@ -38,11 +43,17 @@
 			// 코드 프리로드 실패 시 실제 이동 시점 로드로 폴백
 		}
 
-		if (!auth.isLoggedIn || artistTransition.getFeedSnapshot()) return;
+		if (!auth.isLoggedIn || catalogFeed.getArtistSnapshot()) return;
 
 		const feedMode = catalogFeed.resolvedFeedMode;
 		const query = catalogFeed.debouncedQuery;
-		const filterState = catalogFeed.filterState;
+		const filterState = {
+			...getSavedCategorySlice('Artist'),
+			sort:
+				feedMode === 'follow'
+					? catalogFeed.filterState.sort || getSavedFollowSort() || DEFAULT_FOLLOW_SORT
+					: ''
+		};
 		const requestKey = buildCatalogRequestKey('artist', {
 			feedMode,
 			query,
@@ -65,12 +76,11 @@
 				!auth.isLoggedIn ||
 				res.degraded ||
 				res.items.length === 0 ||
-				artistTransition.getFeedSnapshot()
+				catalogFeed.getArtistSnapshot()
 			) {
 				return;
 			}
-			artistTransition.cacheArtists(res.items);
-			artistTransition.saveFeedSnapshot({
+			catalogFeed.saveArtistSnapshot({
 				artists: res.items,
 				currentPage: res.page,
 				hasNext: res.hasNext,

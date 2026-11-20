@@ -101,6 +101,10 @@
 		fit?: 'cover' | 'contain' | 'fill';
 		/** 이미지 정렬 기준 위치 (CSS object-position, 기본값: '50% 50%') */
 		objectPosition?: string;
+		/** 브라우저 이미지 로딩 전략 (기본값: 'lazy') */
+		loading?: 'eager' | 'lazy';
+		/** 이미지 디코딩 힌트 (기본값: 'async') */
+		decoding?: 'async' | 'sync' | 'auto';
 		/** 이미지 위에 겹쳐서 렌더링할 선택적 오버레이 콘텐츠 */
 		children?: Snippet;
 		/** 유체/물결/반응성/최적화 설정 (FluidSetting 인스턴스 또는 부분 설정 객체) */
@@ -165,6 +169,8 @@
 		alt = '',
 		fit = 'cover',
 		objectPosition = '50% 50%',
+		loading = 'lazy',
+		decoding = 'async',
 		children,
 		setting,
 		hoverRadius,
@@ -1510,7 +1516,8 @@
 				style:object-fit={fit}
 				style:object-position={objectPosition}
 				draggable="false"
-				loading="lazy"
+				{loading}
+				{decoding}
 				onload={handleImgLoad}
 				onerror={handleImgError}
 			/>

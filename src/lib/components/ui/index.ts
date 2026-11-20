@@ -10,6 +10,7 @@ export type { SegmentOption, SegmentInput, SegmentMergeConfig } from './FdSegmen
 export { default as FdToast } from './FdToast.svelte';
 export type { ToastType } from './FdToast.svelte';
 export { default as RefreshCcwIcon } from './RefreshCcwIcon.svelte';
+export { default as CheckIcon } from './CheckIcon.svelte';
 export { default as SearchIcon, type SearchIconAnimation } from './SearchIcon.svelte';
 export {
 	default as DynamicText,

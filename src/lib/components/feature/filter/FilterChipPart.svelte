@@ -1,4 +1,5 @@
 <script lang="ts">
+	import CheckIcon from '#lib/components/ui/CheckIcon.svelte';
 	import FdCheckButton from '#lib/components/ui/FdCheckButton.svelte';
 	import {
 		FILTER_CHIP_STYLE_PROPS,
@@ -67,6 +68,17 @@
 	}
 </script>
 
+{#snippet chipContent(label: string, isChecked: boolean)}
+	<span class="chip-inner">
+		<span class="chip-check-slot" class:is-checked={isChecked} aria-hidden="true">
+			<span class="chip-check-clip">
+				<CheckIcon size={13} strokeWidth={2.6} hovered={isChecked} />
+			</span>
+		</span>
+		<span class="chip-label">{label}</span>
+	</span>
+{/snippet}
+
 <FilterPartCard
 	class="chip-part {klass}"
 	{title}
@@ -82,23 +94,24 @@
 				checked={isAllSelected}
 				onchange={handleAllToggle}
 			>
-				{allLabel}
+				{@render chipContent(allLabel, isAllSelected)}
 			</FdCheckButton>
 			{#if items.length > 0}
 				<span class="filter-chip-divider" aria-hidden="true"></span>
 			{/if}
 		{/if}
 		{#each items as item, idx (item.value)}
+			{@const isItemChecked = selectedSet.has(item.value)}
 			{#if idx > 0 && item.group && item.group !== items[idx - 1].group}
 				<span class="filter-chip-divider" aria-hidden="true"></span>
 			{/if}
 			<FdCheckButton
 				{...(item.isProvince ? FILTER_PROVINCE_CHIP_STYLE_PROPS : FILTER_CHIP_STYLE_PROPS)}
 				preventAutoToggle
-				checked={selectedSet.has(item.value)}
+				checked={isItemChecked}
 				onchange={(next) => handleToggle(item.value, next)}
 			>
-				{item.label}
+				{@render chipContent(item.label, isItemChecked)}
 			</FdCheckButton>
 		{/each}
 	</div>
@@ -150,5 +163,52 @@
 	:global(.fd-wrap .fd-body[data-checked] .fd-check-btn.content-filter-chip) {
 		color: var(--bg);
 		font-weight: 600;
+	}
+
+	.chip-inner {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		white-space: nowrap;
+	}
+
+	.chip-check-slot {
+		display: inline-grid;
+		grid-template-columns: 0fr;
+		align-items: center;
+		margin-right: 0;
+		opacity: 0;
+		transform: scale(0.7);
+		transform-origin: center;
+		transition:
+			grid-template-columns 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+			margin-right 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+			opacity 0.22s ease,
+			transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
+	.chip-check-slot.is-checked {
+		grid-template-columns: 1fr;
+		margin-right: 0.34rem;
+		opacity: 1;
+		transform: scale(1);
+	}
+
+	.chip-check-clip {
+		min-width: 0;
+		overflow: hidden;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.chip-label {
+		display: inline-block;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.chip-check-slot {
+			transition: none;
+		}
 	}
 </style>

@@ -15,7 +15,9 @@
 		createDefaultFilterState,
 		createEmptyFilterSlice,
 		getSavedCategorySlice,
+		getSavedFollowSort,
 		saveCategoryFilter,
+		saveFollowSort,
 		type CategoryFilterSlice,
 		type ContentFilterState,
 		type FilterOption
@@ -73,6 +75,10 @@
 		onreset?: () => void;
 		/** 추가 커스텀 필터 파트 슬롯 */
 		extraParts?: Snippet;
+		/** Keep-Alive 각 카테고리 페이지 내부에 독립 배치할 때 true (자체 카테고리만 마운트하며 전환 높이 애니메이션·타 카테고리 프리워밍 생략) */
+		isolatedCategory?: boolean;
+		/** 현재 활성화된 패널 여부 (비활성 백그라운드 패널은 height 스프링 없이 즉시 상태 반영) */
+		active?: boolean;
 		/** 추가 클래스 */
 		class?: string;
 	}
@@ -87,6 +93,8 @@
 		onGenreChange,
 		onreset,
 		extraParts,
+		isolatedCategory = false,
+		active = true,
 		class: klass = ''
 	}: Props = $props();
 
@@ -148,7 +156,7 @@
 	// 단일 임계 감쇠 스프링(오버슈트 없음)으로 영역·상단 행 높이를 동시에 제어
 	const topSpring = createSpring(0, 340, 37);
 	const totalSpring = createSpring(0, 340, 37);
-	let heightAnimating = false;
+	let heightAnimating = $state(false);
 
 	function isHorizontalTopLayout(): boolean {
 		return typeof window !== 'undefined' && !mobile && window.innerWidth > 960;
@@ -226,7 +234,7 @@
 
 	function animateHeightsFrom(fromTopH: number, fromTotalH: number) {
 		if (destroyed) return;
-		if (prefersReducedMotion()) {
+		if (prefersReducedMotion() || !active) {
 			heightLoop.stop();
 			heightAnimating = false;
 			if (topLayoutEl) topLayoutEl.style.height = '';
@@ -288,7 +296,11 @@
 		clearTimeout(sortFallbackTimer);
 		cancelAnimationFrame(sortOpenRaf);
 
-		if (firstRun) {
+		if (firstRun || !active) {
+			heightLoop.stop();
+			heightAnimating = false;
+			if (topLayoutEl) topLayoutEl.style.height = '';
+			if (shellEl) shellEl.style.height = '';
 			sortMounted = follow;
 			sortVisualOpen = follow;
 			return;
@@ -350,7 +362,9 @@
 
 	onMount(() => {
 		saveCategoryFilter(category, paneStates[activePaneKey]);
-		prewarmTimer = setTimeout(prewarmNextCategory, 360);
+		if (!isolatedCategory) {
+			prewarmTimer = setTimeout(prewarmNextCategory, 360);
+		}
 	});
 
 	onDestroy(() => {
@@ -420,7 +434,9 @@
 		if (nextFollow === prevFollow) return;
 		prevFollow = nextFollow;
 		untrack(() => {
-			const targetSort = nextFollow ? filterState.sort || DEFAULT_FOLLOW_SORT : '';
+			const targetSort = nextFollow
+				? filterState.sort || getSavedFollowSort() || DEFAULT_FOLLOW_SORT
+				: '';
 			if (filterState.sort !== targetSort) {
 				filterState = { ...filterState, sort: targetSort };
 				onchange?.({ ...filterState });
@@ -448,6 +464,7 @@
 	}
 
 	function updateSort(nextSort: string) {
+		saveFollowSort(nextSort);
 		const nextState: ContentFilterState = { ...filterState, sort: nextSort };
 		filterState = nextState;
 		onchange?.(nextState);
@@ -489,7 +506,7 @@
 	role="region"
 	aria-label="{category} 상세 필터"
 >
-	<div bind:this={shellEl} class="filter-height-shell">
+	<div bind:this={shellEl} class="filter-height-shell" class:is-height-animating={heightAnimating}>
 		<div bind:this={measureEl} class="filter-measure-inner">
 			<!-- 팔로우 정렬은 카테고리 전환 시에도 파괴/재마운트 없이 우측 상단에 유지 -->
 			<div
@@ -581,6 +598,7 @@
 									title="품절 제외"
 									description="현재 구매 가능한 음반만 표시합니다"
 									checked={paneStates.Album.excludeSoldOut}
+									paused={!active}
 									onchange={(next) => updatePaneField('Album', 'excludeSoldOut', next)}
 								/>
 							</div>
@@ -614,6 +632,7 @@
 									title="품절 제외"
 									description="현재 구매 가능한 굿즈만 표시합니다"
 									checked={paneStates.Merchandise.excludeSoldOut}
+									paused={!active}
 									onchange={(next) => updatePaneField('Merchandise', 'excludeSoldOut', next)}
 								/>
 							</div>
@@ -695,10 +714,16 @@
 <style>
 	.content-filter-section {
 		width: 100%;
+		--dir-blur-distance: 100vw;
 	}
 
 	.filter-height-shell {
-		overflow: hidden;
+		overflow: visible;
+	}
+
+	.filter-height-shell.is-height-animating {
+		overflow-x: visible;
+		overflow-y: clip;
 	}
 
 	.filter-measure-inner {
@@ -716,9 +741,10 @@
 
 	.primary-parts-stage {
 		position: relative;
+		z-index: 1;
 		flex: 1 1 0%;
 		min-width: 0;
-		overflow-x: clip;
+		overflow: visible;
 		display: flex;
 		flex-direction: column;
 	}
@@ -726,7 +752,7 @@
 	.secondary-parts-stage {
 		position: relative;
 		width: 100%;
-		overflow-x: clip;
+		overflow: visible;
 		margin-top: 0;
 	}
 
@@ -798,6 +824,8 @@
 	}
 
 	.follow-sort-shell {
+		position: relative;
+		z-index: 2;
 		flex: 0 0 auto;
 		display: flex;
 		width: 0;

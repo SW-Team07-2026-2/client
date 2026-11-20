@@ -46,6 +46,8 @@
 		onGenreChange?: (genres: string[]) => void;
 		/** 통합 필터 변경 콜백 */
 		onFilterChange?: (state: ContentFilterState) => void;
+		/** 전체 필터 초기화 콜백 */
+		onFilterReset?: () => void;
 		/** 새로고침 버튼 클릭 콜백 */
 		onRefresh?: () => void;
 		/** 커스텀 PC 컨텐츠 헤더 스니펫 (지정 시 기본 ContentHeader 대신 렌더링) */
@@ -83,6 +85,7 @@
 		filterMultiple = true,
 		onGenreChange,
 		onFilterChange,
+		onFilterReset,
 		onRefresh,
 		contentHeader,
 		headerEl = $bindable(),
@@ -150,6 +153,7 @@
 						{filterMultiple}
 						{onGenreChange}
 						{onFilterChange}
+						{onFilterReset}
 						{onRefresh}
 					/>
 				</div>

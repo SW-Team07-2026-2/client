@@ -1,4 +1,6 @@
 <script lang="ts">
+	import FdDiv from '#lib/components/ui/FdDiv.svelte';
+	import { FluidSetting } from '#lib/fluid/setting';
 	import { isMobile } from '#lib/stores';
 	import FilterPartCard from './FilterPartCard.svelte';
 
@@ -6,6 +8,7 @@
 		title?: string;
 		description?: string;
 		checked?: boolean;
+		paused?: boolean;
 		onchange?: (checked: boolean) => void;
 		class?: string;
 	}
@@ -14,29 +17,88 @@
 		title = '품절 제외',
 		description = '',
 		checked = $bindable(false),
+		paused = false,
 		onchange,
 		class: klass = ''
 	}: Props = $props();
 
 	const mobile = $derived(isMobile.current);
 
+	const TRACK_BASE_SETTING = new FluidSetting({
+		radius: 999,
+		inset: 6,
+		reach: 26,
+		bulge: 4,
+		bulgeWidth: 16,
+		layers: 1,
+		layerGap: 0,
+		waveAmp: 0,
+		waveLength: 48,
+		spin: 1.1,
+		staticFrontWave: true,
+		hoverReactive: true,
+		bulgeReactive: true,
+		clickReactive: true,
+		pressDeform: { x: 0.9, y: -1.3 },
+		pauseWhenIdle: true,
+		color: 'var(--surface-3)',
+		hoverColor: 'var(--surface-4)',
+		pressColor: 'var(--line)',
+		waveColor: 'var(--surface-4)',
+		borderWidth: 1,
+		borderColor: 'var(--line)',
+		hoverBorderColor: 'var(--muted)',
+		pressBorderColor: 'var(--muted)'
+	});
+
+	const TRACK_ACTIVE_SETTING = TRACK_BASE_SETTING.with({
+		layers: 2,
+		layerGap: 2.2,
+		waveAmp: 2.2,
+		spin: 1.5,
+		staticFrontWave: true,
+		pauseWhenIdle: false,
+		color: 'var(--white-2)',
+		hoverColor: 'var(--white)',
+		pressColor: 'var(--white-3)',
+		waveColor: 'var(--white-3)',
+		hoverWaveColor: 'var(--white-3)',
+		borderWidth: 0
+	});
+
+	const trackSetting = $derived(
+		checked
+			? paused
+				? TRACK_ACTIVE_SETTING.with({ pauseWhenIdle: true })
+				: TRACK_ACTIVE_SETTING
+			: TRACK_BASE_SETTING
+	);
+
 	function handleToggle() {
 		const next = !checked;
 		checked = next;
 		onchange?.(next);
 	}
+
+	function handleKeyDown(e: KeyboardEvent) {
+		if (e.key === ' ' || e.key === 'Enter') {
+			e.preventDefault();
+			handleToggle();
+		}
+	}
 </script>
 
 <FilterPartCard class="toggle-part {klass}" showHeader={false}>
-	<button
-		type="button"
+	<div
 		role="switch"
+		tabindex="0"
 		aria-checked={checked}
 		aria-label={title}
 		class="filter-toggle-row"
 		class:is-checked={checked}
 		class:is-mobile={mobile}
 		onclick={handleToggle}
+		onkeydown={handleKeyDown}
 	>
 		<span class="toggle-copy">
 			<span class="toggle-title">{title}</span>
@@ -45,10 +107,17 @@
 			{/if}
 		</span>
 
-		<span class="toggle-track" aria-hidden="true">
-			<span class="toggle-thumb"></span>
+		<span class="toggle-track-slot" aria-hidden="true">
+			<FdDiv
+				setting={trackSetting}
+				staticFrontWave={true}
+				class="toggle-track-fd-wrap"
+				bodyClass="toggle-track-fd-body"
+			>
+				<span class="toggle-thumb"></span>
+			</FdDiv>
 		</span>
-	</button>
+	</div>
 </FilterPartCard>
 
 <style>
@@ -112,33 +181,32 @@
 		opacity: 0.75;
 	}
 
-	.toggle-track {
+	.toggle-track-slot {
 		position: relative;
 		flex: 0 0 auto;
 		width: 40px;
 		height: 22px;
-		border-radius: 999px;
-		background: var(--surface-3);
-		border: 1px solid var(--line);
-		box-sizing: border-box;
-		transition:
-			background-color 0.24s ease,
-			border-color 0.24s ease;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 	}
 
-	.filter-toggle-row:hover .toggle-track {
-		background: var(--surface-4);
+	:global(.fd-wrap.toggle-track-fd-wrap) {
+		margin: -6px;
 	}
 
-	.filter-toggle-row.is-checked .toggle-track {
-		background: var(--white);
-		border-color: var(--white);
+	:global(.fd-wrap .fd-body.toggle-track-fd-body) {
+		position: relative;
+		box-sizing: content-box;
+		width: 40px;
+		height: 22px;
+		padding: 0;
 	}
 
 	.toggle-thumb {
 		position: absolute;
-		top: 2px;
-		left: 2px;
+		top: 3px;
+		left: 3px;
 		width: 16px;
 		height: 16px;
 		border-radius: 999px;
@@ -164,7 +232,6 @@
 
 	@media (prefers-reduced-motion: reduce) {
 		.toggle-title,
-		.toggle-track,
 		.toggle-thumb {
 			transition: none;
 		}

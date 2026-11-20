@@ -104,6 +104,16 @@
 		letter-spacing: -0.01em;
 	}
 
+	/* 슬라이드 전환 중에는 카드 배지의 실시간 backdrop-filter 합성을 잠시 멈춰 고주사율(60/120fps) 유지 */
+	:global(.route-stage.is-sliding) .concert-status-badge {
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+	}
+
+	:global(.route-stage.is-sliding) .concert-status-badge:not(.is-urgent):not(.is-soldout) {
+		background: var(--surface-dim);
+	}
+
 	.concert-status-badge.is-urgent {
 		background: var(--toast-error-bg);
 		color: var(--toast-error-fg);

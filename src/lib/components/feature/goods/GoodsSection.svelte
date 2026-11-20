@@ -3,7 +3,7 @@
 	import { auth } from '#lib/auth/auth.svelte';
 	import {
 		CATALOG_DEFAULT_PAGE_SIZE,
-		fetchCatalogPage,
+		fetchCatalogPageWithTransition,
 		isCatalogAuthError,
 		resolveCatalogErrorMessage,
 		type CatalogFeedMode
@@ -21,12 +21,7 @@
 		type ContentFilterState
 	} from '#lib/config/filter';
 	import { prewarmFdImages } from '#lib/components/ui/FdImage.svelte';
-	import {
-		buildCatalogRequestKey,
-		catalogFeed,
-		isCatalogCategoryReady,
-		toast
-	} from '#lib/stores';
+	import { buildCatalogRequestKey, catalogFeed, isCatalogCategoryReady, toast } from '#lib/stores';
 	import CatalogSectionShell from '../shared/CatalogSectionShell.svelte';
 	import GoodsCard from './GoodsCard.svelte';
 
@@ -71,6 +66,7 @@
 	let isAuthError = $state(false);
 	let loadMoreErrorMessage = $state<string | null>(null);
 	let latestRequestSeq = 0;
+	let hasCompletedInitialLoad = untrack(() => Boolean(initialGoods && initialGoods.length > 0));
 
 	const isUsingStore = $derived(
 		feedMode === undefined &&
@@ -127,8 +123,11 @@
 			isAuthError = true;
 			errorMessage = '팔로우한 아티스트의 굿즈를 보려면 로그인이 필요합니다.';
 			loadMoreErrorMessage = null;
+			hasCompletedInitialLoad = true;
 			return;
 		}
+
+		const shouldStage = !append && active && hasCompletedInitialLoad;
 
 		if (append) {
 			isLoadingMore = true;
@@ -141,17 +140,21 @@
 		}
 
 		try {
-			const res = await fetchCatalogPage<CatalogGoods, GoodsItemDto>({
-				category: 'goods',
-				feedMode: activeFeedMode,
-				page,
-				pageSize,
-				query: activeQuery,
-				filterState: activeFilterState,
-				mapItem: mapGoodsItem
-			});
+			const res = await fetchCatalogPageWithTransition<CatalogGoods, GoodsItemDto>(
+				{
+					category: 'goods',
+					feedMode: activeFeedMode,
+					page,
+					pageSize,
+					query: activeQuery,
+					filterState: activeFilterState,
+					mapItem: mapGoodsItem
+				},
+				shouldStage
+			);
 			if (seq !== latestRequestSeq) return;
 
+			hasCompletedInitialLoad = true;
 			goodsList = append ? [...goodsList, ...res.items] : res.items;
 			currentPage = res.page;
 			hasNext = res.hasNext;
@@ -160,17 +163,20 @@
 			}
 			if (res.degraded) {
 				if (append) {
-					loadMoreErrorMessage = '일시적으로 추가 굿즈를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.';
+					loadMoreErrorMessage =
+						'일시적으로 추가 굿즈를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.';
 				} else if (res.items.length === 0) {
 					errorMessage = '굿즈 목록을 일시적으로 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.';
 				}
 			}
 		} catch (err) {
 			if (seq !== latestRequestSeq) return;
+			hasCompletedInitialLoad = true;
 			const msg = resolveCatalogErrorMessage(err, '굿즈');
 			if (append) {
 				loadMoreErrorMessage = msg;
 			} else {
+				goodsList = [];
 				isAuthError = isCatalogAuthError(err);
 				errorMessage = msg;
 			}
@@ -194,11 +200,7 @@
 	}
 
 	function handleGoodsSelect(goods: CatalogGoods) {
-		if (onGoodsClick) {
-			onGoodsClick(goods);
-		} else {
-			toast.info(`${goods.artistName} — ${goods.name}`);
-		}
+		onGoodsClick?.(goods);
 	}
 
 	let hasLoadedInitial = untrack(() => Boolean(initialGoods && initialGoods.length > 0));

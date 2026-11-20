@@ -101,6 +101,8 @@
 			class="catalog-fd-image"
 			{src}
 			{alt}
+			loading="eager"
+			decoding="async"
 			setting={resolvedSetting}
 			{hoverRadius}
 			active={isActive}

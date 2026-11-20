@@ -1,24 +1,59 @@
+import type { CatalogArtist } from '#lib/config/artists';
 import type { CatalogCategoryKey, CatalogFeedMode } from '#lib/config/catalogFeed';
+
+export interface ArtistFeedSnapshot {
+	artists: CatalogArtist[];
+	currentPage: number;
+	hasNext: boolean;
+	query: string;
+	genre: string;
+	requestKey?: string;
+}
 import {
 	createDefaultFilterState,
 	DEFAULT_FOLLOW_SORT,
 	DEFAULT_PRICE_MAX,
 	DEFAULT_PRICE_MIN,
+	getSavedFollowSort,
 	type ContentFilterState
 } from '#lib/config/filter';
 
 const SEARCH_DEBOUNCE_MS = 250;
+const FEED_MODE_STORAGE_KEY = 'main-page-header-feed-mode';
+
+function readInitialFeedMode(): string {
+	if (typeof window === 'undefined') return 'recommend';
+	try {
+		const saved = window.localStorage.getItem(FEED_MODE_STORAGE_KEY);
+		if (saved === 'recommend' || saved === 'popular' || saved === 'follow') {
+			return saved;
+		}
+	} catch {
+		// 스토리지 접근 불가 환경 무시
+	}
+	return 'recommend';
+}
+
+function createInitialFeedFilterState(initialMode: string): ContentFilterState {
+	const base = createDefaultFilterState();
+	if (initialMode === 'follow') {
+		base.sort = getSavedFollowSort() || DEFAULT_FOLLOW_SORT;
+	}
+	return base;
+}
 
 class CatalogFeedStore {
-	feedMode = $state<string>('recommend');
+	private readonly initialMode = readInitialFeedMode();
+	feedMode = $state<string>(this.initialMode);
 	searchQuery = $state('');
 	debouncedQuery = $state('');
-	filterState = $state<ContentFilterState>(createDefaultFilterState());
+	filterState = $state<ContentFilterState>(createInitialFeedFilterState(this.initialMode));
 	activeCategory = $state<CatalogCategoryKey | null>(null);
 	headerCategory = $state<CatalogCategoryKey | null>(null);
 	refreshTick = $state(0);
 
 	private debounceTimer: ReturnType<typeof setTimeout> | undefined;
+	private artistSnapshot: ArtistFeedSnapshot | null = null;
 
 	get resolvedFeedMode(): CatalogFeedMode {
 		const mode = this.feedMode;
@@ -58,6 +93,21 @@ class CatalogFeedStore {
 	clearPendingDebounce(): void {
 		clearTimeout(this.debounceTimer);
 		this.debounceTimer = undefined;
+	}
+
+	saveArtistSnapshot(snapshot: ArtistFeedSnapshot): void {
+		this.artistSnapshot = {
+			...snapshot,
+			artists: [...snapshot.artists]
+		};
+	}
+
+	getArtistSnapshot(): ArtistFeedSnapshot | null {
+		return this.artistSnapshot;
+	}
+
+	clearArtistSnapshot(): void {
+		this.artistSnapshot = null;
 	}
 }
 

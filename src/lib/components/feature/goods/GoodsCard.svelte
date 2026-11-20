@@ -106,6 +106,15 @@
 		letter-spacing: -0.01em;
 	}
 
+	:global(.route-stage.is-sliding) .goods-status-badge {
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+	}
+
+	:global(.route-stage.is-sliding) .goods-status-badge:not(.is-urgent):not(.is-soldout) {
+		background: var(--surface-dim);
+	}
+
 	.goods-status-badge.is-urgent {
 		background: var(--toast-error-bg);
 		color: var(--toast-error-fg);

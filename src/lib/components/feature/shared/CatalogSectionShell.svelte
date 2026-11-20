@@ -1,7 +1,9 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
-	import FdButton from '#lib/components/ui/FdButton.svelte';
-	import { FluidSetting } from '#lib/fluid/setting';
+	import { onDestroy, untrack, type Snippet } from 'svelte';
+	import { CATALOG_TRANSITION_TIMING } from '#lib/config/catalogFeed';
+	import { prefersReducedMotion } from '#lib/fluid/spring';
+
+	type ViewKind = 'skeleton' | 'error' | 'empty' | 'content';
 
 	interface Props {
 		ariaLabel: string;
@@ -10,7 +12,7 @@
 		errorMessage: string | null;
 		errorTitle: string;
 		emptyTitle: string;
-		emptyDesc: string;
+		emptyDesc?: string;
 		loadMoreErrorMessage?: string | null;
 		isLoadingMore?: boolean;
 		hasNext?: boolean;
@@ -37,7 +39,7 @@
 		errorMessage,
 		errorTitle,
 		emptyTitle,
-		emptyDesc,
+		emptyDesc: _emptyDesc = '',
 		loadMoreErrorMessage = null,
 		isLoadingMore = false,
 		hasNext = false,
@@ -50,7 +52,7 @@
 		mobileRowGap = '2rem',
 		skeletonAspect = '1 / 1',
 		skeletonRadius = '22px',
-		onRetry,
+		onRetry: _onRetry,
 		onLoadMore,
 		active = true,
 		children,
@@ -59,22 +61,81 @@
 
 	let sentinelEl = $state<HTMLDivElement | null>(null);
 
-	const retryBtnSetting = new FluidSetting({
-		radius: 999,
-		layers: 1,
-		layerGap: 3,
-		waveAmp: 2.2,
-		waveLength: 56,
-		spin: 1.2,
-		color: 'var(--surface-3)',
-		hoverColor: 'var(--surface-4)',
-		pressColor: 'var(--surface-2)',
-		waveColor: 'var(--line-wave)',
-		textColor: 'var(--fg)'
+	const targetKind = $derived<ViewKind>(
+		isLoading
+			? 'skeleton'
+			: errorMessage && isEmpty
+				? 'error'
+				: isEmpty
+					? 'empty'
+					: 'content'
+	);
+
+	let renderedKind = $state<ViewKind>(untrack(() => targetKind));
+	let motionState = $state<'idle' | 'entering' | 'exiting'>('idle');
+	let transitionTimer: ReturnType<typeof setTimeout> | undefined;
+	let settleTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function clearPhaseTimers() {
+		clearTimeout(transitionTimer);
+		clearTimeout(settleTimer);
+	}
+
+	function resolveExitMs(kind: ViewKind): number {
+		return kind === 'skeleton'
+			? CATALOG_TRANSITION_TIMING.skeletonExitMs
+			: CATALOG_TRANSITION_TIMING.contentExitMs;
+	}
+
+	function resolveEnterMs(kind: ViewKind): number {
+		return kind === 'skeleton'
+			? CATALOG_TRANSITION_TIMING.skeletonEnterMs
+			: CATALOG_TRANSITION_TIMING.contentEnterMs;
+	}
+
+	$effect(() => {
+		const nextKind = targetKind;
+		const isActive = active;
+
+		untrack(() => {
+			if (!isActive || prefersReducedMotion()) {
+				clearPhaseTimers();
+				renderedKind = nextKind;
+				motionState = 'idle';
+				return;
+			}
+
+			if (nextKind === renderedKind) {
+				if (motionState === 'exiting') {
+					clearPhaseTimers();
+					motionState = 'entering';
+					settleTimer = setTimeout(() => {
+						motionState = 'idle';
+					}, resolveEnterMs(nextKind));
+				}
+				return;
+			}
+
+			clearPhaseTimers();
+			const exitMs = resolveExitMs(renderedKind);
+			motionState = 'exiting';
+
+			transitionTimer = setTimeout(() => {
+				renderedKind = targetKind;
+				motionState = 'entering';
+				settleTimer = setTimeout(() => {
+					motionState = 'idle';
+				}, resolveEnterMs(targetKind));
+			}, exitMs);
+		});
+	});
+
+	onDestroy(() => {
+		clearPhaseTimers();
 	});
 
 	$effect(() => {
-		if (!active || !sentinelEl || !hasNext || isLoadingMore || isLoading || !onLoadMore) return;
+		if (!active || renderedKind !== 'content' || !sentinelEl || !hasNext || isLoadingMore || isLoading || !onLoadMore) return;
 		const observer = new IntersectionObserver(
 			(entries) => {
 				const entry = entries[0];
@@ -102,82 +163,141 @@
 	style:--catalog-row-gap-mobile={mobileRowGap}
 	style:--catalog-skeleton-aspect={skeletonAspect}
 	style:--catalog-skeleton-radius={skeletonRadius}
+	style:--catalog-exit-ms="{CATALOG_TRANSITION_TIMING.contentExitMs}ms"
+	style:--catalog-skeleton-enter-ms="{CATALOG_TRANSITION_TIMING.skeletonEnterMs}ms"
+	style:--catalog-skeleton-exit-ms="{CATALOG_TRANSITION_TIMING.skeletonExitMs}ms"
+	style:--catalog-enter-ms="{CATALOG_TRANSITION_TIMING.contentEnterMs}ms"
 >
-	{#if isLoading && isEmpty}
-		<div class="catalog-grid" aria-busy="true" aria-live="polite">
-			{#each Array(skeletonCount) as _, idx (idx)}
-				<div class="catalog-skeleton">
-					<div class="skeleton-thumb"></div>
-					<div class="skeleton-line"></div>
-					<div class="skeleton-line is-short"></div>
-				</div>
-			{/each}
-		</div>
-	{:else if errorMessage && isEmpty}
-		<div class="catalog-state-box" role="alert">
-			<div class="state-icon is-error" aria-hidden="true">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-					<circle cx="12" cy="12" r="10" />
-					<line x1="12" y1="8" x2="12" y2="12" />
-					<line x1="12" y1="16" x2="12.01" y2="16" />
-				</svg>
+	<div
+		class="catalog-stage-panel"
+		class:is-skeleton={renderedKind === 'skeleton'}
+		class:is-entering={motionState === 'entering'}
+		class:is-exiting={motionState === 'exiting'}
+	>
+		{#if renderedKind === 'skeleton'}
+			<div class="catalog-grid" aria-busy="true" aria-live="polite">
+				{#each Array(skeletonCount) as _, idx (idx)}
+					<div class="catalog-skeleton">
+						<div class="skeleton-thumb"></div>
+						<div class="skeleton-line"></div>
+						<div class="skeleton-line is-short"></div>
+					</div>
+				{/each}
 			</div>
-			<h3 class="state-title">{errorTitle}</h3>
-			<p class="state-desc">{errorMessage}</p>
-			{#if onRetry}
-				<div class="state-action">
-					<FdButton setting={retryBtnSetting} onclick={onRetry}>다시 시도</FdButton>
-				</div>
-			{/if}
-		</div>
-	{:else if isEmpty}
-		<div class="catalog-state-box">
-			<div class="state-icon is-empty" aria-hidden="true">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-					<circle cx="12" cy="12" r="9" />
-					<path d="M9 10h.01M15 10h.01M9.5 15.5a3.5 3.5 0 0 0 5 0" />
-				</svg>
+		{:else if renderedKind === 'error'}
+			<div class="catalog-state-message" role="alert">
+				<p class="state-main-text is-error">{errorTitle}</p>
 			</div>
-			<h3 class="state-title">{emptyTitle}</h3>
-			<p class="state-desc">{emptyDesc}</p>
-			{#if onRetry}
-				<div class="state-action">
-					<FdButton setting={retryBtnSetting} onclick={onRetry}>새로고침</FdButton>
+		{:else if renderedKind === 'empty'}
+			<div class="catalog-state-message">
+				<p class="state-main-text">{emptyTitle}</p>
+			</div>
+		{:else}
+			<div class="catalog-grid">
+				{@render children?.()}
+			</div>
+
+			{#if loadMoreErrorMessage}
+				<div class="load-more-error" role="alert">
+					<span>{loadMoreErrorMessage}</span>
+					{#if onLoadMore}
+						<button type="button" class="inline-retry-btn" onclick={onLoadMore}>다시 시도</button>
+					{/if}
 				</div>
 			{/if}
-		</div>
-	{:else}
-		<div class="catalog-grid">
-			{@render children?.()}
-		</div>
 
-		{#if loadMoreErrorMessage}
-			<div class="load-more-error" role="alert">
-				<span>{loadMoreErrorMessage}</span>
-				{#if onLoadMore}
-					<button type="button" class="inline-retry-btn" onclick={onLoadMore}>다시 시도</button>
-				{/if}
-			</div>
-		{/if}
+			{#if isLoadingMore}
+				<div class="catalog-loading-more" role="status" aria-label="추가 목록을 불러오는 중입니다">
+					<span class="loading-dot"></span>
+					<span class="loading-dot"></span>
+					<span class="loading-dot"></span>
+				</div>
+			{/if}
 
-		{#if isLoadingMore}
-			<div class="catalog-loading-more" role="status" aria-label="추가 목록을 불러오는 중입니다">
-				<span class="loading-dot"></span>
-				<span class="loading-dot"></span>
-				<span class="loading-dot"></span>
-			</div>
+			{#if hasNext}
+				<div bind:this={sentinelEl} class="catalog-sentinel" aria-hidden="true"></div>
+			{/if}
 		{/if}
-
-		{#if hasNext}
-			<div bind:this={sentinelEl} class="catalog-sentinel" aria-hidden="true"></div>
-		{/if}
-	{/if}
+	</div>
 </section>
 
 <style>
 	.catalog-section {
 		width: 100%;
 		box-sizing: border-box;
+	}
+
+	.catalog-stage-panel {
+		width: 100%;
+	}
+
+	.catalog-stage-panel.is-entering {
+		animation: catalog-view-in var(--catalog-enter-ms, 280ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+		will-change: opacity, transform;
+	}
+
+	.catalog-stage-panel.is-skeleton.is-entering {
+		animation: catalog-skeleton-in var(--catalog-skeleton-enter-ms, 180ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+	}
+
+	.catalog-stage-panel.is-exiting {
+		pointer-events: none;
+		animation: catalog-view-out var(--catalog-exit-ms, 160ms) cubic-bezier(0.4, 0, 1, 1) forwards;
+		will-change: opacity, transform;
+	}
+
+	.catalog-stage-panel.is-skeleton.is-exiting {
+		animation: catalog-skeleton-out var(--catalog-skeleton-exit-ms, 130ms) cubic-bezier(0.4, 0, 1, 1) forwards;
+	}
+
+	@keyframes catalog-view-in {
+		from {
+			opacity: 0;
+			transform: translate3d(0, 12px, 0) scale(0.988);
+		}
+		to {
+			opacity: 1;
+			transform: translate3d(0, 0, 0) scale(1);
+		}
+	}
+
+	@keyframes catalog-view-out {
+		from {
+			opacity: 1;
+			transform: translate3d(0, 0, 0) scale(1);
+		}
+		to {
+			opacity: 0;
+			transform: translate3d(0, -6px, 0) scale(0.992);
+		}
+	}
+
+	@keyframes catalog-skeleton-in {
+		from {
+			opacity: 0;
+			transform: translate3d(0, 6px, 0);
+		}
+		to {
+			opacity: 1;
+			transform: translate3d(0, 0, 0);
+		}
+	}
+
+	@keyframes catalog-skeleton-out {
+		from {
+			opacity: 1;
+		}
+		to {
+			opacity: 0;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.catalog-stage-panel.is-entering,
+		.catalog-stage-panel.is-exiting {
+			animation: none;
+			will-change: auto;
+		}
 	}
 
 	.catalog-grid {
@@ -230,65 +350,27 @@
 		}
 	}
 
-	.catalog-state-box {
+	.catalog-state-message {
 		display: flex;
-		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		padding: 5rem 1.5rem;
+		padding: 6.5rem 1.5rem;
 		text-align: center;
-		background: var(--surface-dim);
-		border: var(--thin-border);
-		border-radius: 1.25rem;
-		max-width: 580px;
-		margin: 2.5rem auto;
 		box-sizing: border-box;
 	}
 
-	.state-icon {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 3.5rem;
-		height: 3.5rem;
-		border-radius: 999px;
-		margin-bottom: 1.25rem;
-	}
-
-	.state-icon svg {
-		width: 2rem;
-		height: 2rem;
-	}
-
-	.state-icon.is-error {
-		background: var(--toast-error-bg);
-		color: var(--toast-error-fg);
-	}
-
-	.state-icon.is-empty {
-		background: var(--surface);
-		color: var(--muted);
-	}
-
-	.state-title {
+	.state-main-text {
 		margin: 0;
-		font-size: 1.15rem;
-		font-weight: 700;
+		font-size: 1rem;
+		font-weight: var(--fw-medium);
 		letter-spacing: -0.02em;
-		color: var(--fg);
-	}
-
-	.state-desc {
-		margin: 0.5rem 0 1.5rem;
-		font-size: 0.92rem;
 		line-height: 1.5;
 		color: var(--muted);
 		word-break: keep-all;
 	}
 
-	.state-action {
-		display: flex;
-		justify-content: center;
+	.state-main-text.is-error {
+		color: var(--fg);
 	}
 
 	.load-more-error {
@@ -363,9 +445,12 @@
 			row-gap: var(--catalog-row-gap-mobile, 2rem);
 		}
 
-		.catalog-state-box {
-			padding: 3.5rem 1.25rem;
-			margin: 1.5rem auto;
+		.catalog-state-message {
+			padding: 4.5rem 1rem;
+		}
+
+		.state-main-text {
+			font-size: 0.94rem;
 		}
 	}
 </style>
