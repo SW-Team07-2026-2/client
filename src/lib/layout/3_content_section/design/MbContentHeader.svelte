@@ -1,15 +1,21 @@
 <script lang="ts">
 	import SearchIcon from '#lib/common/design/icon/SearchIcon.svelte';
 	import { SEARCH_QUERY_MAX_LENGTH } from '../logic/contentSection.svelte';
+	import MbFeedOptionButton from '../part/header_part/MbFeedOptionButton.svelte';
 
 	interface Props {
 		searchQuery: string;
 		searchPlaceholder?: string;
 		filterOpen: boolean;
 		activeFilterCount: number;
+		/** 현재 선택된 피드 모드 ('recommend' | 'popular' | 'follow' | 'all') */
+		feedMode: string;
+		/** AppShell MbHeader와 동기화되는 스크롤 숨김 상태 */
+		hidden?: boolean;
 		onSearchChange?: (val: string) => void;
 		onSearchSubmit?: (val: string) => void;
 		onFilterToggle?: () => void;
+		onFeedChange?: (nextMode: string) => void;
 	}
 
 	let {
@@ -17,14 +23,43 @@
 		searchPlaceholder = '검색어를 입력하세요...',
 		filterOpen,
 		activeFilterCount,
+		feedMode,
+		hidden = false,
 		onSearchChange,
 		onSearchSubmit,
-		onFilterToggle
+		onFilterToggle,
+		onFeedChange
 	}: Props = $props();
 </script>
 
-<!-- 모바일 콘텐츠 옵션 바: 검색창 + 필터판 여닫기 버튼 (순수 렌더링) -->
-<div class="mb-content-header" role="region" aria-label="모바일 검색 및 필터">
+<!-- 모바일 콘텐츠 헤더: 필터 버튼 · 검색창 · 피드 옵션 버튼 (MbHeader와 동일 타이밍 숨김/복귀, 순수 렌더링) -->
+<div
+	class="mb-content-header"
+	class:is-hidden={hidden}
+	aria-hidden={hidden || undefined}
+	inert={hidden || undefined}
+	role="region"
+	aria-label="모바일 필터, 검색 및 옵션"
+>
+	<button
+		type="button"
+		class="mb-filter-btn"
+		class:is-open={filterOpen}
+		class:has-active={activeFilterCount > 0}
+		aria-expanded={filterOpen}
+		aria-label="필터 열기"
+		onclick={() => onFilterToggle?.()}
+	>
+		<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4.5 7h15" />
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 12h10" />
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9.5 17h5" />
+		</svg>
+		{#if activeFilterCount > 0}
+			<span class="mb-filter-badge">{activeFilterCount}</span>
+		{/if}
+	</button>
+
 	<form
 		class="mb-search-box"
 		onsubmit={(e) => {
@@ -58,24 +93,7 @@
 		{/if}
 	</form>
 
-	<button
-		type="button"
-		class="mb-filter-btn"
-		class:is-open={filterOpen}
-		class:has-active={activeFilterCount > 0}
-		aria-expanded={filterOpen}
-		aria-label="필터 열기"
-		onclick={() => onFilterToggle?.()}
-	>
-		<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4.5 7h15" />
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 12h10" />
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9.5 17h5" />
-		</svg>
-		{#if activeFilterCount > 0}
-			<span class="mb-filter-badge">{activeFilterCount}</span>
-		{/if}
-	</button>
+	<MbFeedOptionButton {feedMode} {hidden} onSelect={(val) => onFeedChange?.(val)} />
 </div>
 
 <style>
@@ -84,7 +102,24 @@
 		align-items: center;
 		gap: 0.55rem;
 		width: 100%;
-		margin-bottom: 1rem;
+		padding: 0.55rem var(--content-padding-x-mobile) 0.7rem;
+		box-sizing: border-box;
+		background: transparent;
+		pointer-events: auto;
+		transform: translate3d(0, 0, 0);
+		will-change: transform;
+		transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
+	.mb-content-header.is-hidden {
+		transform: translate3d(0, calc(-100% - 60px), 0);
+		pointer-events: none;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.mb-content-header {
+			transition: none;
+		}
 	}
 
 	.mb-search-box {

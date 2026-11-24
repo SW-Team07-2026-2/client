@@ -1,10 +1,15 @@
 <script lang="ts">
+	import { onDestroy, untrack } from 'svelte';
 	import type { MainSectionDescriptor } from '../2_main_section/logic/sectionRegistry';
+	import { CategoryDetailView, CategoryView } from '../4_category';
 	import {
 		getContentSectionContext,
 		isFilterableCategory
 	} from './logic/contentSection.svelte';
+	import { syncDetailListFade } from './logic/detailMorph';
+	import { DetailStageController } from './logic/detailStage.svelte';
 	import PcContentFilter from './design/PcContentFilter.svelte';
+	import PcDetailFrame from './design/PcDetailFrame.svelte';
 
 	interface Props {
 		section: MainSectionDescriptor;
@@ -19,40 +24,76 @@
 	const filterState = $derived(contentCtrl?.getFilterState(section.key));
 	const filterOpen = $derived(contentCtrl?.isFilterOpen(section.key) ?? false);
 
-	const placeholderCards = Array.from({ length: 12 }, (_, idx) => idx + 1);
+	const initialCat = untrack(() => (isFilterableCategory(section.key) ? section.key : null));
+	const detailCtrl = initialCat ? new DetailStageController(initialCat) : null;
+
+	let listAreaEl = $state<HTMLDivElement | null>(null);
+	let listFadeAnim: Animation | null = null;
+
+	const isDetailSettledOpen = $derived(detailCtrl?.phase === 'open');
+
+	$effect(() => {
+		detailCtrl?.sync(active, detailId, false);
+	});
+
+	$effect(() => {
+		if (!detailCtrl) return;
+		listFadeAnim = syncDetailListFade(listAreaEl, detailCtrl.phase, listFadeAnim);
+	});
+
+	$effect(() => {
+		return detailCtrl?.attachKeydown(active);
+	});
+
+	onDestroy(() => {
+		listFadeAnim?.cancel();
+		detailCtrl?.destroy();
+	});
 </script>
 
-<!-- PC 카테고리별 독립 섹션 (카탈로그 페이지는 상단 옵션바 높이만큼 여백 확보, 마이페이지는 여백 없음) -->
+<!-- PC 콘텐츠 섹션: [목록 영역(필터 + 여백 그리드)] <-> [상세 영역(PcDetailFrame)] 전환 전담 -->
 <div
 	class="pc-content-section"
-	class:has-pinned-control={section.supportsOptions}
 	data-section-key={section.key}
 	data-section-active={active ? 'true' : 'false'}
 >
-	{#if section.supportsOptions && filterableKey && contentCtrl && filterState}
-		<PcContentFilter
-			category={filterableKey}
-			open={filterOpen}
-			isFollowMode={contentCtrl.isFollowMode}
-			{filterState}
-			onChange={(next) => contentCtrl.updateCategoryFilter(filterableKey, next)}
-		/>
-	{/if}
-
-	<main class="pc-content-grid-area">
-		{#if detailId !== null}
-			<div class="shell-detail-badge">상세 라우트 활성: #{detailId}</div>
+	<div
+		bind:this={listAreaEl}
+		class="pc-content-list-area"
+		class:has-pinned-control={section.supportsOptions}
+		class:is-hidden={isDetailSettledOpen}
+	>
+		{#if section.supportsOptions && filterableKey && contentCtrl && filterState}
+			<PcContentFilter
+				category={filterableKey}
+				open={filterOpen}
+				isFollowMode={contentCtrl.isFollowMode}
+				{filterState}
+				onChange={(next) => contentCtrl.updateCategoryFilter(filterableKey, next)}
+			/>
 		{/if}
 
-		<!-- 4_category 단계에서 각 카테고리 전용 카드/뷰로 교체 예정 -->
-		<div class="shell-grid-placeholder">
-			{#each placeholderCards as card (card)}
-				<div class="shell-card">
-					<span class="shell-card-label">{section.label} #{card}</span>
-				</div>
-			{/each}
-		</div>
-	</main>
+		<main class="pc-content-grid-area">
+			<CategoryView {section} {active} />
+		</main>
+	</div>
+
+	{#if detailCtrl && filterableKey && detailCtrl.isVisible && detailCtrl.renderId !== null}
+		<PcDetailFrame
+			category={filterableKey}
+			itemId={detailCtrl.renderId}
+			phase={detailCtrl.phase}
+			seed={detailCtrl.slot.seed}
+			resolveReturnRect={detailCtrl.resolveReturnRect}
+			onExpandFinish={detailCtrl.finishExpand}
+			onCloseFinish={detailCtrl.finishClose}
+			onClose={detailCtrl.close}
+		>
+			{#snippet children({ id, close, mobile })}
+				<CategoryDetailView category={filterableKey} {id} onClose={close} {mobile} />
+			{/snippet}
+		</PcDetailFrame>
+	{/if}
 </div>
 
 <style>
@@ -61,8 +102,17 @@
 		color: var(--fg);
 	}
 
-	.pc-content-section.has-pinned-control {
+	.pc-content-list-area {
+		width: 100%;
+		will-change: opacity;
+	}
+
+	.pc-content-list-area.has-pinned-control {
 		padding-top: var(--pc-pinned-control-height, 60px);
+	}
+
+	.pc-content-list-area.is-hidden {
+		display: none;
 	}
 
 	.pc-content-grid-area {
@@ -71,33 +121,5 @@
 		margin: 0 auto;
 		padding: 0.75rem var(--content-padding-x) 4rem;
 		box-sizing: border-box;
-	}
-
-	.shell-detail-badge {
-		margin-bottom: 1.25rem;
-		padding: 0.65rem 0.95rem;
-		border-radius: 12px;
-		background: var(--surface-2);
-		border: var(--thin-border);
-		font-size: 0.88rem;
-		color: var(--white);
-	}
-
-	.shell-grid-placeholder {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-		gap: 1.25rem;
-	}
-
-	.shell-card {
-		aspect-ratio: 1 / 1.15;
-		border-radius: 18px;
-		background: var(--surface);
-		border: var(--thin-border);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		color: var(--muted);
-		font-size: 0.9rem;
 	}
 </style>

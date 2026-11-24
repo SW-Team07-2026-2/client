@@ -10,6 +10,21 @@ export interface DetailRect {
 	height: number;
 }
 
+/**
+ * 상세 모핑 시작 기준 요소(`data-detail-origin`)의 현재 뷰포트 좌표를 측정합니다.
+ */
+export function measureOriginRect(originEl: HTMLElement | null | undefined): DetailRect | null {
+	if (!originEl) return null;
+	const r = originEl.getBoundingClientRect();
+	if (r.width <= 0 || r.height <= 0) return null;
+	return {
+		left: r.left,
+		top: r.top,
+		width: r.width,
+		height: r.height
+	};
+}
+
 export interface DetailMorphSeed {
 	category: CatalogCategoryKey;
 	itemId: number;

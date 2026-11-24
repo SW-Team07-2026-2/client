@@ -4,18 +4,23 @@
 	import { page } from '$app/state';
 	import { auth } from '#lib/auth';
 	import { isMobile } from '#lib/common/logic';
-	import { AppShell } from '#lib/layout/1_app_shell';
+	import { AppShell, mobileScrollVisibility } from '#lib/layout/1_app_shell';
 	import {
 		MainSection,
 		MAIN_SECTION_KEYS,
+		parseMainSectionDetailId,
 		resolveMainSectionKey
 	} from '#lib/layout/2_main_section';
 	import {
 		ContentSectionController,
+		MbContentHeader,
+		MbPullToRefreshIndicator,
 		PcContentControl,
 		PcContentHeader,
+		attachMobilePullToRefresh,
 		isFilterableCategory,
-		setContentSectionContext
+		setContentSectionContext,
+		type PullToRefreshState
 	} from '#lib/layout/3_content_section';
 
 	let { children }: { children: Snippet } = $props();
@@ -27,9 +32,37 @@
 	const contentCtrl = new ContentSectionController();
 	setContentSectionContext(contentCtrl);
 
+	const activeSectionKey = $derived(resolveMainSectionKey(page.url.pathname));
+	const isDetailRoute = $derived(parseMainSectionDetailId(page.url.pathname) !== null);
+
+	let ptrState = $state<PullToRefreshState>({
+		pullPx: 0,
+		progress: 0,
+		ready: false,
+		refreshing: false
+	});
+
+	$effect(() => {
+		if (!isMobile.current) {
+			ptrState = { pullPx: 0, progress: 0, ready: false, refreshing: false };
+			return;
+		}
+		return attachMobilePullToRefresh({
+			canStart: () =>
+				!isCheckingAuth &&
+				auth.isLoggedIn &&
+				isFilterableCategory(activeSectionKey) &&
+				!isDetailRoute &&
+				!contentCtrl.isFilterOpen(activeSectionKey),
+			onStateChange: (next) => {
+				ptrState = next;
+			},
+			onRefresh: contentCtrl.triggerRefresh
+		});
+	});
+
 	$effect.pre(() => {
-		const activeKey = resolveMainSectionKey(page.url.pathname);
-		contentCtrl.syncActiveCategoryToFeed(activeKey);
+		contentCtrl.syncActiveCategoryToFeed(activeSectionKey);
 	});
 
 	onMount(() => {
@@ -52,7 +85,7 @@
 </script>
 
 {#if !isCheckingAuth && auth.isLoggedIn}
-	<AppShell>
+	<AppShell mobileHeaderAlwaysVisible={isDetailRoute}>
 		<MainSection>
 			{#snippet pinnedHeader({ section })}
 				{#if !isMobile.current && section}
@@ -65,25 +98,49 @@
 			{/snippet}
 
 			{#snippet pinnedControl({ section })}
-				{#if !isMobile.current && isFilterableCategory(section.key)}
-					<PcContentControl
-						searchQuery={contentCtrl.searchQuery}
-						searchLabel="{section.label} 검색"
-						searchPlaceholder={section.searchPlaceholder}
-						filterOpen={contentCtrl.isFilterOpen(section.key)}
-						hasActiveFilters={contentCtrl.hasActiveFilters(section.key)}
-						feedMode={contentCtrl.feedMode}
-						onSearchChange={contentCtrl.setSearchQuery}
-						onSearchSubmit={contentCtrl.submitSearch}
-						onFilterToggle={() => contentCtrl.toggleFilter(section.key)}
-						onFilterReset={() => contentCtrl.resetCategoryFilter(section.key)}
-						onFeedChange={(val) => contentCtrl.setFeedMode(val)}
-						onRefresh={contentCtrl.triggerRefresh}
-					/>
+				{#if isFilterableCategory(section.key)}
+					{#if !isMobile.current}
+						<PcContentControl
+							searchQuery={contentCtrl.searchQuery}
+							searchLabel="{section.label} 검색"
+							searchPlaceholder={section.searchPlaceholder}
+							filterOpen={contentCtrl.isFilterOpen(section.key)}
+							hasActiveFilters={contentCtrl.hasActiveFilters(section.key)}
+							feedMode={contentCtrl.feedMode}
+							onSearchChange={contentCtrl.setSearchQuery}
+							onSearchSubmit={contentCtrl.submitSearch}
+							onFilterToggle={() => contentCtrl.toggleFilter(section.key)}
+							onFilterReset={() => contentCtrl.resetCategoryFilter(section.key)}
+							onFeedChange={(val) => contentCtrl.setFeedMode(val)}
+							onRefresh={contentCtrl.triggerRefresh}
+						/>
+					{:else}
+						<MbContentHeader
+							searchQuery={contentCtrl.searchQuery}
+							searchPlaceholder={section.searchPlaceholder}
+							filterOpen={contentCtrl.isFilterOpen(section.key)}
+							activeFilterCount={contentCtrl.getActiveFilterCount(section.key)}
+							feedMode={contentCtrl.feedMode}
+							hidden={mobileScrollVisibility.hidden}
+							onSearchChange={contentCtrl.setSearchQuery}
+							onSearchSubmit={contentCtrl.submitSearch}
+							onFilterToggle={() => contentCtrl.toggleFilter(section.key)}
+							onFeedChange={(val) => contentCtrl.setFeedMode(val)}
+						/>
+					{/if}
 				{/if}
 			{/snippet}
 
 			{@render children()}
 		</MainSection>
+
+		{#if isMobile.current}
+			<MbPullToRefreshIndicator
+				pullPx={ptrState.pullPx}
+				progress={ptrState.progress}
+				ready={ptrState.ready}
+				refreshing={ptrState.refreshing}
+			/>
+		{/if}
 	</AppShell>
 {/if}

@@ -2,12 +2,6 @@ export { bgm } from './bgmManager.svelte';
 export { isMobile, BREAKPOINTS } from './isMobile.svelte';
 export { toast } from './toast.svelte';
 export {
-	getRootSplashContext,
-	setRootSplashContext,
-	type RootSplashContext,
-	type SplashTargetVariant
-} from './rootSplash';
-export {
 	catalogFeed,
 	buildCatalogRequestKey,
 	isCatalogCategoryReady,
@@ -21,6 +15,7 @@ export {
 } from './artistDetailState.svelte';
 export {
 	detailOverlay,
+	measureOriginRect,
 	parseCatalogDetailRoute,
 	isCatalogDetailPath,
 	type CategoryDetailSlot,
@@ -28,3 +23,4 @@ export {
 	type DetailPhase,
 	type DetailRect
 } from './detailOverlayState.svelte';
+export * from './contentFilterStorage';

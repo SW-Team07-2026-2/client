@@ -17,7 +17,7 @@
  */
 
 import { auth } from '#lib/auth';
-import { BASE_API_URL, CHAT_AI_API_URL } from '#lib/config/api';
+import { AI_API_URL, BASE_API_URL } from '#lib/config/api';
 
 export interface ChatActionPayload {
 	action: string;
@@ -61,7 +61,7 @@ export interface StreamChatOptions {
 	onError?: (errorMessage: string, errorCode?: string, status?: number) => void;
 }
 
-export const DEFAULT_CHAT_API_URL = CHAT_AI_API_URL;
+export const DEFAULT_CHAT_API_URL = AI_API_URL;
 
 /** Gateway 요청 본문 크기 상한: 1 MiB (명세서 §0-5 · §6) */
 export const GATEWAY_MAX_UPLOAD_BYTES = 1024 * 1024;

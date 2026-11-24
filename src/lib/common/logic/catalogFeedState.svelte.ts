@@ -16,7 +16,7 @@ import {
 	DEFAULT_PRICE_MIN,
 	type ContentFilterState
 } from '#lib/common/type/filterOptions';
-import { getSavedFollowSort } from '#lib/layout/3_content_section/logic/contentFilterStorage';
+import { getSavedFollowSort } from '#lib/common/logic/contentFilterStorage';
 
 const SEARCH_DEBOUNCE_MS = 250;
 const FEED_MODE_STORAGE_KEY = 'main-page-header-feed-mode';

@@ -22,7 +22,7 @@ import {
 	getSavedFollowSort,
 	saveCategoryFilter,
 	saveFollowSort
-} from './contentFilterStorage';
+} from '#lib/common/logic/contentFilterStorage';
 import { catalogFeed } from '#lib/common/logic';
 import type { SegmentOption } from '#lib/common/design/fluid/FdSegmentedControl.svelte';
 import type { MainSectionKey } from '../../2_main_section/logic/sectionRegistry';

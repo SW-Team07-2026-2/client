@@ -96,6 +96,15 @@ html.is-pc {
 	scrollbar-gutter: stable;
 }
 
+html.is-pc.no-scrollbar-gutter {
+	scrollbar-gutter: auto;
+	overflow: hidden;
+}
+
+html.detail-stage-open {
+	overflow: hidden;
+}
+
 html.is-pc,
 html.is-pc body {
 	min-width: var(--pc-min-width);

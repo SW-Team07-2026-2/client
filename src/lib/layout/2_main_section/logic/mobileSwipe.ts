@@ -7,6 +7,8 @@ export interface MobileSwipeCallbacks<T extends string = string> {
 	canStart: () => boolean;
 	getActiveCategory: () => T | null;
 	getPaneEl: (cat: T) => HTMLElement | undefined;
+	getControlEl?: () => HTMLElement | undefined;
+	getControlDragRole?: (originCat: T | null, previewCat: T | null) => 'origin' | 'preview' | 'none';
 	ensureMounted: (cat: T) => void;
 	getPreviewHref: (cat: T) => string;
 	getSavedScrollY: (pathname: string) => number;
@@ -80,6 +82,14 @@ export function attachMobileSwipe<T extends string = string>(
 		}
 	}
 
+	function clearControlInline() {
+		const ctrlEl = cb.getControlEl?.();
+		if (ctrlEl) {
+			ctrlEl.style.transform = '';
+			ctrlEl.style.willChange = '';
+		}
+	}
+
 	function applyDragTransforms() {
 		const activeEl = originCat ? cb.getPaneEl(originCat) : undefined;
 		if (activeEl) {
@@ -103,6 +113,34 @@ export function attachMobileSwipe<T extends string = string>(
 				});
 			}
 		}
+
+		// 카탈로그 <-> 마이페이지 드래그 시 상단 옵션바(MbContentHeader)도 손가락을 1:1 실시간 추적
+		const controlRole = cb.getControlDragRole?.(originCat, previewCat) ?? 'none';
+		if (controlRole === 'origin') {
+			const ctrlEl = cb.getControlEl?.();
+			if (ctrlEl) {
+				ctrlEl.style.willChange = 'transform';
+				ctrlEl.style.transform = `translate3d(${currentDragX.toFixed(1)}px, 0, 0)`;
+			}
+		} else if (controlRole === 'preview' && previewCat) {
+			const targetCat = previewCat;
+			const cTransform = `translate3d(calc(${previewDir * 100}% + ${currentDragX.toFixed(1)}px), 0, 0)`;
+			const ctrlEl = cb.getControlEl?.();
+			if (ctrlEl) {
+				ctrlEl.style.willChange = 'transform';
+				ctrlEl.style.transform = cTransform;
+			} else {
+				void tick().then(() => {
+					const mountedCtrl = cb.getControlEl?.();
+					if (mountedCtrl && tracking && previewCat === targetCat) {
+						mountedCtrl.style.willChange = 'transform';
+						mountedCtrl.style.transform = `translate3d(calc(${previewDir * 100}% + ${currentDragX.toFixed(1)}px), 0, 0)`;
+					}
+				});
+			}
+		} else {
+			clearControlInline();
+		}
 	}
 
 	function finishRebound(
@@ -115,6 +153,7 @@ export function attachMobileSwipe<T extends string = string>(
 		activeReboundAnims = [];
 		clearPaneInline(oCat);
 		clearPaneInline(pCat);
+		clearControlInline();
 		cb.onPreviewChange(null, 0);
 		cb.onSwipingChange(false);
 	}
@@ -130,6 +169,7 @@ export function attachMobileSwipe<T extends string = string>(
 			activeReboundAnims = [];
 			clearPaneInline(originCat);
 			clearPaneInline(previewCat);
+			clearControlInline();
 			cb.onPreviewChange(null, 0);
 			cb.onSwipingChange(false);
 		}
@@ -274,6 +314,30 @@ export function attachMobileSwipe<T extends string = string>(
 				{ duration: 240, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'both' }
 			);
 			pEl.style.transform = '';
+			anims.push(anim);
+		}
+
+		const controlRole = cb.getControlDragRole?.(oCat, pCat) ?? 'none';
+		const ctrlEl = cb.getControlEl?.();
+		if (ctrlEl && controlRole === 'origin') {
+			const anim = ctrlEl.animate(
+				[
+					{ transform: `translate3d(${dx.toFixed(1)}px, 0, 0)` },
+					{ transform: 'translate3d(0, 0, 0)' }
+				],
+				{ duration: 240, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'both' }
+			);
+			ctrlEl.style.transform = '';
+			anims.push(anim);
+		} else if (ctrlEl && controlRole === 'preview' && pCat) {
+			const anim = ctrlEl.animate(
+				[
+					{ transform: `translate3d(calc(${previewDir * 100}% + ${dx.toFixed(1)}px), 0, 0)` },
+					{ transform: `translate3d(${previewDir * 100}%, 0, 0)` }
+				],
+				{ duration: 240, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'both' }
+			);
+			ctrlEl.style.transform = '';
 			anims.push(anim);
 		}
 

@@ -180,7 +180,7 @@
 		position: fixed;
 		inset: 0;
 		z-index: 64;
-		background: rgba(0, 0, 0, 0.58);
+		background: color-mix(in srgb, var(--bg) 62%, transparent);
 		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);
 	}

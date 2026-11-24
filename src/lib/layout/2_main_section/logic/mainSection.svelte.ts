@@ -1,13 +1,16 @@
 import { tick, untrack } from 'svelte';
 import { goto, preloadCode } from '$app/navigation';
 import { page } from '$app/state';
-import { catalogFeed, isMobile } from '#lib/common/logic';
+import { catalogFeed, detailOverlay, isMobile } from '#lib/common/logic';
+import { prefersReducedMotion } from '#lib/common/type/spring';
 import {
+	SLIDE_MOTION,
 	createKeepAliveSlideController,
 	resolveSlideDirection,
 	type SlideDirection
 } from './keepAliveSlide';
 import { attachMobileSwipe } from './mobileSwipe';
+import { resolvePinnedTransition, shouldUseSmoothPcScroll } from './pinnedTransition';
 import {
 	MAIN_SECTIONS,
 	MAIN_SECTION_KEYS,
@@ -31,6 +34,14 @@ export class MainSectionController {
 		album: false,
 		goods: false,
 		mypage: false
+	});
+	/** 각 카테고리별로 마지막에 열려 있던 상세 ID (카테고리 이동 후에도 유지) */
+	sectionDetailIds = $state<Record<MainSectionKey, number | null>>({
+		artist: null,
+		concert: null,
+		album: null,
+		goods: null,
+		mypage: null
 	});
 
 	exitingSection = $state<MainSectionKey | null>(null);
@@ -65,20 +76,62 @@ export class MainSectionController {
 
 	private preNavScrollY = 0;
 	private pendingTargetScrollY: number | null = null;
+	private pendingSmoothScrollFromY: number | null = null;
 	private pendingExitingDeltaY = 0;
 	private pendingFromHeaderHeight = 0;
 	private pendingSwipeOffsetPx = 0;
 	private pendingSwipeDurationMs = 0;
 	private lastTrackedSection: MainSectionKey | null = null;
 	private swipeFallbackTimer: ReturnType<typeof setTimeout> | undefined;
+	private transitionScrollRafId = 0;
+
+	private cancelTransitionScroll(): void {
+		if (this.transitionScrollRafId) {
+			cancelAnimationFrame(this.transitionScrollRafId);
+			this.transitionScrollRafId = 0;
+		}
+	}
+
+	private animateTransitionScroll(fromY: number, toY: number, durationMs: number): void {
+		this.cancelTransitionScroll();
+		if (typeof window === 'undefined') return;
+		if (Math.abs(toY - fromY) <= 1 || prefersReducedMotion()) {
+			window.scrollTo({ top: toY, left: 0, behavior: 'auto' });
+			return;
+		}
+
+		window.scrollTo({ top: fromY, left: 0, behavior: 'auto' });
+		const startTime = performance.now();
+		const delta = toY - fromY;
+
+		const step = (now: number) => {
+			const t = Math.min(1, (now - startTime) / durationMs);
+			const inv = 1 - t;
+			const eased = 1 - inv * inv * inv;
+			window.scrollTo({ top: Math.round(fromY + delta * eased), left: 0, behavior: 'auto' });
+			if (t < 1) {
+				this.transitionScrollRafId = requestAnimationFrame(step);
+			} else {
+				this.transitionScrollRafId = 0;
+				window.scrollTo({ top: toY, left: 0, behavior: 'auto' });
+			}
+		};
+
+		this.transitionScrollRafId = requestAnimationFrame(step);
+	}
 
 	constructor() {
 		const initialKey = untrack(() => resolveMainSectionKey(page.url.pathname));
+		const initialDetailId = untrack(() => parseMainSectionDetailId(page.url.pathname));
 		if (initialKey) {
 			this.mountedSections[initialKey] = true;
+			this.sectionDetailIds[initialKey] = initialDetailId;
 			this.lastTrackedSection = initialKey;
-			this.headerSection = initialKey;
-			this.controlSection = getMainSection(initialKey).supportsOptions ? initialKey : null;
+			this.headerSection = initialDetailId === null ? initialKey : null;
+			this.controlSection =
+				getMainSection(initialKey).supportsOptions && initialDetailId === null
+					? initialKey
+					: null;
 		}
 	}
 
@@ -127,124 +180,91 @@ export class MainSectionController {
 
 	getSavedScrollY = (pathname?: string | null): number => {
 		if (!pathname) return 0;
+		const key = resolveMainSectionKey(pathname);
+		if (isMobile.current) {
+			return key ? this.listScrollPositions[key] : 0;
+		}
 		const detailId = parseMainSectionDetailId(pathname);
 		if (detailId !== null) {
 			return this.detailScrollPositions[pathname] ?? 0;
 		}
-		const key = resolveMainSectionKey(pathname);
 		return key ? this.listScrollPositions[key] : 0;
+	};
+
+	isSectionDetail = (key: MainSectionKey | null): boolean => {
+		return Boolean(key && this.sectionDetailIds[key] !== null);
+	};
+
+	getSectionListScrollY = (key: MainSectionKey): number => {
+		if (key === this.activeSection && typeof window !== 'undefined') {
+			return Math.max(0, window.scrollY);
+		}
+		return this.listScrollPositions[key] ?? 0;
 	};
 
 	/** 라우트 변경 시 현재 섹션 마운트 및 전환 트리거 */
 	syncCurrentRoute = (getPinnedHeaderHeight?: () => number): void => {
 		const activeKey = this.activeSection;
 		const pathname = this.pathname;
+		const activeDetailId = this.activeDetailId;
 
 		untrack(() => {
 			catalogFeed.rememberCategoryRoute(pathname);
 			if (activeKey) {
 				this.ensureMounted(activeKey);
+				this.sectionDetailIds[activeKey] = activeDetailId;
 			}
 
 			const prevKey = this.lastTrackedSection;
-			if (activeKey === prevKey) return;
+			if (activeKey === prevKey) {
+				// 같은 카테고리 내 목록 <-> 상세 전환 시 헤더/컨트롤바 섹션 키 유지
+				// (실제 숨김/언마운트는 MainSection에서 detailOverlay phase === 'open' 안착 시점에 처리해
+				//  expanding 도중 헤더가 먼저 사라져 목록이 위로 점프하는 현상을 방지)
+				if (activeKey) {
+					const hasControl = getMainSection(activeKey).supportsOptions;
+					this.headerSection = activeKey;
+					this.controlSection = hasControl ? activeKey : null;
+				}
+				return;
+			}
 			this.lastTrackedSection = activeKey;
 
 			if (prevKey && activeKey) {
-				const fromHasControl = getMainSection(prevKey).supportsOptions;
-				const toHasControl = getMainSection(activeKey).supportsOptions;
 				const fromY = this.preNavScrollY;
 				const toY = this.pendingTargetScrollY ?? this.getSavedScrollY(pathname);
-				const desktopMode = !isMobile.current && !this.isDetailRoute;
-
-				// 고정 헤더 유무(상세 <-> 목록 등)에 따른 높이 차이 보정
-				const toHeaderH = !isMobile.current ? (getPinnedHeaderHeight?.() ?? 0) : 0;
-				const headerHeightDelta = !isMobile.current
-					? this.pendingFromHeaderHeight - toHeaderH
-					: 0;
-
-				this.exitingSection = prevKey;
-				this.exitingDeltaY = this.pendingExitingDeltaY + headerHeightDelta;
+				const toIsDetail = activeDetailId !== null;
+				const fromHeaderH = !isMobile.current ? this.pendingFromHeaderHeight : 0;
+				const baseExitingDeltaY = this.pendingExitingDeltaY;
 				this.pendingExitingDeltaY = 0;
 
-				// PC 제자리 고정 영역(헤더 · 옵션바)의 슬라이드 참여 여부 결정
-				let headerSlideMode: 'pinned' | 'in' | 'out' | 'none' = 'pinned';
-				let controlSlideMode: 'pinned' | 'in' | 'out' | 'none' = 'none';
+				const initialToHeaderH =
+					!isMobile.current && !toIsDetail ? (getPinnedHeaderHeight?.() ?? 0) : 0;
 
-				if (desktopMode) {
-					const headerH = toHeaderH || (this.pinnedHeaderEl?.offsetHeight ?? 120);
-					const controlH = this.pinnedControlEl?.offsetHeight ?? 60;
-					const headerZone = headerH + (fromHasControl || toHasControl ? controlH : 0);
+				this.exitingSection = prevKey;
+				this.exitingDeltaY = baseExitingDeltaY + (fromHeaderH - initialToHeaderH);
 
-					if (fromY <= 8 && toY <= 8) {
-						// 1) 두 페이지 모두 최상단: 헤더는 제자리 모핑, 옵션바는 카탈로그 간 유지 / 마이페이지 전환 시만 슬라이드
-						headerSlideMode = 'pinned';
-						this.headerSection = activeKey;
-						this.headerOffsetY = 0;
+				// 제자리 고정 영역(PC 헤더 · PC 옵션바 · 모바일 검색/필터 헤더)의 슬라이드 참여 여부 계산
+				const pinnedPlan = resolvePinnedTransition({
+					prevKey,
+					activeKey,
+					fromY,
+					toY,
+					isMobile: isMobile.current,
+					fromIsDetail: this.isSectionDetail(prevKey),
+					toIsDetail,
+					headerHeight: initialToHeaderH || (this.pinnedHeaderEl?.offsetHeight ?? 0),
+					controlHeight: this.pinnedControlEl?.offsetHeight ?? 0
+				});
 
-						if (fromHasControl && toHasControl) {
-							controlSlideMode = 'pinned';
-							this.controlSection = activeKey;
-							this.controlOffsetY = 0;
-						} else if (fromHasControl && !toHasControl) {
-							controlSlideMode = 'out';
-							this.controlSection = prevKey;
-							this.controlOffsetY = 0;
-						} else if (!fromHasControl && toHasControl) {
-							controlSlideMode = 'in';
-							this.controlSection = activeKey;
-							this.controlOffsetY = 0;
-						} else {
-							controlSlideMode = 'none';
-							this.controlSection = null;
-							this.controlOffsetY = 0;
-						}
-					} else if (fromY > 8 && toY <= headerZone) {
-						// 2) 스크롤된 페이지 -> 상단 노출 페이지: 헤더와 옵션바가 새 페이지와 함께 좌우 슬라이드 진입
-						headerSlideMode = 'in';
-						this.headerSection = activeKey;
-						this.headerOffsetY = 0;
-
-						if (toHasControl) {
-							controlSlideMode = 'in';
-							this.controlSection = activeKey;
-							this.controlOffsetY = 0;
-						} else {
-							controlSlideMode = 'none';
-							this.controlSection = null;
-							this.controlOffsetY = 0;
-						}
-					} else if (fromY <= headerZone && toY > headerZone) {
-						// 3) 상단 노출 페이지 -> 스크롤된 페이지: 이전 페이지의 헤더/옵션바가 현재 뷰포트 위치에서 좌우 슬라이드 퇴장
-						const exitTopOffset = Math.max(0, toY - fromY);
-						headerSlideMode = 'out';
-						this.headerSection = prevKey;
-						this.headerOffsetY = exitTopOffset;
-
-						if (fromHasControl) {
-							controlSlideMode = 'out';
-							this.controlSection = prevKey;
-							this.controlOffsetY = exitTopOffset;
-						} else {
-							controlSlideMode = 'none';
-							this.controlSection = null;
-							this.controlOffsetY = 0;
-						}
-					} else {
-						// 4) 두 페이지 모두 헤더 영역 아래로 스크롤됨: 화면 밖이므로 상태만 동기화
-						headerSlideMode = 'none';
-						controlSlideMode = 'none';
-						this.headerSection = activeKey;
-						this.headerOffsetY = 0;
-						this.controlSection = toHasControl ? activeKey : null;
-						this.controlOffsetY = 0;
-					}
-				} else {
-					this.headerSection = activeKey;
-					this.headerOffsetY = 0;
-					this.controlSection = toHasControl ? activeKey : null;
-					this.controlOffsetY = 0;
-				}
+				const { headerSlideMode, controlSlideMode } = pinnedPlan;
+				this.headerSection = pinnedPlan.headerSection;
+				this.headerOffsetY = pinnedPlan.headerOffsetY;
+				this.controlSection = pinnedPlan.controlSection;
+				// PC 목록 -> 상세 퇴장 시 헤더가 overlay(높이 0)로 빠지므로 옵션바도 원래 헤더 높이만큼 아래에서 퇴장
+				this.controlOffsetY =
+					!isMobile.current && toIsDetail && controlSlideMode === 'out'
+						? fromHeaderH
+						: pinnedPlan.controlOffsetY;
 
 				const dir = this.routeDir;
 				const startOffsetPx = this.pendingSwipeOffsetPx;
@@ -260,6 +280,14 @@ export class MainSectionController {
 				}
 
 				void tick().then(() => {
+					// 새 페이지의 pinnedHeader가 DOM에 마운트된 뒤 실제 높이를 재측정해 퇴장 페이지 Y 오프셋 정확히 보정
+					if (!isMobile.current) {
+						const actualToHeaderLayoutH = !toIsDetail
+							? (this.pinnedHeaderEl?.offsetHeight ?? 0)
+							: 0;
+						this.exitingDeltaY = baseExitingDeltaY + (fromHeaderH - actualToHeaderLayoutH);
+					}
+
 					const outEl = this.paneEls[prevKey];
 					const inEl = this.paneEls[activeKey];
 					const elementsOut: (HTMLElement | undefined)[] = [outEl];
@@ -290,10 +318,13 @@ export class MainSectionController {
 							this.exitingSection = null;
 							this.exitingDeltaY = 0;
 							this.stageMinHeight = '';
-							this.headerSection = this.activeSection;
+							this.headerSection =
+								this.activeSection && !this.isDetailRoute ? this.activeSection : null;
 							this.headerOffsetY = 0;
 							this.controlSection =
-								this.activeSection && getMainSection(this.activeSection).supportsOptions
+								this.activeSection &&
+								getMainSection(this.activeSection).supportsOptions &&
+								!this.isDetailRoute
 									? this.activeSection
 									: null;
 							this.controlOffsetY = 0;
@@ -306,10 +337,12 @@ export class MainSectionController {
 				});
 				this.exitingSection = null;
 				this.exitingDeltaY = 0;
-				this.headerSection = activeKey;
+				this.headerSection = activeKey && !this.isDetailRoute ? activeKey : null;
 				this.headerOffsetY = 0;
 				this.controlSection =
-					activeKey && getMainSection(activeKey).supportsOptions ? activeKey : null;
+					activeKey && getMainSection(activeKey).supportsOptions && !this.isDetailRoute
+						? activeKey
+						: null;
 				this.controlOffsetY = 0;
 			}
 		});
@@ -334,26 +367,27 @@ export class MainSectionController {
 			this.routeDir = resolveSlideDirection(fromIdx, toIdx);
 		}
 
+		this.cancelTransitionScroll();
 		this.preNavScrollY = Math.max(0, window.scrollY);
 		this.pendingTargetScrollY = null;
+		this.pendingSmoothScrollFromY = null;
 		this.pendingExitingDeltaY = 0;
 		this.pendingFromHeaderHeight = !isMobile.current ? pinnedHeaderHeight : 0;
 
-		// 1) 같은 카테고리 내 목록 -> 상세 진입 (목록 스크롤 보존, 상세는 최상단 시작)
+		// 1) 같은 카테고리 내 목록 -> 상세 진입 (상세는 자체 고정 프레임에서 스크롤하므로 배경 목록 스크롤 위치 유지)
 		if (fromKey && toKey === fromKey && fromDetailId === null && toDetailId !== null) {
 			this.listScrollPositions[fromKey] = this.preNavScrollY;
 			this.detailScrollPositions[toPath] = 0;
-			this.pendingTargetScrollY = 0;
+			this.pendingTargetScrollY = null;
 			return;
 		}
 
-		// 2) 같은 카테고리 내 상세 -> 목록 복귀 (상세 스크롤 초기화, 목록 스크롤 복원)
+		// 2) 같은 카테고리 내 상세 -> 목록 복귀 (보존된 목록 스크롤이 현재 window.scrollY와 다르면 복원)
 		if (fromKey && toKey === fromKey && fromDetailId !== null && toDetailId === null) {
 			this.detailScrollPositions[fromPath] = 0;
-			const targetY = this.listScrollPositions[fromKey] ?? 0;
-			this.pendingTargetScrollY = targetY;
-			const requiredHeight = Math.max(targetY, this.preNavScrollY);
-			this.stageMinHeight = requiredHeight > 0 ? `${requiredHeight + window.innerHeight}px` : '';
+			const savedListY = this.listScrollPositions[fromKey] ?? 0;
+			this.pendingTargetScrollY =
+				Math.abs(this.preNavScrollY - savedListY) > 1 ? savedListY : null;
 			return;
 		}
 
@@ -367,7 +401,23 @@ export class MainSectionController {
 		if (toKey) {
 			const targetY = this.getSavedScrollY(toPath);
 			this.pendingTargetScrollY = targetY;
-			this.pendingExitingDeltaY = targetY - this.preNavScrollY;
+
+			// PC에서 이전/다음 페이지 모두 217px 이하 스크롤이면, 헤더·옵션바를 제자리에 두고 부드럽게 스크롤 이동하며 전환
+			const smoothPcHeaderTransition = shouldUseSmoothPcScroll({
+				isMobile: isMobile.current,
+				fromDetailId,
+				toDetailId,
+				fromY: this.preNavScrollY,
+				toY: targetY
+			});
+
+			if (smoothPcHeaderTransition) {
+				this.pendingSmoothScrollFromY = this.preNavScrollY;
+				this.pendingExitingDeltaY = 0;
+			} else {
+				this.pendingExitingDeltaY = targetY - this.preNavScrollY;
+			}
+
 			const requiredHeight = Math.max(targetY, this.preNavScrollY);
 			this.stageMinHeight = requiredHeight > 0 ? `${requiredHeight + window.innerHeight}px` : '';
 		}
@@ -378,7 +428,15 @@ export class MainSectionController {
 		if (typeof window === 'undefined') return;
 		if (this.pendingTargetScrollY !== null) {
 			const targetY = this.pendingTargetScrollY;
+			const smoothFromY = this.pendingSmoothScrollFromY;
 			this.pendingTargetScrollY = null;
+			this.pendingSmoothScrollFromY = null;
+
+			if (smoothFromY !== null) {
+				this.animateTransitionScroll(smoothFromY, targetY, SLIDE_MOTION.enterDuration);
+				return;
+			}
+
 			window.scrollTo({ top: targetY, left: 0, behavior: 'auto' });
 			requestAnimationFrame(() => {
 				if (Math.abs(window.scrollY - targetY) > 1) {
@@ -392,9 +450,21 @@ export class MainSectionController {
 	attachSwipe = (stageEl: HTMLElement): (() => void) => {
 		return attachMobileSwipe<MainSectionKey>(stageEl, {
 			categories: MAIN_SECTION_KEYS,
-			canStart: () => isMobile.current && !this.isSliding && this.activeDetailId === null,
+			canStart: () =>
+				isMobile.current && !this.isSliding && !detailOverlay.hasAnyTransitioning(),
 			getActiveCategory: () => this.activeSection,
 			getPaneEl: (key) => this.paneEls[key],
+			getControlEl: () => this.pinnedControlEl,
+			getControlDragRole: (originKey, previewKey) => {
+				if (!originKey || !previewKey) return 'none';
+				const originHas =
+					getMainSection(originKey).supportsOptions && !this.isSectionDetail(originKey);
+				const previewHas =
+					getMainSection(previewKey).supportsOptions && !this.isSectionDetail(previewKey);
+				if (originHas && !previewHas) return 'origin';
+				if (!originHas && previewHas) return 'preview';
+				return 'none';
+			},
 			ensureMounted: (key) => this.ensureMounted(key),
 			getPreviewHref: (key) =>
 				catalogFeed.getCategoryNavHref(getMainSection(key).href, this.pathname),
@@ -405,6 +475,18 @@ export class MainSectionController {
 			onPreviewChange: (key, topOffset) => {
 				this.swipePreviewSection = key;
 				this.swipePreviewTop = topOffset;
+				// 현재 페이지에 옵션바가 없을 때(마이페이지 또는 상세 페이지) 카탈로그 목록으로 드래그 프리뷰 시
+				// 상단 옵션바를 미리 마운트해 손가락과 함께 자연스럽게 슬라이드 인
+				const active = this.activeSection;
+				const activeHasControl = Boolean(
+					active && getMainSection(active).supportsOptions && !this.isSectionDetail(active)
+				);
+				if (!activeHasControl) {
+					const previewHasControl = Boolean(
+						key && getMainSection(key).supportsOptions && !this.isSectionDetail(key)
+					);
+					this.controlSection = previewHasControl ? key : null;
+				}
 			},
 			onCommit: ({ targetCat, targetHref, dir, offsetPx, durationMs, originCat }) => {
 				this.routeDir = dir;
@@ -448,6 +530,7 @@ export class MainSectionController {
 
 	cleanup = (): void => {
 		clearTimeout(this.swipeFallbackTimer);
+		this.cancelTransitionScroll();
 		this.slideController.cancel((sliding) => {
 			this.isSliding = sliding;
 		});

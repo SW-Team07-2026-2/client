@@ -4,10 +4,13 @@
 	import type { LayoutProps } from './$types';
 	import { onNavigate } from '$app/navigation';
 	import { page } from '$app/state';
-	import { FdToast } from '#lib/components';
-	import FdTitleSplash from '#lib/common/design/fluid/FdTitleSplash.svelte';
+	import { FdToast } from '#lib/common/design/fluid';
 	import { isMobile, toast } from '#lib/common/logic';
-	import { setRootSplashContext, type SplashTargetVariant } from '#lib/common/logic/rootSplash';
+	import {
+		LoadingSplash,
+		setRootSplashContext,
+		type SplashTargetVariant
+	} from '#lib/dedicated/loading';
 
 	let { children }: LayoutProps = $props();
 
@@ -95,7 +98,7 @@
 {@render children()}
 
 {#if showSplash}
-	<FdTitleSplash
+	<LoadingSplash
 		targetEl={splashTargetEl}
 		targetGlyphRatio={splashTargetVariant === 'exact' ? 1 : undefined}
 		onreveal={handleSplashReveal}

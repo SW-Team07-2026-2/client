@@ -3,7 +3,8 @@
 	import { afterNavigate, beforeNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import BellIcon from '#lib/common/design/icon/BellIcon.svelte';
-	import { getRootSplashContext, isMobile } from '#lib/common/logic';
+	import { isMobile } from '#lib/common/logic';
+	import { getRootSplashContext } from '#lib/dedicated/loading';
 	import {
 		AppShellController,
 		MOBILE_NAV_ITEMS,
@@ -176,8 +177,6 @@
 		<PcHeader
 			navItems={ctrl.pcNavItems}
 			isScrolled={ctrl.isPcHeaderScrolled}
-			isDetailVeil={ctrl.isDetailVeil}
-			isVeilInstant={ctrl.isClosingLockVeil}
 			onNavClick={ctrl.handlePcNavClick}
 		/>
 

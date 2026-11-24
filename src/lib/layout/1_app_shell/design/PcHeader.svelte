@@ -1,33 +1,20 @@
 <script lang="ts">
 	import FdTitle from '#lib/common/design/fluid/FdTitle.svelte';
 	import FdBgmPlayer from '#lib/common/design/fluid/FdBgmPlayer.svelte';
-	import FdProfileButton from '#lib/components/feature/FdProfileButton.svelte';
+	import FdProfileButton from '../part/FdProfileButton.svelte';
 	import type { AppShellPcNavItem } from '../logic/appShell.svelte';
 
 	interface Props {
 		navItems: readonly AppShellPcNavItem[];
 		isScrolled?: boolean;
-		isDetailVeil?: boolean;
-		isVeilInstant?: boolean;
 		onNavClick?: (e: MouseEvent, href: string) => void;
 	}
 
-	let {
-		navItems,
-		isScrolled = false,
-		isDetailVeil = false,
-		isVeilInstant = false,
-		onNavClick
-	}: Props = $props();
+	let { navItems, isScrolled = false, onNavClick }: Props = $props();
 </script>
 
 <!-- 데스크톱 상단 고정 블러 헤더 (순수 렌더링) -->
-<header
-	class="main-header"
-	class:is-scrolled={isScrolled && !isDetailVeil}
-	class:is-detail-veil={isDetailVeil}
-	class:is-veil-instant={isVeilInstant}
->
+<header class="main-header" class:is-scrolled={isScrolled}>
 	<!-- 좌측: 로고 + 카테고리 네비게이션 -->
 	<div class="header-left">
 		<div class="logo-wrap">
@@ -94,15 +81,6 @@
 
 	.main-header.is-scrolled {
 		border-bottom: var(--thin-border);
-	}
-
-	.main-header.is-detail-veil {
-		background: var(--bg);
-		border-bottom-color: transparent;
-	}
-
-	.main-header.is-veil-instant {
-		transition: none;
 	}
 
 	.header-left {

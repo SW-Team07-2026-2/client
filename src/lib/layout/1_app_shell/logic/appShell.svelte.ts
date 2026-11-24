@@ -87,18 +87,6 @@ export class AppShellController {
 		return this.scrollY > 2;
 	}
 
-	get isExpandingVeil(): boolean {
-		return detailOverlay.hasExpanding();
-	}
-
-	get isClosingLockVeil(): boolean {
-		return detailOverlay.hasPendingCloseLock();
-	}
-
-	get isDetailVeil(): boolean {
-		return this.isExpandingVeil || this.isClosingLockVeil;
-	}
-
 	/* ── 모바일 헤더 / 하단바 / 3-패널 상태 ── */
 
 	get isMobileHeaderHidden(): boolean {

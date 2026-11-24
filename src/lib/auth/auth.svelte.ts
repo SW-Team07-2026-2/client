@@ -1,4 +1,4 @@
-import { BASE_API_URL } from '#lib/config/api.ts';
+import { APP_MODE, BASE_API_URL } from '#lib/config/api';
 
 /**
  * G3 GET /api/auth/me 응답 타입 (명세서 §1 G3)
@@ -241,7 +241,8 @@ class AuthStore {
 			this.isLoading = true;
 			// SIGNUP 쿠키는 HttpOnly 라 JS 로 못 읽음 → 카카오 로그인을 거쳐 돌아왔는지 표시
 			sessionStorage.setItem(SIGNUP_FLOW_KEY, '1');
-			window.location.href = `${this.apiBaseUrl}/oauth2/authorization/kakao?frontend=local`;
+			const query = APP_MODE === 'prod' ? '' : '?frontend=local';
+			window.location.href = `${this.apiBaseUrl}/oauth2/authorization/kakao${query}`;
 		}
 	}
 
@@ -421,6 +422,19 @@ class AuthStore {
 		} finally {
 			this.clearAuth(true);
 		}
+	}
+
+	/**
+	 * v2 회원탈퇴 (DELETE /api/members/me)
+	 * - 즉시 hard delete + Gateway가 AT · RT · XSRF 만료 쿠키 발급
+	 * - 성공 시 로컬 인증 상태 및 메모리의 CSRF 토큰을 즉시 폐기
+	 */
+	async withdraw(): Promise<void> {
+		await api<null>('/api/members/me', {
+			method: 'DELETE'
+		});
+		this.clearAuth(true);
+		this.xsrfToken = null;
 	}
 }
 

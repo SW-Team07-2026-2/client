@@ -17,6 +17,10 @@ export interface MainSectionContextValue {
 	getActiveDetailId: () => number | null;
 	/** 제자리 고정 상단 영역(pinned header) 높이 측정 (상세 전환 시 점프 보정용) */
 	getPinnedHeaderHeight: () => number;
+	/** 현재 카테고리 좌우 슬라이드 또는 모바일 스와이프 진행 여부 */
+	isSlidingOrSwiping: () => boolean;
+	/** 특정 카테고리의 보존된 목록 스크롤 Y (모바일 상세 프레임 슬라이드 위치 보정용) */
+	getSectionListScrollY: (key: MainSectionKey) => number;
 }
 
 const MAIN_SECTION_CONTEXT_KEY = Symbol('indig.mainSection');

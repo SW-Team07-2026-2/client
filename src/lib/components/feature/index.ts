@@ -1,6 +1,6 @@
 export { default as FdBgmPlayer } from '#lib/common/design/fluid/FdBgmPlayer.svelte';
 export { default as FdContentSearchInput } from '#lib/layout/3_content_section/part/control_part/FdContentSearchInput.svelte';
-export { default as FdProfileButton } from './FdProfileButton.svelte';
+export { default as FdProfileButton } from '#lib/layout/1_app_shell/part/FdProfileButton.svelte';
 export { default as WelcomeAgreeModal } from './welcome/WelcomeAgreeModal.svelte';
 export { default as WelcomeArtistSection } from './welcome/WelcomeArtistSection.svelte';
 export { default as WelcomeArtistItem } from './welcome/WelcomeArtistItem.svelte';

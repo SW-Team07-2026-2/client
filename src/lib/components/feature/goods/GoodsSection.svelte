@@ -19,7 +19,7 @@
 		countActiveFilters,
 		type ContentFilterState
 	} from '#lib/common/type/filterOptions';
-	import { getSavedCategorySlice } from '#lib/layout/3_content_section/logic/contentFilterStorage';
+	import { getSavedCategorySlice } from '#lib/common/logic/contentFilterStorage';
 	import { prewarmFdImages } from '#lib/common/design/fluid/FdImage.svelte';
 	import { buildCatalogRequestKey, catalogFeed, isCatalogCategoryReady, toast } from '#lib/common/logic';
 	import CatalogSectionShell from '../shared/CatalogSectionShell.svelte';
