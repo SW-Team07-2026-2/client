@@ -5,7 +5,7 @@
 	import { onNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { FdToast } from '#lib/common/design/fluid';
-	import { isMobile, toast } from '#lib/common/logic';
+	import { isMobile, toast, useAnalytics } from '#lib/common/logic';
 	import {
 		LoadingSplash,
 		setRootSplashContext,
@@ -60,6 +60,9 @@
 		if (typeof document === 'undefined') return;
 		document.documentElement.classList.toggle('is-pc', !isMobile.current);
 	});
+
+	// GA4 user_id(회원 번호) · 상세 조회 · 머문 시간 — 운영 주소에서만 (#lib/common/logic/useAnalytics)
+	useAnalytics();
 
 	// 로고 모핑이 필요한 진입/인트로 경로(/, /welcome) 간 전환 시에만 View Transition 활성화
 	const LOGO_TRANSITION_PATHS = new Set(['/', '/welcome']);
