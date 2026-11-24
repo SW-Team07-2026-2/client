@@ -2,11 +2,12 @@
 	import '#lib/config/layout.css';
 	import favicon from '#lib/assets/favicon.svg';
 	import type { LayoutProps } from './$types';
-	import { onNavigate } from '$app/navigation';
+	import { afterNavigate, onNavigate } from '$app/navigation';
 	import { page } from '$app/state';
+	import { auth } from '#lib/auth';
 	import { FdToast } from '#lib/components';
 	import FdTitleSplash from '#lib/common/design/fluid/FdTitleSplash.svelte';
-	import { isMobile, toast } from '#lib/common/logic';
+	import { isMobile, setAnalyticsUser, toast, trackNavigation } from '#lib/common/logic';
 	import { setRootSplashContext, type SplashTargetVariant } from '#lib/common/logic/rootSplash';
 
 	let { children }: LayoutProps = $props();
@@ -56,6 +57,15 @@
 	$effect(() => {
 		if (typeof document === 'undefined') return;
 		document.documentElement.classList.toggle('is-pc', !isMobile.current);
+	});
+
+	// GA4 user_id(회원 번호) · 행동 메트릭 — 운영 주소에서만 동작 (#lib/common/logic/analytics)
+	$effect(() => {
+		setAnalyticsUser(auth.user?.userId ?? null);
+	});
+
+	afterNavigate(({ to }) => {
+		trackNavigation(to?.url.pathname ?? null);
 	});
 
 	// 로고 모핑이 필요한 진입/인트로 경로(/, /welcome) 간 전환 시에만 View Transition 활성화
