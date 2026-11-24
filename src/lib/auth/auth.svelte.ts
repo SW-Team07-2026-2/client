@@ -241,7 +241,9 @@ class AuthStore {
 			this.isLoading = true;
 			// SIGNUP 쿠키는 HttpOnly 라 JS 로 못 읽음 → 카카오 로그인을 거쳐 돌아왔는지 표시
 			sessionStorage.setItem(SIGNUP_FLOW_KEY, '1');
-			window.location.href = `${this.apiBaseUrl}/oauth2/authorization/kakao?frontend=local`;
+			// 로그인 뒤 돌아올 곳 — localhost 는 ?frontend=local, 운영(indig.co.kr)은 파라미터 없음
+			const frontend = window.location.hostname === 'localhost' ? '?frontend=local' : '';
+			window.location.href = `${this.apiBaseUrl}/oauth2/authorization/kakao${frontend}`;
 		}
 	}
 
