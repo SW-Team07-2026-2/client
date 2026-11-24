@@ -1,4 +1,4 @@
-import { GOODS_FORM_OPTIONS } from '#lib/config/filter';
+import { GOODS_FORM_OPTIONS } from '#lib/common/type/filterOptions';
 
 export type GoodsBadge = 'NEW' | '한정판' | '품절임박' | '품절';
 

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import FdImage from '../../ui/FdImage.svelte';
-	import { FluidSetting } from '#lib/fluid/setting';
+	import FdImage from '#lib/common/design/fluid/FdImage.svelte';
+	import { FluidSetting } from '#lib/common/type/fluid';
 	import type { ArtistItem } from './welcome';
 
 	interface Props {

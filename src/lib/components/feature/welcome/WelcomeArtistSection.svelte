@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { tick, type Snippet } from 'svelte';
-	import FdButton from '../../ui/FdButton.svelte';
-	import FdInput from '../../ui/FdInput.svelte';
+	import FdButton from '#lib/common/design/fluid/FdButton.svelte';
+	import FdInput from '#lib/common/design/fluid/FdInput.svelte';
 	import WelcomeArtistItem from './WelcomeArtistItem.svelte';
 	import FoldText from './part/FoldText.svelte';
-	import { FluidSetting } from '#lib/fluid/setting';
+	import { FluidSetting } from '#lib/common/type/fluid';
 	import type { ArtistItem } from './welcome';
 
 	interface Props {

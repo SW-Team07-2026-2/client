@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import { goto } from '$app/navigation';
 	import ArtistCard from './ArtistCard.svelte';
 	import CatalogSectionShell from '../shared/CatalogSectionShell.svelte';
 	import { api, auth } from '#lib/auth/auth.svelte';
@@ -19,15 +20,16 @@
 	import {
 		cloneContentFilterState,
 		countActiveFilters,
-		getSavedCategorySlice,
 		type ContentFilterState
-	} from '#lib/config/filter';
-	import { prewarmFdImages } from '#lib/components/ui/FdImage.svelte';
+	} from '#lib/common/type/filterOptions';
+	import { getSavedCategorySlice } from '#lib/layout/3_content_section/logic/contentFilterStorage';
+	import { prewarmFdImages } from '#lib/common/design/fluid/FdImage.svelte';
 	import {
+		artistDetailState,
 		buildCatalogRequestKey,
 		catalogFeed,
 		isCatalogCategoryReady
-	} from '#lib/stores';
+	} from '#lib/common/logic';
 
 	interface CursorPage<T> {
 		items: T[];
@@ -214,6 +216,7 @@
 
 			hasCompletedInitialLoad = true;
 			artists = append ? [...artists, ...res.items] : res.items;
+			artistDetailState.cacheArtists(artists);
 			if (activeFeedMode === 'follow' && res.items.length > 0) {
 				const synced = new Set(followedIds);
 				for (const item of res.items) {
@@ -308,6 +311,7 @@
 			updated.delete(artist.id);
 		}
 		followedIds = updated;
+		artistDetailState.setFollowing(artist.id, nextFollowing);
 		onFollowChange?.(artist, nextFollowing);
 
 		const nextPending = new Set(pendingFollowIds);
@@ -329,6 +333,7 @@
 			console.error('Follow toggle failed:', err);
 			// 서버 에러 시 원래 상태로 롤백
 			followedIds = prevFollowed;
+			artistDetailState.setFollowing(artist.id, !nextFollowing);
 			onFollowChange?.(artist, !nextFollowing);
 			alert('팔로우 상태를 변경하지 못했습니다. 잠시 후 다시 시도해 주세요.');
 		} finally {
@@ -347,8 +352,24 @@
 		fetchArtistsPage(0, false);
 	}
 
-	function handleArtistCardClick(artist: CatalogArtist) {
-		onArtistClick?.(artist);
+	function handleArtistCardSelect(payload: {
+		artist: CatalogArtist;
+		originRect: { left: number; top: number; width: number; height: number } | null;
+		waveColor: string;
+		following: boolean;
+	}) {
+		artistDetailState.prepareEnter({
+			artistId: payload.artist.id,
+			artist: payload.artist,
+			following: payload.following,
+			waveColor: payload.waveColor,
+			rect: payload.originRect
+		});
+		if (onArtistClick) {
+			onArtistClick(payload.artist);
+		} else {
+			goto(`/artist/${payload.artist.id}`, { reset: false });
+		}
 	}
 
 	onMount(() => {
@@ -448,10 +469,11 @@
 	{#each artists as artist (artist.id)}
 		<ArtistCard
 			{artist}
-			following={followedIds.has(artist.id)}
+			following={artistDetailState.getFollowing(artist.id) ?? followedIds.has(artist.id)}
 			followLoading={pendingFollowIds.has(artist.id)}
+			interactive={active}
 			onFollowToggle={handleFollowToggle}
-			onclick={handleArtistCardClick}
+			onSelect={handleArtistCardSelect}
 		/>
 	{/each}
 </CatalogSectionShell>

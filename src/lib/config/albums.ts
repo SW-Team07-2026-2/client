@@ -1,4 +1,4 @@
-import { ALBUM_FORM_OPTIONS } from '#lib/config/filter';
+import { ALBUM_FORM_OPTIONS } from '#lib/common/type/filterOptions';
 
 export type AlbumFormat = 'LP' | '한정판 LP' | 'CD' | '카세트' | 'KIT' | 'USB' | string;
 export type AlbumStockStatus = '판매중' | '한정수량' | '품절';

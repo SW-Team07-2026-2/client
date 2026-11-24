@@ -17,16 +17,16 @@
 	import {
 		cloneContentFilterState,
 		countActiveFilters,
-		getSavedCategorySlice,
 		type ContentFilterState
-	} from '#lib/config/filter';
-	import { prewarmFdImages } from '#lib/components/ui/FdImage.svelte';
+	} from '#lib/common/type/filterOptions';
+	import { getSavedCategorySlice } from '#lib/layout/3_content_section/logic/contentFilterStorage';
+	import { prewarmFdImages } from '#lib/common/design/fluid/FdImage.svelte';
 	import {
 		buildCatalogRequestKey,
 		catalogFeed,
 		isCatalogCategoryReady,
 		toast
-	} from '#lib/stores';
+	} from '#lib/common/logic';
 	import CatalogSectionShell from '../shared/CatalogSectionShell.svelte';
 	import ConcertCard from './ConcertCard.svelte';
 

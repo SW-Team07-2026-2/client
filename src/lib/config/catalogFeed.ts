@@ -4,9 +4,9 @@ import {
 	DEFAULT_PRICE_MAX,
 	DEFAULT_PRICE_MIN,
 	type ContentFilterState
-} from '#lib/config/filter';
-import { prefersReducedMotion } from '#lib/fluid/spring';
-import { FluidSetting } from '#lib/fluid/setting';
+} from '#lib/common/type/filterOptions';
+import { prefersReducedMotion } from '#lib/common/type/spring';
+import { FluidSetting } from '#lib/common/type/fluid';
 
 export type CatalogCategoryKey = 'artist' | 'concert' | 'album' | 'goods';
 export type CatalogFeedMode = 'recommend' | 'popular' | 'all' | 'follow';

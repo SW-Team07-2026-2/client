@@ -1,4 +1,3 @@
-export * from './ui';
-export * from './layout';
+export * from '#lib/common/design';
 export * from './feature';
-export { FluidSetting, computeFluidWave, organicWave } from '#lib/fluid';
+export { FluidSetting, computeFluidWave, organicWave } from '#lib/common/type';

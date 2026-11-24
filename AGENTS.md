@@ -1,7 +1,11 @@
 # Frontend Development Guidelines
 
 ## 1. Responsive & Device-Aware Architecture
-- **단일 파일 내 분기**: 컴포넌트는 단일 파일로 작성하되, PC와 모바일 뷰/인터랙션은 내부에서 명확히 분기한다.
+- **로직과 디자인 역할의 엄격한 분리 (`logic/` · `design/pc/` · `design/mobile/`)**:
+  - **`logic/` (`.svelte.ts` / `.ts`)**: API 요청, 세션/인증, `localStorage`/`sessionStorage`/쿠키, 데이터 매핑, 비즈니스 계산, 상태 관리를 전담한다.
+  - **`design/pc/` · `design/mobile/` (`.svelte`)**: 오직 `logic`에서 전달받은 데이터(props)와 이벤트 콜백만 받아 **렌더링만 수행**한다. API 호출, 스토리지·쿠키·세션·전역 스토어 직접 접근 및 비즈니스 로직 작성을 금지한다. (순수 UI 인터랙션/애니메이션 제어만 허용)
+  - **진입점(Shell `.svelte`)**: `logic` 인스턴스를 연결하고 디바이스 판별 결과에 따라 `design/pc` 또는 `design/mobile`에 데이터를 주입해 조립한다. (단, 구조 차이가 크지 않은 소형/원자 UI 컴포넌트는 단일 파일 내 분기를 사용할 수 있다.)
+- **계층 아키텍처 준수**: 최상위 레이아웃(App Shell) → 메인 레이아웃(카테고리 전환) → 카테고리 섹션(PC/모바일 하위 섹션 및 상세) 계층과 섹션 분리는 `docs/frontend_section_architecture.md`를 따른다.
 - **정밀 디바이스 판별**: 단순 화면 폭(`width`)에만 의존하지 말고, 실제 디바이스 특성(터치 지원 `navigator.maxTouchPoints > 0`, `(pointer: coarse)`, 디바이스 정보 등)을 결합하여 모바일을 판별한다.
 - **고사양 리소스 지연 로딩**: Canvas, WebGL, 3D 등 무거운 그래픽 컴포넌트는 모바일 환경에서 번들 다운로드를 차단하기 위해 동적 임포트(`await import(...)`)로 로드한다.
 

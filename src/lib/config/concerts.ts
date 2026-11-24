@@ -1,5 +1,8 @@
-import { CONCERT_REGION_OPTIONS, CONCERT_STATUS_OPTIONS } from '#lib/config/filter';
-import { getGenreLabel } from '#lib/config/genre';
+import {
+	CONCERT_REGION_OPTIONS,
+	CONCERT_STATUS_OPTIONS,
+	getGenreLabel
+} from '#lib/common/type/filterOptions';
 
 export type ConcertTicketStatus =
 	| '예매중'

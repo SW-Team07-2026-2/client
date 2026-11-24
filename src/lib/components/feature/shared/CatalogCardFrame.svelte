@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack, type Snippet } from 'svelte';
-	import FdImage from '#lib/components/ui/FdImage.svelte';
-	import { FluidSetting } from '#lib/fluid/setting';
+	import FdImage from '#lib/common/design/fluid/FdImage.svelte';
+	import { FluidSetting } from '#lib/common/type/fluid';
 
 	interface Props {
 		src: string;

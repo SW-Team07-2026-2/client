@@ -2,43 +2,40 @@
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import { goto, preloadCode } from '$app/navigation';
 	import { FdTitle, FdButton, FdBgmPlayer } from '#lib/components';
-	import FdTitleSplash from '#lib/components/ui/FdTitleSplash.svelte';
-	import FluidVinyl from '#lib/components/layout/FdBackground.svelte';
+	import FluidVinyl from '#lib/common/design/fluid/FdBackground.svelte';
 	import { auth, clearSignupFlow } from '#lib/auth';
 	import { mapArtistItem, type ArtistItemDto, type CatalogArtist } from '#lib/config/artists';
 	import { CATALOG_DEFAULT_PAGE_SIZE, fetchCatalogPage } from '#lib/config/catalogFeed';
+	import { DEFAULT_FOLLOW_SORT } from '#lib/common/type/filterOptions';
 	import {
-		DEFAULT_FOLLOW_SORT,
 		getSavedCategorySlice,
 		getSavedFollowSort
-	} from '#lib/config/filter';
-	import { buildCatalogRequestKey, catalogFeed } from '#lib/stores';
+	} from '#lib/layout/3_content_section/logic/contentFilterStorage';
+	import { buildCatalogRequestKey, catalogFeed, isMobile } from '#lib/common/logic';
+	import { getRootSplashContext } from '#lib/common/logic/rootSplash';
 
 	let { children }: { children?: Snippet } = $props();
 
-	type SplashWindow = Window & { __indigRootSplashDone?: boolean };
-	const shouldRunSplash =
-		typeof window === 'undefined' ? true : !(window as SplashWindow).__indigRootSplashDone;
+	const rootSplash = getRootSplashContext();
+	const shouldRunSplash = rootSplash?.initialSplash ?? false;
 
 	let titleWrapEl: HTMLDivElement | undefined = $state(undefined);
-	let showSplash = $state(shouldRunSplash);
-	let titleRevealed = $state(!shouldRunSplash);
+	const showSplash = $derived(rootSplash?.active ?? false);
+	const titleRevealed = $derived(rootSplash?.revealed ?? true);
 	let artistPreloadStarted = false;
 
-	function handleSplashReveal() {
-		titleRevealed = true;
-	}
-
-	function handleSplashDone() {
-		if (typeof window !== 'undefined') {
-			(window as SplashWindow).__indigRootSplashDone = true;
-		}
-		showSplash = false;
-	}
+	$effect(() => {
+		if (!rootSplash) return;
+		const el = titleWrapEl;
+		rootSplash.setTargetEl(el, 'fd-title');
+		return () => {
+			rootSplash.clearTargetEl(el);
+		};
+	});
 
 	async function warmupArtistRoute() {
 		try {
-			await preloadCode('/(user)/(main)/artist');
+			await preloadCode('/(user)/artist');
 		} catch {
 			// 코드 프리로드 실패 시 실제 이동 시점 로드로 폴백
 		}
@@ -126,12 +123,42 @@
 	});
 
 	onMount(() => {
+		let cancelled = false;
 		auth.captureXsrfFromUrl();
 		// /signup 이 아닌 루트(/) 진입 시에는 이전 가입 대기 표식 정리 (신규 가입자는 백엔드가 /signup 으로 보냄)
 		if (!children) {
 			clearSignupFlow();
 		}
-		auth.checkAuth();
+
+		// 모바일에서 이미 로그인된 상태로 '/'에 진입하면 로고 스플래시 진행 중 /artist로 선행 이동
+		if (!children && isMobile.current && auth.isLoggedIn) {
+			void preloadCode('/(user)/artist').catch(() => {
+				// 코드 프리로드 실패 시 goto 시점 로드로 폴백
+			});
+		}
+
+		const redirectMobileAuthedToArtist = async () => {
+			const isAuthed = await auth.checkAuth();
+			if (cancelled || children) return;
+			if (isAuthed && auth.isLoggedIn && isMobile.current) {
+				await goto('/artist', { replaceState: true });
+			}
+		};
+
+		void redirectMobileAuthedToArtist();
+
+		const handlePageShow = (event: PageTransitionEvent) => {
+			if (!event.persisted || cancelled || children) return;
+			if (auth.isLoggedIn && isMobile.current) {
+				void goto('/artist', { replaceState: true });
+			}
+		};
+		window.addEventListener('pageshow', handlePageShow);
+
+		return () => {
+			cancelled = true;
+			window.removeEventListener('pageshow', handlePageShow);
+		};
 	});
 
 	function handleKakaoLogin() {
@@ -163,7 +190,7 @@
 				hoverColor="#f4f4f5"
 				pressColor="#e4e4e7"
 				textColor="#191919"
-				onclick={() => goto('/artist')}
+				onclick={() => goto('/artist', { replaceState: isMobile.current })}
 			>
 				<div class="btn-content">
 					<span>{auth.user.nickname ?? '회원'}님으로 계속하기</span>
@@ -197,10 +224,6 @@
 <!-- 모달 또는 오버레이 요소가 전달되었을 때 화면 위에 렌더링 -->
 {#if children}
 	{@render children()}
-{/if}
-
-{#if showSplash}
-	<FdTitleSplash targetEl={titleWrapEl} onreveal={handleSplashReveal} ondone={handleSplashDone} />
 {/if}
 
 <!-- 배경화면 -->

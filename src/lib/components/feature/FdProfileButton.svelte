@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import FdDiv from '../ui/FdDiv.svelte';
-	import { FluidSetting } from '#lib/fluid/setting';
+	import FdDiv from '#lib/common/design/fluid/FdDiv.svelte';
+	import { FluidSetting } from '#lib/common/type/fluid';
 	import { auth } from '#lib/auth';
 
 	interface Props {

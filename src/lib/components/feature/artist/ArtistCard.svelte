@@ -4,11 +4,11 @@
 
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import FdButton from '#lib/components/ui/FdButton.svelte';
-	import FdImage from '#lib/components/ui/FdImage.svelte';
-	import { FluidSetting } from '#lib/fluid/setting';
+	import FdButton from '#lib/common/design/fluid/FdButton.svelte';
+	import FdImage from '#lib/common/design/fluid/FdImage.svelte';
+	import { FluidSetting } from '#lib/common/type/fluid';
 	import { resolveArtistImageUrl, type CatalogArtist } from '#lib/config/artists';
-	import { isMobile } from '#lib/stores';
+	import { isMobile } from '#lib/common/logic';
 
 	interface Props {
 		/** 아티스트 데이터 (명세서 C2 CatalogArtistItem 호환) */
@@ -21,8 +21,17 @@
 		setting?: FluidSetting | Partial<FluidSetting>;
 		/** 팔로우 토글 콜백 */
 		onFollowToggle?: (artist: CatalogArtist, nextFollowing: boolean) => void | Promise<void>;
+		/** 카드(이미지/이름) 선택 콜백 (확장 애니메이션용 좌표·추출 색상 포함) */
+		onSelect?: (payload: {
+			artist: CatalogArtist;
+			originRect: { left: number; top: number; width: number; height: number } | null;
+			waveColor: string;
+			following: boolean;
+		}) => void;
 		/** 카드(이미지/이름) 클릭 콜백 */
 		onclick?: (artist: CatalogArtist) => void;
+		/** 목록 레이어 활성 여부 (비활성 전환 시 잔여 호버 상태 정리) */
+		interactive?: boolean;
 		/** 추가 클래스 */
 		class?: string;
 	}
@@ -33,7 +42,9 @@
 		followLoading = false,
 		setting,
 		onFollowToggle,
+		onSelect,
 		onclick,
+		interactive = true,
 		class: klass = ''
 	}: Props = $props();
 
@@ -45,13 +56,62 @@
 	let lastInputWasTouch = $state(false);
 	let buttonMounted = $state(false);
 	let buttonVisible = $state(false);
+	let mobileFollowOpen = $state(false);
+	let longPressPos = $state<{ x: number; y: number } | null>(null);
 	let extractedWaveColor = $state('var(--muted-wave)');
+	let imageBoxEl = $state<HTMLDivElement | null>(null);
+	let stageEl = $state<HTMLDivElement | null>(null);
 
 	let enterRaf = 0;
 	let unmountTimer: ReturnType<typeof setTimeout> | undefined;
+	let longPressTimer: ReturnType<typeof setTimeout> | undefined;
+	let suppressClickTimer: ReturnType<typeof setTimeout> | undefined;
+	let suppressNextClick = false;
+	let activeTouchPointerId: number | null = null;
+	let pressStartX = 0;
+	let pressStartY = 0;
+
+	const LONG_PRESS_MS = 420;
+	const LONG_PRESS_MOVE_SLOP = 10;
 
 	const allowHoverOverlay = $derived(!isMobile.current && !lastInputWasTouch);
-	const isActive = $derived(focused || (allowHoverOverlay && (cardHovered || imageHovered)));
+	const isActive = $derived(
+		interactive &&
+			(mobileFollowOpen || focused || (allowHoverOverlay && (cardHovered || imageHovered)))
+	);
+
+	// 목록 레이어가 상세 화면 뒤로 숨겨질 때 잔여 호버/포커스 상태 정리
+	$effect(() => {
+		if (!interactive) {
+			cardHovered = false;
+			imageHovered = false;
+			focused = false;
+			mobileFollowOpen = false;
+		}
+	});
+
+	// 모바일 꾹 누르기로 열린 팔로우 버튼은 바깥 영역 터치 또는 스크롤 시 닫힘
+	$effect(() => {
+		if (!mobileFollowOpen || typeof window === 'undefined') return;
+
+		const handleOutsideDown = (e: PointerEvent) => {
+			const target = e.target as Node | null;
+			if (target && stageEl?.querySelector('.follow-center-slot')?.contains(target)) {
+				return;
+			}
+			mobileFollowOpen = false;
+		};
+		const handleScrollClose = () => {
+			mobileFollowOpen = false;
+		};
+
+		window.addEventListener('pointerdown', handleOutsideDown, true);
+		window.addEventListener('scroll', handleScrollClose, { passive: true });
+		return () => {
+			window.removeEventListener('pointerdown', handleOutsideDown, true);
+			window.removeEventListener('scroll', handleScrollClose);
+		};
+	});
 
 	// 호버 시 지연 마운트 -> 다음 프레임에 가시화(부드러운 등장), 이탈 시 페이드아웃 후 언마운트
 	$effect(() => {
@@ -73,14 +133,23 @@
 				clearTimeout(unmountTimer);
 				unmountTimer = setTimeout(() => {
 					buttonMounted = false;
+					longPressPos = null;
 				}, 300);
 			}
 		}
 	});
 
+	function clearLongPressTimer() {
+		clearTimeout(longPressTimer);
+		longPressTimer = undefined;
+		activeTouchPointerId = null;
+	}
+
 	onDestroy(() => {
 		cancelAnimationFrame(enterRaf);
 		clearTimeout(unmountTimer);
+		clearTimeout(longPressTimer);
+		clearTimeout(suppressClickTimer);
 	});
 
 	const followBtnSetting = $derived.by(() => {
@@ -118,7 +187,99 @@
 		});
 	});
 
+	function openMobileFollowAt(clientX: number, clientY: number) {
+		if (!stageEl) return;
+		const rect = stageEl.getBoundingClientRect();
+		const halfBtnW = following ? 56 : 46;
+		const clampedClientX = Math.max(
+			12 + halfBtnW,
+			Math.min(window.innerWidth - 12 - halfBtnW, clientX)
+		);
+		const localX = Math.max(0, Math.min(rect.width, clampedClientX - rect.left));
+		const localY = Math.max(20, Math.min(rect.height - 20, clientY - rect.top));
+
+		longPressPos = { x: localX, y: localY };
+		mobileFollowOpen = true;
+		suppressNextClick = true;
+		clearTimeout(suppressClickTimer);
+		suppressClickTimer = setTimeout(() => {
+			suppressNextClick = false;
+		}, 450);
+
+		try {
+			navigator.vibrate?.(12);
+		} catch {
+			// 진동 미지원 환경 무시
+		}
+	}
+
+	function handleStagePointerDown(e: PointerEvent) {
+		if (!isMobile.current) return;
+		if (e.target && stageEl?.querySelector('.follow-center-slot')?.contains(e.target as Node)) {
+			return;
+		}
+		if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+		clearLongPressTimer();
+		activeTouchPointerId = e.pointerId;
+		pressStartX = e.clientX;
+		pressStartY = e.clientY;
+		longPressTimer = setTimeout(() => {
+			longPressTimer = undefined;
+			activeTouchPointerId = null;
+			openMobileFollowAt(pressStartX, pressStartY);
+		}, LONG_PRESS_MS);
+	}
+
+	function handleStagePointerMove(e: PointerEvent) {
+		if (activeTouchPointerId !== e.pointerId || !longPressTimer) return;
+		if (Math.hypot(e.clientX - pressStartX, e.clientY - pressStartY) > LONG_PRESS_MOVE_SLOP) {
+			clearLongPressTimer();
+		}
+	}
+
+	function handleStagePointerEnd(e: PointerEvent) {
+		if (activeTouchPointerId === e.pointerId) {
+			clearLongPressTimer();
+		}
+	}
+
+	function handleStageClick(e: MouseEvent) {
+		if (suppressNextClick) {
+			suppressNextClick = false;
+			clearTimeout(suppressClickTimer);
+			e.preventDefault();
+			e.stopPropagation();
+			return;
+		}
+		if (isMobile.current && mobileFollowOpen) {
+			mobileFollowOpen = false;
+			e.preventDefault();
+			e.stopPropagation();
+			return;
+		}
+		handleCardClick();
+	}
+
 	function handleCardClick() {
+		const targetEl =
+			imageBoxEl?.querySelector<HTMLElement>('.fd-img') ?? imageBoxEl;
+		const domRect = targetEl?.getBoundingClientRect();
+		const originRect =
+			domRect && domRect.width > 0 && domRect.height > 0
+				? {
+						left: domRect.left,
+						top: domRect.top,
+						width: domRect.width,
+						height: domRect.height
+					}
+				: null;
+		onSelect?.({
+			artist,
+			originRect,
+			waveColor: extractedWaveColor,
+			following
+		});
 		onclick?.(artist);
 	}
 
@@ -141,6 +302,7 @@
 
 <article
 	class="artist-card {klass}"
+	data-artist-card={artist.id}
 	class:is-active={isActive}
 	class:is-following={following}
 	onpointerdown={(e) => {
@@ -182,12 +344,19 @@
 >
 	<!-- 상단 아티스트 이미지: FdImage 기반 (hover 시에도 원형 유지 + 물결 파동) -->
 	<div
+		bind:this={stageEl}
 		class="artist-stage"
-		svg
 		role="button"
 		tabindex="0"
 		aria-label={`${artist.name} 아티스트`}
-		onclick={handleCardClick}
+		onpointerdown={handleStagePointerDown}
+		onpointermove={handleStagePointerMove}
+		onpointerup={handleStagePointerEnd}
+		onpointercancel={handleStagePointerEnd}
+		oncontextmenu={(e) => {
+			if (isMobile.current) e.preventDefault();
+		}}
+		onclick={handleStageClick}
 		onkeydown={(e) => {
 			if (e.key === 'Enter' || e.key === ' ') {
 				e.preventDefault();
@@ -211,15 +380,23 @@
 			decoding="async"
 			objectPosition="50% 40%"
 			{setting}
-			active={isActive}
+			disableWave={isMobile.current}
+			active={!isMobile.current && isActive}
 			bind:hovered={imageHovered}
 			bind:extractedWaveColor
+			bind:boxEl={imageBoxEl}
 			fullWidth
 		/>
 
-		<!-- 호버 시 원형 이미지 중앙에 부드럽게 나타나는 팔로우 버튼 -->
+		<!-- 호버 시 원형 이미지 중앙(모바일 꾹 누르기 시 누른 위치)에 부드럽게 나타나는 팔로우 버튼 -->
 		{#if buttonMounted}
-			<div class="follow-center-slot" class:is-visible={buttonVisible} aria-hidden={!buttonVisible}>
+			<div
+				class="follow-center-slot"
+				class:is-visible={buttonVisible}
+				style:left={longPressPos ? `${longPressPos.x.toFixed(1)}px` : undefined}
+				style:top={longPressPos ? `${longPressPos.y.toFixed(1)}px` : undefined}
+				aria-hidden={!buttonVisible}
+			>
 				<FdButton
 					class="artist-follow-center-btn"
 					setting={followBtnSetting}
@@ -238,7 +415,7 @@
 							class:is-active={following}
 							aria-hidden={!following}
 						>
-							<span class="follow-suffix-inner">&nbsp;중</span>
+							<span class="follow-suffix-inner">&nbsp;{isMobile.current ? '취소' : '중'}</span>
 						</span>
 					</span>
 				</FdButton>
@@ -269,7 +446,7 @@
 	}
 
 	.artist-card.is-active {
-		z-index: 10;
+		z-index: 20;
 	}
 
 	.artist-stage {
@@ -280,6 +457,7 @@
 		outline: none;
 		display: grid;
 		place-items: center;
+		-webkit-touch-callout: none;
 	}
 
 	.artist-stage:focus-visible {

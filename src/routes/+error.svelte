@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { toast } from '#lib/stores';
+	import { toast } from '#lib/common/logic';
 
 	onMount(() => {
 		if (page.status === 404) {

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy, untrack, type Snippet } from 'svelte';
 	import { CATALOG_TRANSITION_TIMING } from '#lib/config/catalogFeed';
-	import { prefersReducedMotion } from '#lib/fluid/spring';
+	import { prefersReducedMotion } from '#lib/common/type/spring';
 
 	type ViewKind = 'skeleton' | 'error' | 'empty' | 'content';
 

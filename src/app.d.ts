@@ -5,9 +5,12 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			botOpen?: boolean;
+			mobileOverlay?: 'chatbot' | 'notifications' | null;
+		}
 		// interface Platform {}
 	}
 }
 
-export {};
+export { };

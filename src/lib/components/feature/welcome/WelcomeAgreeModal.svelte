@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { fade, scale } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
-	import FdButton from '../../ui/FdButton.svelte';
+	import FdButton from '#lib/common/design/fluid/FdButton.svelte';
 	import type { TermsItem, WelcomeAgreementsMap } from './welcome';
 
 	interface Props {

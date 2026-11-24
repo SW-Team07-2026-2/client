@@ -1,19 +1,72 @@
 <script lang="ts">
-	import './layout.css';
+	import '#lib/config/layout.css';
 	import favicon from '#lib/assets/favicon.svg';
 	import type { LayoutProps } from './$types';
 	import { onNavigate } from '$app/navigation';
+	import { page } from '$app/state';
 	import { FdToast } from '#lib/components';
-	import { toast } from '#lib/stores';
+	import FdTitleSplash from '#lib/common/design/fluid/FdTitleSplash.svelte';
+	import { isMobile, toast } from '#lib/common/logic';
+	import { setRootSplashContext, type SplashTargetVariant } from '#lib/common/logic/rootSplash';
 
 	let { children }: LayoutProps = $props();
+
+	type SplashWindow = Window & { __indigRootSplashDone?: boolean };
+	const initialSplash =
+		page.url.pathname === '/' &&
+		(typeof window === 'undefined' ? true : !(window as SplashWindow).__indigRootSplashDone);
+
+	let showSplash = $state(initialSplash);
+	let titleRevealed = $state(!initialSplash);
+	let splashTargetEl = $state<Element | undefined>(undefined);
+	let splashTargetVariant = $state<SplashTargetVariant>('fd-title');
+
+	function handleSplashReveal() {
+		titleRevealed = true;
+	}
+
+	function handleSplashDone() {
+		if (typeof window !== 'undefined') {
+			(window as SplashWindow).__indigRootSplashDone = true;
+		}
+		showSplash = false;
+	}
+
+	setRootSplashContext({
+		get initialSplash() {
+			return initialSplash;
+		},
+		get active() {
+			return showSplash;
+		},
+		get revealed() {
+			return titleRevealed;
+		},
+		setTargetEl(el, variant = 'fd-title') {
+			splashTargetEl = el;
+			splashTargetVariant = variant;
+		},
+		clearTargetEl(el) {
+			if (!el || splashTargetEl === el) {
+				splashTargetEl = undefined;
+			}
+		}
+	});
+
+	$effect(() => {
+		if (typeof document === 'undefined') return;
+		document.documentElement.classList.toggle('is-pc', !isMobile.current);
+	});
 
 	// 로고 모핑이 필요한 진입/인트로 경로(/, /welcome) 간 전환 시에만 View Transition 활성화
 	const LOGO_TRANSITION_PATHS = new Set(['/', '/welcome']);
 
 	onNavigate((navigation) => {
 		// SPA 내부 이동이 한 번이라도 발생하면 이후 '/' 진입 시 초기 스플래시를 다시 띄우지 않음
-		(window as Window & { __indigRootSplashDone?: boolean }).__indigRootSplashDone = true;
+		(window as SplashWindow).__indigRootSplashDone = true;
+
+		// 초기 스플래시가 화면을 덮고 있는 동안의 백그라운드 선행 이동은 즉시 전환
+		if (showSplash) return;
 
 		if (!document.startViewTransition) return;
 
@@ -40,6 +93,15 @@
 </svelte:head>
 
 {@render children()}
+
+{#if showSplash}
+	<FdTitleSplash
+		targetEl={splashTargetEl}
+		targetGlyphRatio={splashTargetVariant === 'exact' ? 1 : undefined}
+		onreveal={handleSplashReveal}
+		ondone={handleSplashDone}
+	/>
+{/if}
 
 <FdToast
 	bind:open={toast.open}

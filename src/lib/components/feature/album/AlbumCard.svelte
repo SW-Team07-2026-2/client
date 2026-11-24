@@ -3,8 +3,8 @@
 </script>
 
 <script lang="ts">
-	import FdButton from '#lib/components/ui/FdButton.svelte';
-	import type { FluidSetting } from '#lib/fluid/setting';
+	import FdButton from '#lib/common/design/fluid/FdButton.svelte';
+	import type { FluidSetting } from '#lib/common/type/fluid';
 	import { buildCatalogActionSetting, formatKrwPrice } from '#lib/config/catalogFeed';
 	import { resolveAlbumCoverUrl, type CatalogAlbum } from '#lib/config/albums';
 	import CatalogCardFrame from '../shared/CatalogCardFrame.svelte';
