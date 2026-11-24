@@ -18,8 +18,6 @@ export type MetricType =
 	| 'PREVIEW_PLAY' // 미리듣기 재생 시간 — ms
 	| 'SEARCH_CLICK' // 검색 결과 클릭 — 결과 순위 (properties.keyword)
 	| 'RECOMMEND_CLICK' // 추천 카드 클릭 — 1 (properties.source)
-	| 'CART_ADD' // 장바구니 담기 — 수량 (properties.optionId)
-	| 'CART_REMOVE' // 장바구니 빼기 — 수량
 	| 'SHARE' // 공유 — 1
 	| 'EXTERNAL_LINK_CLICK'; // 외부 구매처 링크 클릭 — 1
 
@@ -119,7 +117,8 @@ export function setAnalyticsUser(userId: string | null): void {
 
 /**
  * 행동 1건을 GA4 이벤트와 Member 메트릭 API(로그인 회원만) 양쪽으로 보낸다.
- * value — 대부분 1, DWELL · PREVIEW_PLAY 는 ms, CART_* 는 수량, SEARCH_CLICK 은 결과 순위
+ * value — 대부분 1, DWELL · PREVIEW_PLAY 는 ms, SEARCH_CLICK 은 결과 순위
+ * 브라우저만 아는 행동만 보낸다 — 장바구니 · 팔로우 · 주문 · 예매 · 검색어처럼 API 를 거치는 행동은 서버가 기록한다 (같은 행동을 두 번 세지 않게)
  */
 export function track(
 	type: MetricType,

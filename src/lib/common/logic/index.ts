@@ -1,10 +1,5 @@
-export {
-	setAnalyticsUser,
-	track,
-	trackNavigation,
-	type MetricTargetType,
-	type MetricType
-} from './analytics';
+export { track, type MetricTargetType, type MetricType } from './analytics';
+export { useAnalytics } from './useAnalytics.svelte';
 export { bgm } from './bgmManager.svelte';
 export { isMobile, BREAKPOINTS } from './isMobile.svelte';
 export { toast } from './toast.svelte';
