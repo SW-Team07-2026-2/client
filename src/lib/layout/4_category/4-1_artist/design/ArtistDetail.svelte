@@ -1,7 +1,7 @@
 <script lang="ts">
 	import FdImage from '#lib/common/design/fluid/FdImage.svelte';
 	import { LoadingSpinner } from '#lib/dedicated/loading';
-	import { resolveArtistImageUrl, type CatalogArtist } from '#lib/config/artists';
+	import { resolveArtistImageUrl, type CatalogArtist } from '#lib/common/catalog/artists';
 	import ArtistFollowButton from '../part/detail_part/ArtistFollowButton.svelte';
 	import ArtistShareButton from '../part/detail_part/ArtistShareButton.svelte';
 	import ArtistMoreToggleButton from '../part/detail_part/ArtistMoreToggleButton.svelte';
@@ -39,7 +39,12 @@
 		onAccentColorExtracted
 	}: Props = $props();
 
+	const HERO_RADIUS = 26;
+	/** 정사각형 한 변당 유지할 물결 개수 (이미지 크기에 비례해 waveLength 자동 조절) */
+	const HERO_WAVES_PER_EDGE = 2.5;
+
 	let extractedWaveColor = $state('var(--white)');
+	let heroMediaWidth = $state(340);
 
 	const imageSrc = $derived(artist ? resolveArtistImageUrl(artist) : '');
 	const glowColor = $derived(
@@ -47,13 +52,23 @@
 			? extractedWaveColor
 			: accentColor || 'var(--white)'
 	);
+	const heroImageSetting = $derived.by(() => {
+		const w = Math.max(160, heroMediaWidth);
+		const perimeter = 4 * w - 1.717 * HERO_RADIUS;
+		const waveLength = Math.round(perimeter / (HERO_WAVES_PER_EDGE * 4));
+		return {
+			radius: HERO_RADIUS,
+			waveLength,
+			pauseWhenIdle: false
+		};
+	});
 
 	$effect(() => {
 		onAccentColorExtracted?.(glowColor);
 	});
 </script>
 
-<!-- 아티스트 상세 뷰 (PC 우선 구현 · 모바일은 추후 별도 구성 예정으로 비워둠, 순수 렌더링) -->
+<!-- 아티스트 상세 뷰 (PC 반응형 3단계 레이아웃 · 모바일은 추후 별도 구성 예정으로 비워둠, 순수 렌더링) -->
 {#if !mobile}
 	<div class="pc-artist-detail" style:--artist-glow-color={glowColor}>
 		<!-- 배경 은은한 블러 빛 효과 (이미지 추출 색상 · CORS 차단 시 하얀색 폴백) -->
@@ -91,9 +106,12 @@
 					<p class="detail-error-text">{errorMessage}</p>
 				</div>
 			{:else if artist}
-				<!-- 상단 히어로: 좌측 아티스트 이미지 · 우측 이름 및 액션 버튼 -->
+				<!-- 상단 히어로:
+				     - 넓음(>=980px): 좌측 대형 이미지 · 우측 이름 + 액션 + 상세 정보 인라인 표시
+				     - 중간(680~979px): 좌측 중형 이미지 · 우측 이름 + 액션(상세 보기 토글) · 아래 펼침 패널
+				     - 좁음(<680px): 상단 이미지 · 하단 이름 + 액션(상세 보기 토글) · 아래 펼침 패널 -->
 				<header class="artist-hero">
-					<div class="artist-hero-media">
+					<div class="artist-hero-media" bind:clientWidth={heroMediaWidth}>
 						<FdImage
 							class="artist-hero-image"
 							src={imageSrc}
@@ -101,29 +119,45 @@
 							loading="eager"
 							decoding="async"
 							objectPosition="50% 40%"
+							radius={HERO_RADIUS}
+							setting={heroImageSetting}
+							active={true}
 							disableWave={false}
 							bind:extractedWaveColor
 							fullWidth
 						/>
 					</div>
 
-					<div class="artist-hero-info">
-						<h1 class="artist-hero-name">{artist.name}</h1>
+					<div class="artist-hero-right">
+						<div class="artist-hero-head">
+							<div class="artist-hero-identity">
+								<h1 class="artist-hero-name">{artist.name}</h1>
 
-						<div class="artist-hero-actions">
-							<ArtistFollowButton
-								{following}
-								loading={followLoading}
-								onToggle={onToggleFollow}
-							/>
-							<ArtistShareButton onShare={onShareLink} />
-							<ArtistMoreToggleButton open={moreOpen} onToggle={onToggleMore} />
+								<div class="artist-hero-actions">
+									<ArtistFollowButton
+										{following}
+										loading={followLoading}
+										onToggle={onToggleFollow}
+									/>
+									<ArtistShareButton onShare={onShareLink} />
+									<span class="more-toggle-slot">
+										<ArtistMoreToggleButton open={moreOpen} onToggle={onToggleMore} />
+									</span>
+								</div>
+							</div>
+
+							<!-- 넓은 PC 화면에서만 이름 옆에 상세 정보를 바로 표시 -->
+							<div class="inline-detail-slot">
+								<ArtistMoreInfoPanel {artist} inline={true} />
+							</div>
 						</div>
 					</div>
 				</header>
 
-				<!-- 상세 보기 버튼 클릭 시 히어로와 하단 영역 사이에서 세로로 펼쳐지는 상세 정보 영역 -->
-				<ArtistMoreInfoPanel {artist} open={moreOpen} />
+				<!-- 중간·좁은 PC 화면에서 상세 보기 버튼 클릭 시 세로로 펼쳐지는 상세 정보 영역 -->
+				<div class="collapsible-detail-slot">
+					<ArtistMoreInfoPanel {artist} open={moreOpen} />
+				</div>
 			{/if}
 		</div>
 	</div>
@@ -138,12 +172,14 @@
 		color: var(--fg);
 		overflow: clip;
 		box-sizing: border-box;
+		container-type: inline-size;
+		container-name: pc-artist-detail;
 	}
 
 	.ambient-glow-layer {
 		position: absolute;
 		inset: 0 0 auto 0;
-		height: 460px;
+		height: 520px;
 		pointer-events: none;
 		overflow: hidden;
 		z-index: 0;
@@ -159,17 +195,17 @@
 
 	.ambient-glow-orb.is-primary {
 		top: -120px;
-		left: 12%;
-		width: 420px;
-		height: 320px;
+		left: 10%;
+		width: 460px;
+		height: 340px;
 		opacity: 0.2;
 	}
 
 	.ambient-glow-orb.is-secondary {
 		top: -80px;
-		right: 16%;
-		width: 340px;
-		height: 260px;
+		right: 14%;
+		width: 360px;
+		height: 280px;
 		opacity: 0.12;
 	}
 
@@ -224,16 +260,17 @@
 		color: var(--muted);
 	}
 
+	/* ── 1) 넓은 PC 기본 (>= 980px): 좌측 초대형 이미지 + 우측 이름 → 버튼 → 하단 상세 정보 인라인 ── */
 	.artist-hero {
 		display: flex;
 		align-items: center;
-		gap: 2.4rem;
+		gap: clamp(2.25rem, 3.6cqi, 3.5rem);
 	}
 
 	.artist-hero-media {
 		position: relative;
-		width: 210px;
-		height: 210px;
+		width: clamp(340px, 34cqi, 440px);
+		aspect-ratio: 1 / 1;
 		flex-shrink: 0;
 	}
 
@@ -242,21 +279,33 @@
 		height: 100%;
 	}
 
-	.artist-hero-info {
+	.artist-hero-right {
 		min-width: 0;
 		flex: 1;
+	}
+
+	.artist-hero-head {
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
-		gap: 1.2rem;
+		gap: 1.5rem;
+	}
+
+	.artist-hero-identity {
+		width: 100%;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 1.25rem;
 	}
 
 	.artist-hero-name {
 		margin: 0;
-		font-size: clamp(2.2rem, 3.8vw, 3.25rem);
+		font-size: clamp(2.4rem, 3.8cqi, 3.5rem);
 		font-weight: var(--fw-extrabold);
 		letter-spacing: -0.03em;
-		line-height: 1.12;
+		line-height: 1.1;
 		color: var(--white);
 		word-break: keep-all;
 	}
@@ -266,5 +315,73 @@
 		align-items: center;
 		flex-wrap: wrap;
 		gap: 0.65rem;
+	}
+
+	.inline-detail-slot {
+		width: 100%;
+		min-width: 0;
+	}
+
+	.more-toggle-slot,
+	.collapsible-detail-slot {
+		display: none;
+	}
+
+	/* ── 2) 중간 PC (< 980px): 이미지 축소 + 상세 정보는 토글 버튼으로 여닫기 ── */
+	@container pc-artist-detail (max-width: 979px) {
+		.artist-hero {
+			gap: 1.85rem;
+		}
+
+		.artist-hero-media {
+			width: clamp(210px, 28cqi, 260px);
+		}
+
+		.artist-hero-head {
+			display: flex;
+			flex-direction: column;
+			align-items: flex-start;
+		}
+
+		.inline-detail-slot {
+			display: none;
+		}
+
+		.more-toggle-slot {
+			display: inline-flex;
+		}
+
+		.collapsible-detail-slot {
+			display: block;
+		}
+	}
+
+	/* ── 3) 좁은 PC (< 680px): 이미지 상단 중앙 · 이름과 버튼 하단 중앙 배치 ── */
+	@container pc-artist-detail (max-width: 679px) {
+		.artist-hero {
+			flex-direction: column;
+			align-items: center;
+			text-align: center;
+			gap: 1.5rem;
+		}
+
+		.artist-hero-media {
+			width: clamp(220px, 46cqi, 270px);
+		}
+
+		.artist-hero-right,
+		.artist-hero-head,
+		.artist-hero-identity {
+			width: 100%;
+			align-items: center;
+		}
+
+		.artist-hero-name {
+			text-align: center;
+		}
+
+		.artist-hero-actions {
+			justify-content: center;
+		}
 	}
 </style>

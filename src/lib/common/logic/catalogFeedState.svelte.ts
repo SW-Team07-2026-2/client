@@ -1,7 +1,7 @@
-import type { CatalogArtist } from '#lib/config/artists';
-import type { CatalogCategoryKey, CatalogFeedMode } from '#lib/config/catalogFeed';
+import type { CatalogArtist } from '#lib/common/catalog/artists';
+import type { CatalogCategoryKey, CatalogFeedMode } from '#lib/common/catalog/catalogFeed';
 
-export interface ArtistFeedSnapshot {
+interface ArtistFeedSnapshot {
 	artists: CatalogArtist[];
 	currentPage: number;
 	hasNext: boolean;
@@ -33,7 +33,7 @@ function normalizePathname(pathname?: string | null): string {
 	return pathname.replace(/\/+$/, '') || '/';
 }
 
-export function resolveCatalogCategoryFromPath(
+function resolveCatalogCategoryFromPath(
 	pathname?: string | null
 ): CatalogCategoryKey | null {
 	const normalized = normalizePathname(pathname);

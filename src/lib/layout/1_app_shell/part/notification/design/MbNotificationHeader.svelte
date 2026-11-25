@@ -32,8 +32,8 @@
 		align-items: center;
 		gap: 0.5rem;
 		background: var(--glass-bg);
-		backdrop-filter: var(--glass-filter);
 		-webkit-backdrop-filter: var(--glass-filter);
+		backdrop-filter: var(--glass-filter);
 		border-bottom: var(--thin-border);
 		z-index: 20;
 	}

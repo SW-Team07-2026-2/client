@@ -1,17 +1,16 @@
 import { goto } from '$app/navigation';
-import type { CatalogCategoryKey } from '#lib/config/catalogFeed';
+import type { CatalogCategoryKey } from '#lib/common/catalog/catalogFeed';
 import {
 	detailOverlay,
 	type CategoryDetailSlot,
-	type DetailPhase,
-	type DetailRect
+	type DetailPhase
 } from '#lib/common/logic/detailOverlayState.svelte';
 import { prefersReducedMotion } from '#lib/common/type/spring';
 
 /**
  * 3_content_section 상세 스테이지 컨트롤러
  * - detailOverlay 스토어와 라우트 detailId를 동기화하고,
- *   아이템 모핑 확장/축소 전환, ESC 닫기, 모바일 배경 스크롤 잠금을 관리합니다.
+ *   슬라이드 업/다운 전환, ESC 닫기, 모바일 배경 스크롤 잠금을 관리합니다.
  */
 export class DetailStageController {
 	readonly category: CatalogCategoryKey;
@@ -50,11 +49,7 @@ export class DetailStageController {
 		if (prev === null && detailId !== null) {
 			detailOverlay.beginExpand(this.category, detailId, { animate });
 		} else if (prev !== null && detailId === null) {
-			detailOverlay.beginClose(this.category, prev, {
-				animate,
-				scrollY: 0,
-				readyImmediately: true
-			});
+			detailOverlay.beginClose(this.category, prev, { animate });
 		} else if (prev !== null && detailId !== null && prev !== detailId) {
 			detailOverlay.beginExpand(this.category, detailId, { animate: false });
 		}
@@ -79,32 +74,6 @@ export class DetailStageController {
 	finishClose = (): void => {
 		detailOverlay.finishClose(this.category);
 		this.syncBodyScrollLock(false);
-	};
-
-	/**
-	 * 닫힐 때 되돌아갈 카드 내부의 필수 기준 요소(`[data-detail-origin]`)의 현재 뷰포트 좌표를 탐색합니다.
-	 * 현재 뷰포트 안에 보이는 기준 요소가 없으면 null을 반환해 하향 슬라이드 폴백을 유도합니다.
-	 */
-	resolveReturnRect = (): DetailRect | null => {
-		const id = this.renderId;
-		if (id === null || typeof document === 'undefined') return null;
-
-		const el = document.querySelector<HTMLElement>(
-			`[data-detail-card="${this.category}-${id}"] [data-detail-origin]`
-		);
-		if (!el) return null;
-
-		const r = el.getBoundingClientRect();
-		const isInViewport =
-			r.width > 0 &&
-			r.height > 0 &&
-			r.bottom > 0 &&
-			r.top < window.innerHeight &&
-			r.right > 0 &&
-			r.left < window.innerWidth;
-		if (!isInViewport) return null;
-
-		return { left: r.left, top: r.top, width: r.width, height: r.height };
 	};
 
 	/** ESC 키로 상세 닫기 */

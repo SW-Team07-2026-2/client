@@ -3,8 +3,10 @@ import {
 	mapArtistDetail,
 	type ArtistDetailDto,
 	type CatalogArtist
-} from '#lib/config/artists';
-import { artistDetailState, toast } from '#lib/common/logic';
+} from '#lib/common/catalog/artists';
+import { toast } from '#lib/common/logic';
+import { copyCurrentPageLink } from '../../_shared/logic/shareLink';
+import { artistDetailState } from './artistDetailState.svelte';
 
 /**
  * 4-1_artist 상세 페이지 전용 컨트롤러
@@ -95,29 +97,7 @@ export class ArtistDetailController {
 
 	/** 현재 아티스트 페이지 URL 공유(클립보드 복사) */
 	shareLink = async (): Promise<void> => {
-		if (typeof window === 'undefined') return;
-		const url = window.location.href;
-		try {
-			if (navigator.clipboard?.writeText) {
-				await navigator.clipboard.writeText(url);
-				toast.success('아티스트 링크가 복사되었습니다.');
-				return;
-			}
-		} catch {
-			// 클립보드 API 실패 시 폴백 시도
-		}
-
-		try {
-			const input = document.createElement('input');
-			input.value = url;
-			document.body.appendChild(input);
-			input.select();
-			document.execCommand('copy');
-			document.body.removeChild(input);
-			toast.success('아티스트 링크가 복사되었습니다.');
-		} catch {
-			toast.error('링크를 복사하지 못했습니다.');
-		}
+		await copyCurrentPageLink('아티스트 링크가 복사되었습니다.');
 	};
 
 	private async fetchDetail(artistId: number, token: number): Promise<void> {

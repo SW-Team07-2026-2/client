@@ -161,8 +161,8 @@
 		padding: 0.3rem;
 		border-radius: 16px;
 		background: var(--glass-bg);
-		backdrop-filter: var(--glass-filter);
 		-webkit-backdrop-filter: var(--glass-filter);
+		backdrop-filter: var(--glass-filter);
 		border: var(--thin-border);
 		box-shadow: 0 10px 28px color-mix(in srgb, var(--bg) 55%, transparent);
 		display: flex;

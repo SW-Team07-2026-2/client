@@ -7,7 +7,7 @@
 		getContentSectionContext,
 		isFilterableCategory
 	} from './logic/contentSection.svelte';
-	import { syncDetailListFade } from './logic/detailMorph';
+	import { syncDetailListFade } from './logic/detailTransition';
 	import { DetailStageController } from './logic/detailStage.svelte';
 	import MbContentFilter from './design/MbContentFilter.svelte';
 	import MbDetailFrame from './design/MbDetailFrame.svelte';
@@ -88,13 +88,10 @@
 
 	{#if detailCtrl && filterableKey && detailCtrl.isVisible && detailCtrl.renderId !== null}
 		<MbDetailFrame
-			category={filterableKey}
 			itemId={detailCtrl.renderId}
 			phase={detailCtrl.phase}
 			sliding={isSliding}
 			{listScrollY}
-			seed={detailCtrl.slot.seed}
-			resolveReturnRect={detailCtrl.resolveReturnRect}
 			onExpandFinish={detailCtrl.finishExpand}
 			onCloseFinish={detailCtrl.finishClose}
 			onClose={detailCtrl.close}

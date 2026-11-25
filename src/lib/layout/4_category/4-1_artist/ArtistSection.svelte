@@ -1,15 +1,20 @@
 <script lang="ts">
 	import { isMobile } from '#lib/common/logic';
 	import type { MainSectionDescriptor } from '../../2_main_section/logic/sectionRegistry';
-	import CatalogFeedStatus from '../_shared/design/CatalogFeedStatus.svelte';
+	import CatalogFeedView from '../_shared/design/CatalogFeedView.svelte';
 	import { ArtistCategoryController } from './logic/artistCategory.svelte';
 	import PcArtistItem from './design/PcArtistItem.svelte';
 	import MbArtistItem from './design/MbArtistItem.svelte';
+	import PcArtistSkeleton from './design/PcArtistSkeleton.svelte';
+	import MbArtistSkeleton from './design/MbArtistSkeleton.svelte';
 
 	interface Props {
 		section: MainSectionDescriptor;
 		active: boolean;
 	}
+
+	const PC_SKELETON_INDICES = Array.from({ length: 15 }, (_, i) => i);
+	const MB_SKELETON_INDICES = Array.from({ length: 8 }, (_, i) => i);
 
 	let { section, active }: Props = $props();
 
@@ -25,14 +30,16 @@
 	});
 </script>
 
-<!-- 4-1_artist 목록 섹션: 로직 컨트롤러와 PC/모바일 아티스트 그리드 조립 -->
-<section
-	class="artist-section"
-	data-category="artist"
-	data-active={active ? 'true' : 'false'}
-	aria-label={section.label}
+<!-- 4-1_artist 목록 섹션: 공용 CatalogFeedView에 아티스트 그리드와 스켈레톤만 주입 -->
+<CatalogFeedView
+	category="artist"
+	label={section.label}
+	{active}
+	feed={controller.feed}
+	emptyTitle={controller.emptyTitle}
+	emptyDescription={controller.emptyDescription}
 >
-	{#if !controller.feed.isLoading && !controller.feed.errorMessage && controller.feed.items.length > 0}
+	{#snippet content({ interactive })}
 		<div class="artist-grid" class:is-mobile={mobile} class:is-pc={!mobile}>
 			{#each controller.feed.items as artist (artist.id)}
 				{#if mobile}
@@ -40,7 +47,7 @@
 						{artist}
 						following={controller.isFollowing(artist.id)}
 						followLoading={controller.isFollowPending(artist.id)}
-						interactive={active}
+						{interactive}
 						onFollowToggle={controller.toggleFollow}
 						onSelect={controller.selectArtist}
 					/>
@@ -49,33 +56,31 @@
 						{artist}
 						following={controller.isFollowing(artist.id)}
 						followLoading={controller.isFollowPending(artist.id)}
-						interactive={active}
+						{interactive}
 						onFollowToggle={controller.toggleFollow}
 						onSelect={controller.selectArtist}
 					/>
 				{/if}
 			{/each}
 		</div>
-	{/if}
+	{/snippet}
 
-	<CatalogFeedStatus
-		isLoading={controller.feed.isLoading}
-		isLoadingMore={controller.feed.isLoadingMore}
-		isEmpty={controller.feed.isEmpty}
-		hasNext={controller.feed.hasNext}
-		errorMessage={controller.feed.errorMessage}
-		emptyTitle={controller.emptyTitle}
-		emptyDescription={controller.emptyDescription}
-		onRetry={controller.feed.retry}
-		onLoadMore={controller.feed.loadMore}
-	/>
-</section>
+	{#snippet skeleton()}
+		<div class="artist-grid" class:is-mobile={mobile} class:is-pc={!mobile}>
+			{#if mobile}
+				{#each MB_SKELETON_INDICES as idx (idx)}
+					<MbArtistSkeleton index={idx} />
+				{/each}
+			{:else}
+				{#each PC_SKELETON_INDICES as idx (idx)}
+					<PcArtistSkeleton index={idx} />
+				{/each}
+			{/if}
+		</div>
+	{/snippet}
+</CatalogFeedView>
 
 <style>
-	.artist-section {
-		width: 100%;
-	}
-
 	.artist-grid {
 		display: grid;
 		width: 100%;

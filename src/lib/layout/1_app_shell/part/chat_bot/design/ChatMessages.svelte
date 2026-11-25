@@ -174,8 +174,8 @@
 		line-height: 1.4;
 		text-align: center;
 		max-width: 92%;
-		backdrop-filter: blur(8px);
 		-webkit-backdrop-filter: blur(8px);
+		backdrop-filter: blur(8px);
 	}
 
 	.truncated-history-notice .notice-text {

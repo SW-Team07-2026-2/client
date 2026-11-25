@@ -69,8 +69,8 @@
 		padding: 0 0.9rem 0 1.5rem;
 		box-sizing: border-box;
 		background: var(--glass-bg);
-		backdrop-filter: var(--glass-filter);
 		-webkit-backdrop-filter: var(--glass-filter);
+		backdrop-filter: var(--glass-filter);
 		overflow-x: clip;
 		border-bottom: var(--thin-border);
 		border-bottom-color: transparent;

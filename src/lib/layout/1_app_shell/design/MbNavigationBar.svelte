@@ -271,8 +271,8 @@
 		align-items: center;
 		justify-content: center;
 		background: var(--glass-bg);
-		backdrop-filter: var(--glass-filter);
 		-webkit-backdrop-filter: var(--glass-filter);
+		backdrop-filter: var(--glass-filter);
 		border: var(--thin-border);
 		box-shadow: 0 12px 32px color-mix(in srgb, var(--bg) 55%, transparent);
 	}

@@ -1,7 +1,7 @@
 import { goto } from '$app/navigation';
 import { page } from '$app/state';
 import { auth } from '#lib/auth';
-import { catalogFeed, detailOverlay } from '#lib/common/logic';
+import { catalogFeed } from '#lib/common/logic';
 import {
 	cancelSmoothScroll,
 	handleSameRouteScrollTop,

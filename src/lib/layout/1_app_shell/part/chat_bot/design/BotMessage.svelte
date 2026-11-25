@@ -81,8 +81,8 @@
 		font-weight: 500;
 		cursor: pointer;
 		transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-		backdrop-filter: blur(8px);
 		-webkit-backdrop-filter: blur(8px);
+		backdrop-filter: blur(8px);
 	}
 
 	.bot-action-pill:hover {

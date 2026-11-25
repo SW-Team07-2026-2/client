@@ -89,8 +89,8 @@
 		padding: 0 var(--content-padding-x-mobile);
 		box-sizing: border-box;
 		background: var(--glass-bg);
-		backdrop-filter: var(--glass-filter);
 		-webkit-backdrop-filter: var(--glass-filter);
+		backdrop-filter: var(--glass-filter);
 		border-bottom: 1px solid transparent;
 		transform: translate3d(0, 0, 0);
 		will-change: transform;

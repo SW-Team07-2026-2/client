@@ -181,8 +181,8 @@
 		inset: 0;
 		z-index: 64;
 		background: color-mix(in srgb, var(--bg) 62%, transparent);
-		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);
+		backdrop-filter: blur(12px);
 	}
 
 	.mb-filter-center {
@@ -192,8 +192,8 @@
 		z-index: 65;
 		border-radius: 26px;
 		background: var(--glass-bg);
-		backdrop-filter: var(--glass-filter);
 		-webkit-backdrop-filter: var(--glass-filter);
+		backdrop-filter: var(--glass-filter);
 		border: var(--thin-border);
 		display: flex;
 		flex-direction: column;

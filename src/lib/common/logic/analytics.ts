@@ -1,5 +1,5 @@
 import { api, auth } from '#lib/auth';
-import type { CatalogCategoryKey } from '#lib/config/catalogFeed';
+import type { CatalogCategoryKey } from '#lib/common/catalog/catalogFeed';
 import {
 	ANALYTICS_HOSTS,
 	GA_MEASUREMENT_ID,

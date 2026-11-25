@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { LoadingSpinner } from '#lib/dedicated/loading';
 
 	interface Props {
@@ -9,6 +10,7 @@
 		errorMessage: string | null;
 		emptyTitle?: string;
 		emptyDescription?: string;
+		loading?: Snippet;
 		onRetry?: () => void;
 		onLoadMore?: () => void;
 	}
@@ -21,6 +23,7 @@
 		errorMessage,
 		emptyTitle = '표시할 항목이 없습니다.',
 		emptyDescription = '검색어나 필터 조건을 변경해 보세요.',
+		loading,
 		onRetry,
 		onLoadMore
 	}: Props = $props();
@@ -46,9 +49,13 @@
 
 <!-- 카탈로그 공용 피드 상태 뷰: 초기 로딩 · 오류 · 빈 상태 · 무한 스크롤 센티넬 (순수 렌더링) -->
 {#if isLoading}
-	<div class="catalog-state-box" role="status" aria-live="polite">
-		<LoadingSpinner size={24} />
-	</div>
+	{#if loading}
+		{@render loading()}
+	{:else}
+		<div class="catalog-state-box" role="status" aria-live="polite">
+			<LoadingSpinner size={24} />
+		</div>
+	{/if}
 {:else if errorMessage}
 	<div class="catalog-state-box" role="alert">
 		<p class="catalog-state-title">{errorMessage}</p>

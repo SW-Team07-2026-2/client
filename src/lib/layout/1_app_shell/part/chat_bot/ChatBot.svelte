@@ -353,8 +353,8 @@
 		display: flex;
 		flex-direction: column;
 		background: var(--glass-bg);
-		backdrop-filter: var(--glass-filter);
 		-webkit-backdrop-filter: var(--glass-filter);
+		backdrop-filter: var(--glass-filter);
 		border: var(--detail-frame-border);
 		border-radius: var(--bot-area-radius);
 		overflow: hidden;

@@ -3,7 +3,7 @@
 	import { afterNavigate, beforeNavigate } from '$app/navigation';
 	import { detailOverlay, isMobile } from '#lib/common/logic';
 	import { ContentSection } from '../3_content_section';
-	import { syncDetailListFade } from '../3_content_section/logic/detailMorph';
+	import { syncDetailListFade } from '../3_content_section/logic/detailTransition';
 	import { setMainSectionContext } from './logic/context';
 	import type { SlideDirection } from './logic/keepAliveSlide';
 	import { MainSectionController } from './logic/mainSection.svelte';
@@ -71,19 +71,8 @@
 		return Math.round(pinnedHeaderEl.getBoundingClientRect().height);
 	}
 
-	function getStageRect() {
-		if (!stageEl) return null;
-		const r = stageEl.getBoundingClientRect();
-		if (r.width <= 0) return null;
-		return { left: r.left, top: r.top, width: r.width, height: r.height };
-	}
-
-	// 하위 3_content_section 및 DetailStage에 상세 확장 기준 · 슬라이드 상태 · 목록 스크롤 제공
+	// 하위 3_content_section에 좌우 슬라이드 상태 · 목록 스크롤 위치 제공
 	setMainSectionContext({
-		getStageRect,
-		getActiveSection: () => ctrl.activeSection,
-		getActiveDetailId: () => ctrl.activeDetailId,
-		getPinnedHeaderHeight,
 		isSlidingOrSwiping: () => ctrl.isSliding || ctrl.isSwiping || ctrl.exitingSection !== null,
 		getSectionListScrollY: ctrl.getSectionListScrollY
 	});
@@ -172,11 +161,10 @@
 	<title>{ctrl.documentTitle}</title>
 </svelte:head>
 
-<!-- 2_main_section: 제자리 고정 영역(pinned) + 좌우 슬라이드 Keep-Alive 스테이지(상세 확장 기준) -->
+<!-- 2_main_section: 제자리 고정 영역(pinned) + 좌우 슬라이드 Keep-Alive 스테이지 -->
 <div
 	class="main-section-root"
 	class:is-sliding={ctrl.isSliding || ctrl.isSwiping || ctrl.exitingSection !== null}
-	data-detail-stage
 >
 	<!-- 1) 좌우 이동 시 제자리에 유지되는 상단 헤더 영역 (PC 다이나믹 타이틀 헤더) -->
 	{#if pinnedHeader && headerDescriptor}

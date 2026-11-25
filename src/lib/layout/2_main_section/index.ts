@@ -5,8 +5,7 @@ export * from './logic/mobileSwipe';
 export {
 	getMainSectionContext,
 	setMainSectionContext,
-	type MainSectionContextValue,
-	type MainStageRect
+	type MainSectionContextValue
 } from './logic/context';
 export {
 	MAIN_SECTIONS,

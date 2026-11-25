@@ -1,7 +1,6 @@
 <script lang="ts">
-	import type { CatalogCategoryKey } from '#lib/config/catalogFeed';
-	import { ArtistDetailController } from './4-1_artist/logic/artistDetail.svelte';
-	import ArtistDetail from './4-1_artist/design/ArtistDetail.svelte';
+	import type { CatalogCategoryKey } from '#lib/common/catalog/catalogFeed';
+	import ArtistDetailSection from './4-1_artist/ArtistDetailSection.svelte';
 
 	interface Props {
 		category: CatalogCategoryKey;
@@ -12,14 +11,6 @@
 
 	let { category, id, mobile, onClose }: Props = $props();
 
-	const artistCtrl = new ArtistDetailController();
-
-	$effect(() => {
-		if (category === 'artist') {
-			artistCtrl.load(id);
-		}
-	});
-
 	const CATEGORY_TITLES: Record<CatalogCategoryKey, string> = {
 		artist: 'ArtistDetail',
 		concert: 'ConcertDetail',
@@ -28,23 +19,9 @@
 	};
 </script>
 
-<!-- 4_category 상세 컴포넌트 통합 디스패처 -->
+<!-- 4_category 상세 통합 디스패처: 각 카테고리 전용 독립 상세 섹션(Shell)으로 분기 -->
 {#if category === 'artist'}
-	<ArtistDetail
-		artist={artistCtrl.artist}
-		isLoading={artistCtrl.isLoading}
-		errorMessage={artistCtrl.errorMessage}
-		following={artistCtrl.following}
-		followLoading={artistCtrl.followLoading}
-		moreOpen={artistCtrl.moreOpen}
-		accentColor={artistCtrl.accentColor}
-		{mobile}
-		{onClose}
-		onToggleFollow={artistCtrl.toggleFollow}
-		onShareLink={artistCtrl.shareLink}
-		onToggleMore={artistCtrl.toggleMore}
-		onAccentColorExtracted={artistCtrl.setAccentColor}
-	/>
+	<ArtistDetailSection {id} {mobile} {onClose} />
 {:else}
 	<div class="category-detail-placeholder">
 		<button type="button" class="detail-close-btn" onclick={onClose}>← 목록으로</button>

@@ -1,7 +1,7 @@
 import { goto, preloadCode } from '$app/navigation';
 import { auth, clearSignupFlow } from '#lib/auth';
-import { mapArtistItem, type ArtistItemDto, type CatalogArtist } from '#lib/config/artists';
-import { CATALOG_DEFAULT_PAGE_SIZE, fetchCatalogPage } from '#lib/config/catalogFeed';
+import { mapArtistItem, type ArtistItemDto, type CatalogArtist } from '#lib/common/catalog/artists';
+import { CATALOG_DEFAULT_PAGE_SIZE, fetchCatalogPage } from '#lib/common/catalog/catalogFeed';
 import { DEFAULT_FOLLOW_SORT } from '#lib/common/type/filterOptions';
 import {
 	buildCatalogRequestKey,

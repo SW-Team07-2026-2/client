@@ -3,8 +3,7 @@
 	import FdButton from '#lib/common/design/fluid/FdButton.svelte';
 	import FdImage from '#lib/common/design/fluid/FdImage.svelte';
 	import { FluidSetting } from '#lib/common/type/fluid';
-	import { resolveArtistImageUrl, type CatalogArtist } from '#lib/config/artists';
-	import { measureOriginRect } from '#lib/common/logic';
+	import { resolveArtistImageUrl, type CatalogArtist } from '#lib/common/catalog/artists';
 	import type { ArtistSelectPayload } from '../logic/artistCategory.svelte';
 
 	interface Props {
@@ -35,7 +34,6 @@
 	let buttonVisible = $state(false);
 	let longPressPos = $state<{ x: number; y: number } | null>(null);
 	let extractedWaveColor = $state('var(--muted-wave)');
-	let originEl = $state<HTMLDivElement | null>(null);
 	let stageEl = $state<HTMLDivElement | null>(null);
 
 	let enterRaf = 0;
@@ -210,7 +208,6 @@
 	function handleSelect() {
 		onSelect?.({
 			artist,
-			originRect: measureOriginRect(originEl),
 			waveColor: extractedWaveColor,
 			following
 		});
@@ -244,7 +241,6 @@
 <!-- 모바일 전용 아티스트 카드 아이템 (순수 렌더링 · 웨이브 비활성 · 꾹 누르기 팔로우) -->
 <article
 	class="mb-artist-item"
-	data-detail-card="artist-{artist.id}"
 	class:is-active={isActive}
 	class:is-following={following}
 >
@@ -267,14 +263,6 @@
 			}
 		}}
 	>
-		<!-- 아티스트 이미지 뒤쪽 상세 확장·축소 기준 요소 (필수 data-detail-origin) -->
-		<div
-			bind:this={originEl}
-			class="artist-morph-origin"
-			data-detail-origin
-			aria-hidden="true"
-		></div>
-
 		<span
 			class="follow-indicator-dot"
 			class:is-visible={following}
@@ -362,16 +350,6 @@
 		-webkit-touch-callout: none;
 	}
 
-	.artist-morph-origin {
-		position: absolute;
-		width: 64%;
-		height: 64%;
-		border-radius: 999px;
-		background: var(--detail-frame-bg);
-		z-index: 0;
-		pointer-events: none;
-	}
-
 	.artist-stage :global(.fd-image-wrap.artist-fd-image) {
 		position: absolute;
 		inset: 0;
@@ -420,11 +398,14 @@
 	}
 
 	.artist-name-btn {
+		display: block;
 		appearance: none;
 		border: none;
 		background: transparent;
 		padding: 0;
 		margin: 0;
+		font: inherit;
+		line-height: 1;
 		cursor: pointer;
 		color: var(--fg);
 	}

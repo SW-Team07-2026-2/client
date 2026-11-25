@@ -3,8 +3,7 @@
 	import FdButton from '#lib/common/design/fluid/FdButton.svelte';
 	import FdImage from '#lib/common/design/fluid/FdImage.svelte';
 	import { FluidSetting } from '#lib/common/type/fluid';
-	import { resolveArtistImageUrl, type CatalogArtist } from '#lib/config/artists';
-	import { measureOriginRect } from '#lib/common/logic';
+	import { resolveArtistImageUrl, type CatalogArtist } from '#lib/common/catalog/artists';
 	import type { ArtistSelectPayload } from '../logic/artistCategory.svelte';
 
 	interface Props {
@@ -33,7 +32,6 @@
 	let buttonMounted = $state(false);
 	let buttonVisible = $state(false);
 	let extractedWaveColor = $state('var(--muted-wave)');
-	let originEl = $state<HTMLDivElement | null>(null);
 
 	let enterRaf = 0;
 	let unmountTimer: ReturnType<typeof setTimeout> | undefined;
@@ -115,7 +113,6 @@
 	function handleSelect() {
 		onSelect?.({
 			artist,
-			originRect: measureOriginRect(originEl),
 			waveColor: extractedWaveColor,
 			following
 		});
@@ -135,7 +132,6 @@
 <!-- PC 전용 아티스트 카드 아이템 (순수 렌더링) -->
 <article
 	class="pc-artist-item"
-	data-detail-card="artist-{artist.id}"
 	class:is-active={isActive}
 	class:is-following={following}
 	onpointerenter={(e) => {
@@ -172,14 +168,6 @@
 			}
 		}}
 	>
-		<!-- 아티스트 이미지 뒤쪽 상세 확장·축소 기준 요소 (필수 data-detail-origin) -->
-		<div
-			bind:this={originEl}
-			class="artist-morph-origin"
-			data-detail-origin
-			aria-hidden="true"
-		></div>
-
 		<span
 			class="follow-indicator-dot"
 			class:is-visible={following}
@@ -269,16 +257,6 @@
 		border-radius: 999px;
 	}
 
-	.artist-morph-origin {
-		position: absolute;
-		width: 64%;
-		height: 64%;
-		border-radius: 999px;
-		background: var(--detail-frame-bg);
-		z-index: 0;
-		pointer-events: none;
-	}
-
 	.artist-stage :global(.fd-image-wrap.artist-fd-image) {
 		position: absolute;
 		inset: 0;
@@ -327,11 +305,14 @@
 	}
 
 	.artist-name-btn {
+		display: block;
 		appearance: none;
 		border: none;
 		background: transparent;
 		padding: 0;
 		margin: 0;
+		font: inherit;
+		line-height: 1;
 		cursor: pointer;
 		color: var(--fg);
 		transition:

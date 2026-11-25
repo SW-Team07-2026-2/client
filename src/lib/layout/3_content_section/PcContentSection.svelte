@@ -6,7 +6,7 @@
 		getContentSectionContext,
 		isFilterableCategory
 	} from './logic/contentSection.svelte';
-	import { syncDetailListFade } from './logic/detailMorph';
+	import { syncDetailListFade } from './logic/detailTransition';
 	import { DetailStageController } from './logic/detailStage.svelte';
 	import PcContentFilter from './design/PcContentFilter.svelte';
 	import PcDetailFrame from './design/PcDetailFrame.svelte';
@@ -80,11 +80,8 @@
 
 	{#if detailCtrl && filterableKey && detailCtrl.isVisible && detailCtrl.renderId !== null}
 		<PcDetailFrame
-			category={filterableKey}
 			itemId={detailCtrl.renderId}
 			phase={detailCtrl.phase}
-			seed={detailCtrl.slot.seed}
-			resolveReturnRect={detailCtrl.resolveReturnRect}
 			onExpandFinish={detailCtrl.finishExpand}
 			onCloseFinish={detailCtrl.finishClose}
 			onClose={detailCtrl.close}

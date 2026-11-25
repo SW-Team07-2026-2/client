@@ -4,21 +4,19 @@
 	import { cubicOut } from 'svelte/easing';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { FdTitle, FdToast, type ToastType } from '#lib/common';
 	import {
-		FdTitle,
-		FdToast,
 		WelcomeAgreeModal,
 		WelcomeArtistSection,
 		loadCatalogArtists,
 		loadWelcomeTerms,
 		checkSignupSession,
 		submitWelcomeSignup,
-		type ToastType,
 		type WelcomeStep,
 		type WelcomeAgreementsMap,
 		type TermsItem,
 		type ArtistItem
-	} from '#lib/components';
+	} from '#lib/dedicated/welcome';
 	import { auth, isSignupFlowActive, clearSignupFlow } from '#lib/auth';
 
 	let allowed = $state(false);

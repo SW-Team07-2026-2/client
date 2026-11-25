@@ -107,6 +107,32 @@
 		return !c || c === 'transparent' || c === 'rgba(0, 0, 0, 0)' || c === 'rgba(0,0,0,0)';
 	}
 
+	/** 색상이 반투명(alpha < 1)인지 판별 — 불투명 본체에서 불필요한 destination-out 경계선(블랙 틈새) 방지 */
+	function hasTranslucentAlpha(col: string): boolean {
+		const c = col.trim().toLowerCase();
+		if (isTransparent(c)) return true;
+		// rgba(r, g, b, a) / hsla(h, s, l, a)
+		const commaAlpha = /^(?:rgba|hsla)\([^,]+,[^,]+,[^,]+,\s*([^)]+)\)$/.exec(c);
+		if (commaAlpha) {
+			const v = commaAlpha[1].trim();
+			const num = v.endsWith('%') ? parseFloat(v) / 100 : parseFloat(v);
+			return Number.isFinite(num) && num < 0.995;
+		}
+		// rgb(r g b / a) / hsl(... / a) / oklch(... / a)
+		const slashAlpha = /\/\s*([0-9.]+%?)\s*\)$/.exec(c);
+		if (slashAlpha) {
+			const v = slashAlpha[1].trim();
+			const num = v.endsWith('%') ? parseFloat(v) / 100 : parseFloat(v);
+			return Number.isFinite(num) && num < 0.995;
+		}
+		// #rrggbbaa / #rgba
+		if (c.startsWith('#')) {
+			if (c.length === 9) return parseInt(c.slice(7, 9), 16) < 254;
+			if (c.length === 5) return parseInt(c.slice(4, 5), 16) < 15;
+		}
+		return false;
+	}
+
 	function initEngine() {
 		const ctx = canvas.getContext('2d');
 		if (!ctx) return;
@@ -635,12 +661,18 @@
 				c.fillStyle = prev;
 				c.globalAlpha = alpha * (1 - cv);
 				c.fill();
-			} else {
+			} else if (alpha >= 0.999) {
 				c.fillStyle = prev;
-				c.globalAlpha = alpha;
+				c.globalAlpha = 1;
 				c.fill();
 				c.fillStyle = curr;
-				c.globalAlpha = alpha * cv;
+				c.globalAlpha = cv;
+				c.fill();
+			} else {
+				// 반투명 물결 레이어는 두 번 겹쳐 그리면 알파가 누적되고 마지막 프레임에 색이 튀므로
+				// 단일 패스 color-mix 보간으로 밝은 색 <-> 어두운 색 전환을 매끄럽게 유지
+				c.fillStyle = `color-mix(in srgb, ${prev}, ${curr} ${(cv * 100).toFixed(2)}%)`;
+				c.globalAlpha = alpha;
 				c.fill();
 			}
 		}
@@ -671,12 +703,16 @@
 				c.strokeStyle = prev;
 				c.globalAlpha = alpha * (1 - cv);
 				c.stroke();
-			} else {
+			} else if (alpha >= 0.999) {
 				c.strokeStyle = prev;
-				c.globalAlpha = alpha;
+				c.globalAlpha = 1;
 				c.stroke();
 				c.strokeStyle = curr;
-				c.globalAlpha = alpha * cv;
+				c.globalAlpha = cv;
+				c.stroke();
+			} else {
+				c.strokeStyle = `color-mix(in srgb, ${prev}, ${curr} ${(cv * 100).toFixed(2)}%)`;
+				c.globalAlpha = alpha;
 				c.stroke();
 			}
 		}
@@ -731,8 +767,14 @@
 			shape(sx, sy, 0, bodyWave, curWl * 1.1, phase, 0, noFrontWave);
 			trace();
 
-			// 반투명 본체 색상일 때 뒤쪽 물결 색상이 본체 내부에 비치지 않도록 내부 영역 클리어
-			if (wv > 0.01 && L > 0) {
+			// 반투명 본체 색상일 때만 뒤쪽 물결이 내부에 비치지 않도록 클리어
+			// (불투명 본체에 destination-out을 쓰면 안티앨리어싱 픽셀에 1px 검은 틈새/계단현상이 생김)
+			const needsBodyCutout =
+				hasTranslucentAlpha(cBase) ||
+				(hv > 0.003 && hasTranslucentAlpha(cHover)) ||
+				(cv < 0.997 &&
+					(hasTranslucentAlpha(prevBase) || (hv > 0.003 && hasTranslucentAlpha(prevHover))));
+			if (wv > 0.01 && L > 0 && needsBodyCutout) {
 				c.save();
 				c.globalCompositeOperation = 'destination-out';
 				c.globalAlpha = 1;

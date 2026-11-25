@@ -29,14 +29,14 @@
  */
 
 // 화면 크기 기준 상수 (breakpoint 보조 유틸용)
-export const BREAKPOINTS = {
+const BREAKPOINTS = {
 	sm: 640,
 	md: 768,
 	lg: 1024,
 	xl: 1280
 } as const;
 
-export type Breakpoint = 'sm' | 'md' | 'lg' | 'xl';
+type Breakpoint = 'sm' | 'md' | 'lg' | 'xl';
 
 interface NavigatorUADataLike {
 	mobile?: boolean;
@@ -161,7 +161,7 @@ const detector = new MobileDetector();
 /**
  * 함수로도 호출할 수 있고(`isMobile()`), 객체 속성(`isMobile.current`)으로도 접근 가능한 하이브리드 인터페이스
  */
-export interface IsMobileAccessor {
+interface IsMobileAccessor {
 	(): boolean;
 	readonly current: boolean;
 	readonly value: boolean;

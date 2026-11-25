@@ -5,16 +5,12 @@ import {
 	resolveArtistImageUrl,
 	type ArtistItemDto,
 	type CatalogArtist
-} from '#lib/config/artists';
+} from '#lib/common/catalog/artists';
 import { countActiveFilters } from '#lib/common/type/filterOptions';
-import {
-	artistDetailState,
-	catalogFeed,
-	detailOverlay,
-	isCatalogCategoryReady
-} from '#lib/common/logic';
+import { catalogFeed, isCatalogCategoryReady } from '#lib/common/logic';
 import { toast } from '#lib/common/logic/toast.svelte';
 import { prewarmFdImages } from '#lib/common/design/fluid/FdImage.svelte';
+import { artistDetailState } from './artistDetailState.svelte';
 import {
 	CatalogFeedController,
 	type CatalogSnapshotSeed
@@ -31,16 +27,8 @@ interface FollowItem {
 	followedAt: string;
 }
 
-export interface ArtistOriginRect {
-	left: number;
-	top: number;
-	width: number;
-	height: number;
-}
-
 export interface ArtistSelectPayload {
 	artist: CatalogArtist;
-	originRect: ArtistOriginRect | null;
 	waveColor: string;
 	following: boolean;
 }
@@ -200,22 +188,10 @@ export class ArtistCategoryController {
 		}
 	};
 
-	/** 아티스트 카드 선택 시 상세 전환 정보 준비 후 라우트 이동 */
+	/** 아티스트 카드 선택 시 캐시 저장 후 상세 라우트 이동 */
 	selectArtist = (payload: ArtistSelectPayload): void => {
-		detailOverlay.prepareOpen({
-			category: 'artist',
-			itemId: payload.artist.id,
-			originRect: payload.originRect,
-			shape: 'circle',
-			accentColor: payload.waveColor
-		});
-		artistDetailState.prepareEnter({
-			artistId: payload.artist.id,
-			artist: payload.artist,
-			following: payload.following,
-			waveColor: payload.waveColor,
-			rect: payload.originRect
-		});
+		artistDetailState.cacheArtist(payload.artist, payload.waveColor);
+		artistDetailState.setFollowing(payload.artist.id, payload.following);
 		void goto(`/artist/${payload.artist.id}`, { reset: false });
 	};
 

@@ -1,28 +1,17 @@
 export { track, type MetricTargetType, type MetricType } from './analytics';
 export { useAnalytics } from './useAnalytics.svelte';
 export { bgm } from './bgmManager.svelte';
-export { isMobile, BREAKPOINTS } from './isMobile.svelte';
+export { isMobile } from './isMobile.svelte';
 export { toast } from './toast.svelte';
 export {
 	catalogFeed,
 	buildCatalogRequestKey,
-	isCatalogCategoryReady,
-	resolveCatalogCategoryFromPath,
-	type ArtistFeedSnapshot
+	isCatalogCategoryReady
 } from './catalogFeedState.svelte';
 export {
-	artistDetailState,
-	type ArtistExpandOrigin,
-	type ExpandOriginRect
-} from './artistDetailState.svelte';
-export {
 	detailOverlay,
-	measureOriginRect,
 	parseCatalogDetailRoute,
-	isCatalogDetailPath,
 	type CategoryDetailSlot,
-	type DetailMorphSeed,
-	type DetailPhase,
-	type DetailRect
+	type DetailPhase
 } from './detailOverlayState.svelte';
 export * from './contentFilterStorage';

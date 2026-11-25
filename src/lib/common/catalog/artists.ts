@@ -1,7 +1,7 @@
 import { getGenreLabel } from '#lib/common/type/filterOptions';
-import { mapPhysicalItem, type CatalogAlbum, type PhysicalItemDto } from '#lib/config/albums';
-import { mapGoodsItem, type CatalogGoods, type GoodsItemDto } from '#lib/config/goods';
-import type { CatalogConcert } from '#lib/config/concerts';
+import { mapPhysicalItem, type CatalogAlbum, type PhysicalItemDto } from '#lib/common/catalog/albums';
+import { mapGoodsItem, type CatalogGoods, type GoodsItemDto } from '#lib/common/catalog/goods';
+import type { CatalogConcert } from '#lib/common/catalog/concerts';
 
 export interface ArtistMemberSummary {
 	name: string;

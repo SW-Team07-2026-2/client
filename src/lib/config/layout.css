@@ -200,3 +200,33 @@ html.is-pc body {
 	will-change: transform;
 	animation: fd-dir-blur-exit var(--dir-blur-exit-duration, 480ms) var(--dir-blur-ease, cubic-bezier(0.32, 0.72, 0, 1)) both;
 }
+
+/* 공용 스켈레톤 쉬머 애니메이션 (카테고리별 *Skeleton 컴포넌트에서 공용 사용) */
+@keyframes fd-skeleton-shimmer {
+	0% {
+		background-position: 180% 0;
+	}
+
+	100% {
+		background-position: -40% 0;
+	}
+}
+
+.skeleton-shimmer {
+	background: linear-gradient(
+		105deg,
+		var(--surface) 25%,
+		var(--surface-2) 50%,
+		var(--surface) 75%
+	);
+	background-size: 220% 100%;
+	animation: fd-skeleton-shimmer 1.5s ease-in-out infinite;
+	animation-delay: var(--skeleton-delay, 0ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.skeleton-shimmer {
+		animation: none;
+		background: var(--surface);
+	}
+}

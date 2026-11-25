@@ -1,3 +1,5 @@
+import { parseCatalogDetailRoute } from '#lib/common/logic/detailOverlayState.svelte';
+
 export type MainSectionKey = 'artist' | 'concert' | 'album' | 'goods' | 'mypage';
 
 export interface MainSectionDescriptor {
@@ -124,10 +126,5 @@ export function resolveMainSectionIndex(pathname?: string | null): number {
 }
 
 export function parseMainSectionDetailId(pathname?: string | null): number | null {
-	if (!pathname) return null;
-	const clean = pathname.replace(/\/+$/, '');
-	const match = clean.match(/^\/(artist|concert|album|goods)\/(\d+)$/);
-	if (!match) return null;
-	const id = Number.parseInt(match[2], 10);
-	return Number.isFinite(id) ? id : null;
+	return parseCatalogDetailRoute(pathname)?.id ?? null;
 }
