@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
+	import { getMainSectionContext } from '../2_main_section/logic/context';
 	import type { MainSectionDescriptor } from '../2_main_section/logic/sectionRegistry';
 	import { CategoryDetailView, CategoryView } from '../4_category';
 	import {
@@ -19,6 +20,7 @@
 
 	let { section, active, detailId = null }: Props = $props();
 
+	const mainSectionCtx = getMainSectionContext();
 	const contentCtrl = getContentSectionContext();
 	const filterableKey = $derived(isFilterableCategory(section.key) ? section.key : null);
 	const filterState = $derived(contentCtrl?.getFilterState(section.key));
@@ -30,10 +32,11 @@
 	let listAreaEl = $state<HTMLDivElement | null>(null);
 	let listFadeAnim: Animation | null = null;
 
+	const isSliding = $derived(mainSectionCtx?.isSlidingOrSwiping() ?? false);
 	const isDetailSettledOpen = $derived(detailCtrl?.phase === 'open');
 
-	$effect(() => {
-		detailCtrl?.sync(active, detailId, false);
+	$effect.pre(() => {
+		detailCtrl?.sync(active, detailId, false, isSliding);
 	});
 
 	$effect(() => {
@@ -87,7 +90,13 @@
 			onClose={detailCtrl.close}
 		>
 			{#snippet children({ id, close, mobile })}
-				<CategoryDetailView category={filterableKey} {id} onClose={close} {mobile} />
+				<CategoryDetailView
+					category={filterableKey}
+					{id}
+					onClose={close}
+					backLabel={detailCtrl.backLabel}
+					{mobile}
+				/>
 			{/snippet}
 		</PcDetailFrame>
 	{/if}

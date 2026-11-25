@@ -230,3 +230,39 @@ html.is-pc body {
 		background: var(--surface);
 	}
 }
+
+/* PC · 모바일 공용 스크롤 진입/이탈 모션 (use:scrollReveal 액션과 함께 사용) */
+.scroll-reveal,
+.mb-scroll-reveal {
+	opacity: 1;
+	transform: translate3d(0, 0, 0) scale(1);
+	will-change: transform, opacity;
+	transition:
+		opacity 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+		transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.scroll-reveal[data-scroll-reveal='above'],
+.mb-scroll-reveal[data-scroll-reveal='above'] {
+	opacity: 0;
+	transform: translate3d(0, -16px, 0) scale(0.96);
+}
+
+.scroll-reveal[data-scroll-reveal='below'],
+.mb-scroll-reveal[data-scroll-reveal='below'] {
+	opacity: 0;
+	transform: translate3d(0, 22px, 0) scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.scroll-reveal,
+	.scroll-reveal[data-scroll-reveal='above'],
+	.scroll-reveal[data-scroll-reveal='below'],
+	.mb-scroll-reveal,
+	.mb-scroll-reveal[data-scroll-reveal='above'],
+	.mb-scroll-reveal[data-scroll-reveal='below'] {
+		opacity: 1;
+		transform: none;
+		transition: none;
+	}
+}

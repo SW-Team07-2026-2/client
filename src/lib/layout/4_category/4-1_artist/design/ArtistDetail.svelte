@@ -2,6 +2,7 @@
 	import FdImage from '#lib/common/design/fluid/FdImage.svelte';
 	import { LoadingSpinner } from '#lib/dedicated/loading';
 	import { resolveArtistImageUrl, type CatalogArtist } from '#lib/common/catalog/artists';
+	import DetailAmbientGlow from '../../_shared/design/DetailAmbientGlow.svelte';
 	import ArtistFollowButton from '../part/detail_part/ArtistFollowButton.svelte';
 	import ArtistShareButton from '../part/detail_part/ArtistShareButton.svelte';
 	import ArtistMoreToggleButton from '../part/detail_part/ArtistMoreToggleButton.svelte';
@@ -16,6 +17,7 @@
 		moreOpen: boolean;
 		accentColor: string;
 		mobile: boolean;
+		backLabel?: string;
 		onClose: () => void;
 		onToggleFollow: () => void;
 		onShareLink: () => void;
@@ -32,6 +34,7 @@
 		moreOpen,
 		accentColor,
 		mobile,
+		backLabel = '목록으로',
 		onClose,
 		onToggleFollow,
 		onShareLink,
@@ -70,12 +73,9 @@
 
 <!-- 아티스트 상세 뷰 (PC 반응형 3단계 레이아웃 · 모바일은 추후 별도 구성 예정으로 비워둠, 순수 렌더링) -->
 {#if !mobile}
-	<div class="pc-artist-detail" style:--artist-glow-color={glowColor}>
-		<!-- 배경 은은한 블러 빛 효과 (이미지 추출 색상 · CORS 차단 시 하얀색 폴백) -->
-		<div class="ambient-glow-layer" aria-hidden="true">
-			<div class="ambient-glow-orb is-primary"></div>
-			<div class="ambient-glow-orb is-secondary"></div>
-		</div>
+	<div class="pc-artist-detail">
+		<!-- 공용 배경 은은한 블러 빛 효과 (이미지 추출 색상 · CORS 차단 시 하얀색 폴백) -->
+		<DetailAmbientGlow color={glowColor} />
 
 		<div class="detail-container">
 			<div class="detail-top-nav">
@@ -93,7 +93,7 @@
 					>
 						<path d="m15 18-6-6 6-6" />
 					</svg>
-					<span>목록으로</span>
+					<span>{backLabel}</span>
 				</button>
 			</div>
 
@@ -174,39 +174,6 @@
 		box-sizing: border-box;
 		container-type: inline-size;
 		container-name: pc-artist-detail;
-	}
-
-	.ambient-glow-layer {
-		position: absolute;
-		inset: 0 0 auto 0;
-		height: 520px;
-		pointer-events: none;
-		overflow: hidden;
-		z-index: 0;
-	}
-
-	.ambient-glow-orb {
-		position: absolute;
-		border-radius: 999px;
-		background: var(--artist-glow-color, var(--white));
-		filter: blur(110px);
-		transition: background-color 0.5s ease;
-	}
-
-	.ambient-glow-orb.is-primary {
-		top: -120px;
-		left: 10%;
-		width: 460px;
-		height: 340px;
-		opacity: 0.2;
-	}
-
-	.ambient-glow-orb.is-secondary {
-		top: -80px;
-		right: 14%;
-		width: 360px;
-		height: 280px;
-		opacity: 0.12;
 	}
 
 	.detail-container {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import { scrollReveal } from '#lib/common/logic';
 	import FdButton from '#lib/common/design/fluid/FdButton.svelte';
 	import FdImage from '#lib/common/design/fluid/FdImage.svelte';
 	import { FluidSetting } from '#lib/common/type/fluid';
@@ -238,9 +239,10 @@
 	}
 </script>
 
-<!-- 모바일 전용 아티스트 카드 아이템 (순수 렌더링 · 웨이브 비활성 · 꾹 누르기 팔로우) -->
+<!-- 모바일 전용 아티스트 카드 아이템 (순수 렌더링 · 웨이브 비활성 · 꾹 누르기 팔로우 · 스크롤 진입/이탈 모션) -->
 <article
-	class="mb-artist-item"
+	use:scrollReveal
+	class="mb-artist-item mb-scroll-reveal"
 	class:is-active={isActive}
 	class:is-following={following}
 >

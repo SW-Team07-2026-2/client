@@ -37,14 +37,24 @@ export class DetailStageController {
 		return this.phase !== 'closed' && this.renderId !== null;
 	}
 
+	get backLabel(): string {
+		return detailOverlay.hasPreviousDetail ? '이전' : '목록으로';
+	}
+
 	/**
 	 * 라우트 detailId 변화에 따라 열기(expanding) / 닫기(closing) 전환을 트리거합니다.
+	 * @param suppressMotion 카테고리 간 좌우 슬라이드 전환 중에는 수직 열기/닫기 모션을 생략하고 즉시 안착합니다.
 	 */
-	sync = (active: boolean, detailId: number | null, mobile: boolean): void => {
+	sync = (
+		active: boolean,
+		detailId: number | null,
+		mobile: boolean,
+		suppressMotion = false
+	): void => {
 		const prev = this.prevDetailId;
 		this.prevDetailId = detailId;
 
-		const animate = active && !prefersReducedMotion();
+		const animate = active && !suppressMotion && !prefersReducedMotion();
 
 		if (prev === null && detailId !== null) {
 			detailOverlay.beginExpand(this.category, detailId, { animate });
@@ -58,8 +68,13 @@ export class DetailStageController {
 		this.syncBodyScrollLock(mobile && active && this.isVisible);
 	};
 
-	/** 상세 닫기 요청 -> 해당 카테고리 목록 경로로 복귀 */
+	/** 이전 상세가 있으면 직전 상세로 복귀, 없으면 현재 카테고리 목록 경로로 복귀 */
 	close = (): void => {
+		const prevDetailPath = detailOverlay.previousDetailPath;
+		if (prevDetailPath) {
+			void goto(prevDetailPath, { reset: false });
+			return;
+		}
 		void goto(`/${this.category}`, { reset: false });
 	};
 

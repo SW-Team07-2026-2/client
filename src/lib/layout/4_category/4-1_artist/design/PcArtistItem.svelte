@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import { scrollReveal } from '#lib/common/logic';
 	import FdButton from '#lib/common/design/fluid/FdButton.svelte';
 	import FdImage from '#lib/common/design/fluid/FdImage.svelte';
 	import { FluidSetting } from '#lib/common/type/fluid';
@@ -129,9 +130,10 @@
 	}
 </script>
 
-<!-- PC 전용 아티스트 카드 아이템 (순수 렌더링) -->
+<!-- PC 전용 아티스트 카드 아이템 (순수 렌더링 · 스크롤 진입/이탈 모션) -->
 <article
-	class="pc-artist-item"
+	use:scrollReveal={{ topMargin: 76, bottomMargin: 28 }}
+	class="pc-artist-item scroll-reveal"
 	class:is-active={isActive}
 	class:is-following={following}
 	onpointerenter={(e) => {

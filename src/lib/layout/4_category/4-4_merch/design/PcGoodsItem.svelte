@@ -1,0 +1,289 @@
+<script lang="ts">
+	import { scrollReveal } from '#lib/common/logic';
+	import {
+		formatGoodsPrice,
+		resolveGoodsImageUrl,
+		type CatalogGoods
+	} from '#lib/common/catalog/goods';
+	import type { GoodsSelectPayload } from '../logic/goodsCategory.svelte';
+
+	interface Props {
+		goods: CatalogGoods;
+		interactive?: boolean;
+		onSelect?: (payload: GoodsSelectPayload) => void;
+	}
+
+	let { goods, interactive = true, onSelect }: Props = $props();
+
+	let hovered = $state(false);
+	let focused = $state(false);
+
+	const imageUrl = $derived(resolveGoodsImageUrl(goods));
+	const priceText = $derived(formatGoodsPrice(goods.price));
+	const isSoldOut = $derived(goods.badge === '품절');
+	const isActive = $derived(interactive && (hovered || focused));
+
+	$effect(() => {
+		if (!interactive) {
+			hovered = false;
+			focused = false;
+		}
+	});
+
+	function handleSelect() {
+		onSelect?.({ goods });
+	}
+</script>
+
+<!-- PC 전용 굿즈 카드 아이템 (4:5 에디토리얼 룩북 프레임 · hover 리프트 & 줌 · 스크롤 모션, 순수 렌더링) -->
+<article
+	use:scrollReveal={{ topMargin: 76, bottomMargin: 28 }}
+	class="pc-goods-item scroll-reveal"
+	class:is-active={isActive}
+	class:is-sold-out={isSoldOut}
+	onpointerenter={(e) => {
+		if (e.pointerType === 'mouse') hovered = true;
+	}}
+	onpointerleave={() => {
+		hovered = false;
+	}}
+	onpointercancel={() => {
+		hovered = false;
+	}}
+	onfocusin={(e) => {
+		if ((e.target as HTMLElement | null)?.matches?.(':focus-visible')) {
+			focused = true;
+		}
+	}}
+	onfocusout={(e) => {
+		const nextTarget = e.relatedTarget as Node | null;
+		if (!nextTarget || !e.currentTarget.contains(nextTarget)) {
+			focused = false;
+		}
+	}}
+>
+	<button
+		type="button"
+		class="goods-card-btn"
+		aria-label={`${goods.name} - ${goods.artistName}`}
+		onclick={handleSelect}
+	>
+		<div class="goods-media-frame">
+			{#if imageUrl}
+				<img
+					class="goods-img"
+					src={imageUrl}
+					alt={goods.name}
+					loading="lazy"
+					decoding="async"
+				/>
+			{:else}
+				<div class="goods-img-fallback" aria-hidden="true"></div>
+			{/if}
+
+			{#if isSoldOut}
+				<div class="goods-soldout-overlay">
+					<span class="goods-soldout-badge">품절</span>
+				</div>
+			{/if}
+		</div>
+
+		<div class="goods-info">
+			{#if goods.artistName}
+				<span class="goods-artist">{goods.artistName}</span>
+			{/if}
+			<h3 class="goods-name">{goods.name}</h3>
+			{#if goods.category || priceText}
+				<div class="goods-meta-row">
+					{#if goods.category}
+						<span class="goods-category-pill">{goods.category}</span>
+					{/if}
+					{#if priceText}
+						<span class="goods-price">{priceText}</span>
+					{/if}
+				</div>
+			{/if}
+		</div>
+	</button>
+</article>
+
+<style>
+	.pc-goods-item {
+		position: relative;
+		width: 100%;
+		box-sizing: border-box;
+		user-select: none;
+	}
+
+	.goods-card-btn {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		width: 100%;
+		padding: 0;
+		margin: 0;
+		border: none;
+		background: transparent;
+		font: inherit;
+		text-align: left;
+		color: inherit;
+		cursor: pointer;
+		outline: none;
+	}
+
+	.goods-card-btn:focus-visible .goods-media-frame {
+		outline: 2px solid color-mix(in srgb, var(--white) 80%, transparent);
+		outline-offset: 4px;
+	}
+
+	.goods-media-frame {
+		position: relative;
+		width: 100%;
+		aspect-ratio: 4 / 5;
+		border-radius: 14px;
+		overflow: hidden;
+		background: var(--surface);
+		border: var(--thin-border);
+		box-shadow: 0 8px 22px rgba(0, 0, 0, 0.36);
+		transform: translate3d(0, 0, 0);
+		will-change: transform;
+		transition:
+			transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+			box-shadow 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+			border-color 0.24s ease;
+	}
+
+	.pc-goods-item.is-active .goods-media-frame {
+		transform: translate3d(0, -4px, 0);
+		box-shadow: 0 18px 34px rgba(0, 0, 0, 0.56);
+		border-color: color-mix(in srgb, var(--white) 24%, transparent);
+	}
+
+	.goods-img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		pointer-events: none;
+		transform: scale(1);
+		transition: transform 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
+	.pc-goods-item.is-active .goods-img {
+		transform: scale(1.05);
+	}
+
+	.goods-img-fallback {
+		width: 100%;
+		height: 100%;
+		background: linear-gradient(155deg, var(--surface-2), var(--surface-dim));
+	}
+
+	.pc-goods-item.is-sold-out .goods-img {
+		opacity: 0.56;
+	}
+
+	.goods-soldout-overlay {
+		position: absolute;
+		inset: 0;
+		z-index: 3;
+		display: grid;
+		place-items: center;
+		pointer-events: none;
+	}
+
+	.goods-soldout-badge {
+		padding: 0.32rem 0.88rem;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--bg) 76%, transparent);
+		border: 1px solid color-mix(in srgb, var(--white) 24%, transparent);
+		color: var(--white);
+		font-size: 0.8rem;
+		font-weight: var(--fw-bold);
+		letter-spacing: 0.04em;
+		-webkit-backdrop-filter: blur(8px);
+		backdrop-filter: blur(8px);
+	}
+
+	.goods-info {
+		margin-top: 0.72rem;
+		padding: 0 0.1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.22rem;
+		min-width: 0;
+	}
+
+	.goods-artist {
+		font-size: 0.76rem;
+		font-weight: var(--fw-medium);
+		color: var(--muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.goods-name {
+		margin: 0;
+		font-size: 0.94rem;
+		font-weight: var(--fw-semibold);
+		line-height: 1.35;
+		letter-spacing: -0.02em;
+		color: var(--fg);
+		display: -webkit-box;
+		line-clamp: 2;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		word-break: keep-all;
+		transition: color 0.18s ease;
+	}
+
+	.pc-goods-item.is-active .goods-name {
+		color: var(--white);
+	}
+
+	.goods-meta-row {
+		margin-top: 0.16rem;
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.42rem;
+	}
+
+	.goods-category-pill {
+		padding: 0.12rem 0.46rem;
+		border-radius: 999px;
+		background: var(--surface-2);
+		color: var(--white-3);
+		font-size: 0.72rem;
+		font-weight: var(--fw-medium);
+		line-height: 1.25;
+		letter-spacing: 0.01em;
+	}
+
+	.goods-price {
+		font-size: 0.9rem;
+		font-weight: var(--fw-bold);
+		letter-spacing: -0.01em;
+		color: var(--white-2);
+	}
+
+	.pc-goods-item.is-sold-out .goods-meta-row {
+		opacity: 0.55;
+	}
+
+	.pc-goods-item.is-sold-out .goods-category-pill,
+	.pc-goods-item.is-sold-out .goods-price {
+		color: var(--muted);
+		text-decoration: line-through;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.goods-media-frame,
+		.goods-img,
+		.goods-name {
+			transition: none;
+		}
+	}
+</style>

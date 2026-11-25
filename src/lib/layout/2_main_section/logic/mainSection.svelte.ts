@@ -356,6 +356,8 @@ export class MainSectionController {
 	): void => {
 		if (typeof window === 'undefined' || !fromPath || !toPath || fromPath === toPath) return;
 
+		detailOverlay.recordNavigation(fromPath, toPath);
+
 		const fromKey = resolveMainSectionKey(fromPath);
 		const toKey = resolveMainSectionKey(toPath);
 		const fromDetailId = parseMainSectionDetailId(fromPath);

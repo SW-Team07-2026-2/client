@@ -47,3 +47,8 @@ export function mapGoodsItem(item: GoodsItemDto): CatalogGoods {
 export function resolveGoodsImageUrl(goods: Pick<CatalogGoods, 'imageUrl'>): string {
 	return goods.imageUrl?.trim() ?? '';
 }
+
+export function formatGoodsPrice(price?: number | null): string {
+	if (typeof price !== 'number' || !Number.isFinite(price)) return '';
+	return `${price.toLocaleString('ko-KR')}원`;
+}

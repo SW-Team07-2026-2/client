@@ -14,4 +14,9 @@ export {
 	type CategoryDetailSlot,
 	type DetailPhase
 } from './detailOverlayState.svelte';
+export {
+	scrollReveal,
+	type ScrollRevealOptions,
+	type ScrollRevealState
+} from './scrollReveal';
 export * from './contentFilterStorage';

@@ -1,4 +1,10 @@
 <script module lang="ts">
+	import {
+		boostSaturationAndMixWhite,
+		markImageCorsBlocked,
+		resolveImageCrossOrigin
+	} from './imageColor';
+
 	interface ExtractedWaveColors {
 		inner: string;
 		outer: string;
@@ -12,21 +18,7 @@
 	};
 
 	const waveColorCache = new Map<string, ExtractedWaveColors>();
-	const corsBlockedOrigins = new Set<string>();
 	const warmedImageUrls = new Set<string>();
-
-	function getUrlOrigin(url: string): string | null {
-		if (typeof window === 'undefined') return null;
-		try {
-			const parsed = new URL(url, window.location.href);
-			if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-				return parsed.origin;
-			}
-		} catch {
-			// 잘못된 URL 형식은 origin 판별 생략
-		}
-		return null;
-	}
 
 	function isInlineImageUrl(url: string): boolean {
 		return url.startsWith('data:') || url.startsWith('blob:');
@@ -44,19 +36,14 @@
 
 			const img = new Image();
 			img.decoding = 'async';
-			const origin = getUrlOrigin(url);
-			const corsBlocked = Boolean(
-				origin && origin !== window.location.origin && corsBlockedOrigins.has(origin)
-			);
-			if (!corsBlocked) {
-				img.crossOrigin = 'anonymous';
+			const crossOrigin = resolveImageCrossOrigin(url);
+			if (crossOrigin) {
+				img.crossOrigin = crossOrigin;
 				img.onload = () => {
 					void img.decode?.().catch(() => {});
 				};
 				img.onerror = () => {
-					if (origin && origin !== window.location.origin) {
-						corsBlockedOrigins.add(origin);
-					}
+					markImageCorsBlocked(url);
 					const retry = new Image();
 					retry.decoding = 'async';
 					retry.onload = () => {
@@ -320,11 +307,14 @@
 				}
 
 				if (totalW > 0.01) {
-					return formatRgbForWaves(
-						Math.round(sumR / totalW),
-						Math.round(sumG / totalW),
-						Math.round(sumB / totalW)
+					const [r, g, b] = boostSaturationAndMixWhite(
+						sumR / totalW,
+						sumG / totalW,
+						sumB / totalW,
+						0.45,
+						1.45
 					);
+					return formatRgbForWaves(r, g, b);
 				}
 			}
 		} catch {
@@ -381,10 +371,7 @@
 			applyWaveColors(WHITE_WAVE_COLORS);
 			return;
 		}
-		const origin = getUrlOrigin(src);
-		if (origin && origin !== window.location.origin) {
-			corsBlockedOrigins.add(origin);
-		}
+		markImageCorsBlocked(src);
 		useCorsFallback = true;
 		applyWaveColors(WHITE_WAVE_COLORS);
 	}
@@ -401,10 +388,7 @@
 			return;
 		}
 
-		const origin = getUrlOrigin(currentSrc);
-		useCorsFallback = Boolean(
-			origin && origin !== window.location.origin && corsBlockedOrigins.has(origin)
-		);
+		useCorsFallback = !isInlineImageUrl(currentSrc) && !resolveImageCrossOrigin(currentSrc);
 
 		const cacheKey = `${fit}:${currentSrc}`;
 		const cachedColors = waveColorCache.get(cacheKey);

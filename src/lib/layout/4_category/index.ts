@@ -5,8 +5,8 @@ export {
 	default as ConcertCategory,
 	type ConcertViewMode
 } from './4-2_concert/ConcertCategory.svelte';
-export { default as AlbumCategory } from './4-3_album/AlbumCategory.svelte';
-export { default as GoodsCategory } from './4-4_merch/GoodsCategory.svelte';
+export { default as AlbumSection } from './4-3_album/AlbumSection.svelte';
+export { default as GoodsSection } from './4-4_merch/GoodsSection.svelte';
 export { default as MyPageCategory } from './4-5_mypage/MyPageCategory.svelte';
 export {
 	CatalogFeedController,

@@ -1,15 +1,18 @@
 <script lang="ts">
 	import type { CatalogCategoryKey } from '#lib/common/catalog/catalogFeed';
 	import ArtistDetailSection from './4-1_artist/ArtistDetailSection.svelte';
+	import AlbumDetailSection from './4-3_album/AlbumDetailSection.svelte';
+	import GoodsDetailSection from './4-4_merch/GoodsDetailSection.svelte';
 
 	interface Props {
 		category: CatalogCategoryKey;
 		id: number;
 		mobile: boolean;
+		backLabel?: string;
 		onClose: () => void;
 	}
 
-	let { category, id, mobile, onClose }: Props = $props();
+	let { category, id, mobile, backLabel = '목록으로', onClose }: Props = $props();
 
 	const CATEGORY_TITLES: Record<CatalogCategoryKey, string> = {
 		artist: 'ArtistDetail',
@@ -21,10 +24,14 @@
 
 <!-- 4_category 상세 통합 디스패처: 각 카테고리 전용 독립 상세 섹션(Shell)으로 분기 -->
 {#if category === 'artist'}
-	<ArtistDetailSection {id} {mobile} {onClose} />
+	<ArtistDetailSection {id} {mobile} {backLabel} {onClose} />
+{:else if category === 'album'}
+	<AlbumDetailSection {id} {mobile} {backLabel} {onClose} />
+{:else if category === 'goods'}
+	<GoodsDetailSection {id} {mobile} {backLabel} {onClose} />
 {:else}
 	<div class="category-detail-placeholder">
-		<button type="button" class="detail-close-btn" onclick={onClose}>← 목록으로</button>
+		<button type="button" class="detail-close-btn" onclick={onClose}>← {backLabel}</button>
 		<p class="detail-placeholder-label">{CATEGORY_TITLES[category]} #{id}</p>
 	</div>
 {/if}

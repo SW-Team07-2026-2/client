@@ -2,8 +2,8 @@
 	import type { MainSectionDescriptor } from '../2_main_section/logic/sectionRegistry';
 	import ArtistSection from './4-1_artist/ArtistSection.svelte';
 	import ConcertCategory from './4-2_concert/ConcertCategory.svelte';
-	import AlbumCategory from './4-3_album/AlbumCategory.svelte';
-	import GoodsCategory from './4-4_merch/GoodsCategory.svelte';
+	import AlbumSection from './4-3_album/AlbumSection.svelte';
+	import GoodsSection from './4-4_merch/GoodsSection.svelte';
 	import MyPageCategory from './4-5_mypage/MyPageCategory.svelte';
 
 	interface Props {
@@ -20,9 +20,9 @@
 {:else if section.key === 'concert'}
 	<ConcertCategory {section} {active} />
 {:else if section.key === 'album'}
-	<AlbumCategory {section} {active} />
+	<AlbumSection {section} {active} />
 {:else if section.key === 'goods'}
-	<GoodsCategory {section} {active} />
+	<GoodsSection {section} {active} />
 {:else}
 	<MyPageCategory {section} {active} />
 {/if}

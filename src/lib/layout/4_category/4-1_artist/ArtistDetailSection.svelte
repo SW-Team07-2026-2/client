@@ -5,10 +5,11 @@
 	interface Props {
 		id: number;
 		mobile: boolean;
+		backLabel?: string;
 		onClose: () => void;
 	}
 
-	let { id, mobile, onClose }: Props = $props();
+	let { id, mobile, backLabel = '목록으로', onClose }: Props = $props();
 
 	const controller = new ArtistDetailController();
 
@@ -27,6 +28,7 @@
 	moreOpen={controller.moreOpen}
 	accentColor={controller.accentColor}
 	{mobile}
+	{backLabel}
 	{onClose}
 	onToggleFollow={controller.toggleFollow}
 	onShareLink={controller.shareLink}

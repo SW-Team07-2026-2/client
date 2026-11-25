@@ -9,6 +9,12 @@ export interface CategoryDetailSlot {
 }
 
 const CATEGORIES: readonly CatalogCategoryKey[] = ['artist', 'concert', 'album', 'goods'];
+const MAX_DETAIL_HISTORY = 20;
+
+function normalizeDetailPath(pathname?: string | null): string {
+	if (!pathname) return '';
+	return pathname.replace(/\/+$/, '') || '/';
+}
 
 function createEmptySlot(): CategoryDetailSlot {
 	return {
@@ -45,6 +51,47 @@ class DetailOverlayStore {
 	});
 
 	private fallbackTimers = new Map<CatalogCategoryKey, ReturnType<typeof setTimeout>>();
+	/** 상세 -> 상세 이동 시 복귀 대상 경로를 추적하는 인앱 히스토리 스택 */
+	private historyStack = $state<string[]>([]);
+
+	get previousDetailPath(): string | null {
+		return this.historyStack.length > 0 ? this.historyStack[this.historyStack.length - 1] : null;
+	}
+
+	get hasPreviousDetail(): boolean {
+		return this.historyStack.length > 0;
+	}
+
+	/**
+	 * 라우트 이동 시 상세 히스토리 스택을 동기화합니다.
+	 * - 목록 등 비-상세 페이지로 이동하거나 목록 -> 상세 진입 시 스택을 초기화합니다.
+	 * - 상세 -> 상세 이동 시, 직전 스택 최상단으로의 복귀면 pop, 신규 점프면 push합니다.
+	 */
+	recordNavigation(fromPath?: string | null, toPath?: string | null): void {
+		const from = normalizeDetailPath(fromPath);
+		const to = normalizeDetailPath(toPath);
+		if (!from || !to || from === to) return;
+
+		const fromDetail = parseCatalogDetailRoute(from);
+		const toDetail = parseCatalogDetailRoute(to);
+
+		if (!toDetail || !fromDetail) {
+			if (this.historyStack.length > 0) {
+				this.historyStack = [];
+			}
+			return;
+		}
+
+		const top = this.historyStack[this.historyStack.length - 1];
+		if (top === to) {
+			this.historyStack = this.historyStack.slice(0, -1);
+			return;
+		}
+
+		const next = [...this.historyStack, from];
+		this.historyStack =
+			next.length > MAX_DETAIL_HISTORY ? next.slice(next.length - MAX_DETAIL_HISTORY) : next;
+	}
 
 	private clearTimer(category: CatalogCategoryKey): void {
 		const timer = this.fallbackTimers.get(category);

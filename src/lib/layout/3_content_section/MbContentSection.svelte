@@ -36,8 +36,8 @@
 	const isSliding = $derived(mainSectionCtx?.isSlidingOrSwiping() ?? false);
 	const listScrollY = $derived(mainSectionCtx?.getSectionListScrollY(section.key) ?? 0);
 
-	$effect(() => {
-		detailCtrl?.sync(active, detailId, true);
+	$effect.pre(() => {
+		detailCtrl?.sync(active, detailId, true, isSliding);
 	});
 
 	$effect(() => {
@@ -97,7 +97,13 @@
 			onClose={detailCtrl.close}
 		>
 			{#snippet children({ id, close, mobile })}
-				<CategoryDetailView category={filterableKey} {id} onClose={close} {mobile} />
+				<CategoryDetailView
+					category={filterableKey}
+					{id}
+					onClose={close}
+					backLabel={detailCtrl.backLabel}
+					{mobile}
+				/>
 			{/snippet}
 		</MbDetailFrame>
 	{/if}

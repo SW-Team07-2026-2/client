@@ -1,4 +1,5 @@
 export { default as FdDiv } from './FdDiv.svelte';
+export { default as FdLine, type FdLineDirection } from './FdLine.svelte';
 export { default as FdImage, prewarmFdImages } from './FdImage.svelte';
 export { default as FdButton } from './FdButton.svelte';
 export { default as FdCheckButton } from './FdCheckButton.svelte';
