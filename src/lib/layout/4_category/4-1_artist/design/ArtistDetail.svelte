@@ -3,6 +3,10 @@
 	import { LoadingSpinner } from '#lib/dedicated/loading';
 	import { resolveArtistImageUrl, type CatalogArtist } from '#lib/common/catalog/artists';
 	import DetailAmbientGlow from '../../_shared/design/DetailAmbientGlow.svelte';
+	import {
+		createWaveRectSetting,
+		resolveDetailGlowColor
+	} from '../../_shared/logic/detailTheme';
 	import DetailTopNav from '#lib/common/design/DetailTopNav.svelte';
 	import ArtistFollowButton from '../part/detail_part/ArtistFollowButton.svelte';
 	import ArtistShareButton from '../part/detail_part/ArtistShareButton.svelte';
@@ -17,6 +21,7 @@
 		followLoading: boolean;
 		moreOpen: boolean;
 		accentColor: string;
+		waveActive?: boolean;
 		mobile: boolean;
 		backLabel?: string;
 		onClose: () => void;
@@ -34,6 +39,7 @@
 		followLoading,
 		moreOpen,
 		accentColor,
+		waveActive = true,
 		mobile,
 		backLabel = '목록으로',
 		onClose,
@@ -51,23 +57,10 @@
 	let heroMediaWidth = $state(340);
 
 	const imageSrc = $derived(artist ? resolveArtistImageUrl(artist) : '');
-	const glowColor = $derived(
-		extractedWaveColor &&
-			extractedWaveColor !== 'var(--muted-wave)' &&
-			extractedWaveColor !== 'var(--white)'
-			? extractedWaveColor
-			: accentColor
+	const glowColor = $derived(resolveDetailGlowColor(extractedWaveColor, accentColor));
+	const heroImageSetting = $derived(
+		createWaveRectSetting(heroMediaWidth, 1, HERO_RADIUS, HERO_WAVES_PER_EDGE)
 	);
-	const heroImageSetting = $derived.by(() => {
-		const w = Math.max(160, heroMediaWidth);
-		const perimeter = 4 * w - 1.717 * HERO_RADIUS;
-		const waveLength = Math.round(perimeter / (HERO_WAVES_PER_EDGE * 4));
-		return {
-			radius: HERO_RADIUS,
-			waveLength,
-			pauseWhenIdle: false
-		};
-	});
 
 	$effect(() => {
 		onAccentColorExtracted?.(glowColor);
@@ -107,7 +100,7 @@
 							objectPosition="50% 40%"
 							radius={HERO_RADIUS}
 							setting={heroImageSetting}
-							active={true}
+							active={waveActive}
 							disableWave={false}
 							bind:extractedWaveColor
 							fullWidth

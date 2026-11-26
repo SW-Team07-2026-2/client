@@ -9,6 +9,7 @@ import { GOODS_FORM_OPTIONS } from '#lib/common/type/filterOptions';
 import { cartState } from '#lib/common/logic';
 import { navigateDetailToDetail } from '#lib/common/logic/detailNavigation';
 import { addOptionToCart, goToCart } from '../../_shared/logic/productCart';
+import { fetchDetailWithPrefetch } from '../../_shared/logic/detailPrefetch';
 import { shareCurrentPage } from '../../_shared/logic/shareLink';
 import { goodsDetailState } from './goodsDetailState.svelte';
 
@@ -183,7 +184,9 @@ export class GoodsDetailController {
 		}
 
 		try {
-			const dto = await api<GoodsProductDetailDto>(`/api/catalog/products/${goodsId}`);
+			const dto = await fetchDetailWithPrefetch<GoodsProductDetailDto>(
+				`/api/catalog/products/${goodsId}`
+			);
 			if (token !== this.loadToken || !dto) return;
 
 			const rawCategory = dto.category?.trim() ?? '';

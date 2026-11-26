@@ -6,6 +6,7 @@ import {
 } from '#lib/common/catalog/artists';
 import { toast } from '#lib/common/logic';
 import { shareCurrentPage } from '../../_shared/logic/shareLink';
+import { fetchDetailWithPrefetch } from '../../_shared/logic/detailPrefetch';
 import { artistDetailState } from './artistDetailState.svelte';
 
 /**
@@ -114,7 +115,9 @@ export class ArtistDetailController {
 		}
 
 		try {
-			const dto = await api<ArtistDetailDto>(`/api/catalog/artists/${artistId}`);
+			const dto = await fetchDetailWithPrefetch<ArtistDetailDto>(
+				`/api/catalog/artists/${artistId}`
+			);
 			if (token !== this.loadToken || !dto) return;
 			const mapped = mapArtistDetail(dto);
 			this.artist = mapped;

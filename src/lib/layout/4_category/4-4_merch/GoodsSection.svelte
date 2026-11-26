@@ -2,6 +2,7 @@
 	import { isMobile } from '#lib/common/logic';
 	import type { MainSectionDescriptor } from '../../2_main_section/logic/sectionRegistry';
 	import CatalogFeedView from '../_shared/design/CatalogFeedView.svelte';
+	import { prefetchDetailApi, prefetchDetailImage } from '../_shared/logic/detailPrefetch';
 	import { GoodsCategoryController } from './logic/goodsCategory.svelte';
 	import PcGoodsItem from './design/PcGoodsItem.svelte';
 	import MbGoodsItem from './design/MbGoodsItem.svelte';
@@ -38,17 +39,31 @@
 	{#snippet content({ interactive })}
 		<div class="goods-grid" class:is-mobile={mobile} class:is-pc={!mobile}>
 			{#each controller.feed.items as goods (goods.id)}
-				{#if mobile}
-					<MbGoodsItem {goods} {interactive} onSelect={controller.selectGoods} />
-				{:else}
-					<PcGoodsItem
-						{goods}
-						{interactive}
-						cartLoading={controller.isAddingToCart(goods.id)}
-						onSelect={controller.selectGoods}
-						onQuickAddToCart={controller.quickAddToCart}
-					/>
-				{/if}
+				<div
+					class="feed-card-slot"
+					role="presentation"
+					onpointerenter={(e) => {
+						if (e.pointerType !== 'mouse') return;
+						prefetchDetailApi(`/api/catalog/products/${goods.id}`);
+						prefetchDetailImage(goods.imageUrl);
+					}}
+					ontouchstart={() => {
+						prefetchDetailApi(`/api/catalog/products/${goods.id}`);
+						prefetchDetailImage(goods.imageUrl);
+					}}
+				>
+					{#if mobile}
+						<MbGoodsItem {goods} {interactive} onSelect={controller.selectGoods} />
+					{:else}
+						<PcGoodsItem
+							{goods}
+							{interactive}
+							cartLoading={controller.isAddingToCart(goods.id)}
+							onSelect={controller.selectGoods}
+							onQuickAddToCart={controller.quickAddToCart}
+						/>
+					{/if}
+				</div>
 			{/each}
 		</div>
 	{/snippet}
@@ -85,5 +100,11 @@
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		column-gap: 0.85rem;
 		row-gap: 1.65rem;
+	}
+
+	.feed-card-slot {
+		min-width: 0;
+		content-visibility: auto;
+		contain-intrinsic-size: auto 290px;
 	}
 </style>

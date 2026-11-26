@@ -3,6 +3,7 @@
 	import ProductDetailLayout from '../../_shared/design/ProductDetailLayout.svelte';
 	import ProductPurchasePanel from '../../_shared/design/ProductPurchasePanel.svelte';
 	import type { SpringDropdownOption } from '../../_shared/design/SpringDropdown.svelte';
+	import { resolveDetailGlowColor } from '../../_shared/logic/detailTheme';
 	import type {
 		AlbumPhysicalEdition,
 		AlbumTrackItem,
@@ -37,6 +38,7 @@
 		inCart: boolean;
 		collectionSubmitting: boolean;
 		isCollected: boolean;
+		waveActive?: boolean;
 		mobile: boolean;
 		backLabel?: string;
 		onClose: () => void;
@@ -74,6 +76,7 @@
 		inCart,
 		collectionSubmitting,
 		isCollected,
+		waveActive = true,
 		mobile,
 		backLabel = '목록으로',
 		onClose,
@@ -118,13 +121,7 @@
 		}))
 	);
 
-	const glowColor = $derived(
-		extractedWaveColor &&
-			extractedWaveColor !== 'var(--muted-wave)' &&
-			extractedWaveColor !== 'var(--white)'
-			? extractedWaveColor
-			: accentColor
-	);
+	const glowColor = $derived(resolveDetailGlowColor(extractedWaveColor, accentColor));
 
 	const formattedDate = $derived(
 		releasedAt ? releasedAt.trim().slice(0, 10).replace(/-/g, '.') : ''
@@ -156,6 +153,7 @@
 			{editions}
 			{selectedEdition}
 			{selectedOption}
+			{waveActive}
 			{mobile}
 			bind:extractedWaveColor
 		/>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { detailOverlay } from '#lib/common/logic';
 	import { GoodsDetailController } from './logic/goodsDetail.svelte';
 	import GoodsDetail from './design/GoodsDetail.svelte';
 
@@ -12,6 +13,7 @@
 	let { id, mobile, backLabel = '목록으로', onClose }: Props = $props();
 
 	const controller = new GoodsDetailController();
+	const waveActive = $derived(detailOverlay.getSlot('goods').phase === 'open');
 
 	$effect(() => {
 		controller.load(id);
@@ -37,6 +39,7 @@
 	totalPrice={controller.totalPrice}
 	cartSubmitting={controller.cartSubmitting}
 	inCart={controller.isCurrentOptionInCart}
+	{waveActive}
 	{mobile}
 	{backLabel}
 	{onClose}

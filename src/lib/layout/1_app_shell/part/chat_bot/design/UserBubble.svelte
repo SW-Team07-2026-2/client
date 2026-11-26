@@ -165,7 +165,6 @@
 		gap: 6px;
 		padding: 0.65rem 0.85rem;
 		background: rgba(28, 28, 36, 0.95);
-		backdrop-filter: blur(8px);
 		border: 1px solid rgba(255, 255, 255, 0.15);
 		border-radius: 14px;
 		color: #f1f5f9;
@@ -258,8 +257,7 @@
 		align-items: center;
 		gap: 8px;
 		padding: 0.5rem 0.85rem;
-		background: rgba(255, 255, 255, 0.08);
-		backdrop-filter: blur(8px);
+		background: rgba(255, 255, 255, 0.1);
 		border: 1px solid rgba(255, 255, 255, 0.12);
 		border-radius: 12px;
 		color: #f1f5f9;

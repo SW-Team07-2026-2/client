@@ -2,6 +2,7 @@
 	import { isMobile } from '#lib/common/logic';
 	import type { MainSectionDescriptor } from '../../2_main_section/logic/sectionRegistry';
 	import CatalogFeedView from '../_shared/design/CatalogFeedView.svelte';
+	import { prefetchDetailApi, prefetchDetailImage } from '../_shared/logic/detailPrefetch';
 	import { AlbumCategoryController } from './logic/albumCategory.svelte';
 	import PcAlbumItem from './design/PcAlbumItem.svelte';
 	import MbAlbumItem from './design/MbAlbumItem.svelte';
@@ -38,11 +39,32 @@
 	{#snippet content({ interactive })}
 		<div class="album-grid" class:is-mobile={mobile} class:is-pc={!mobile}>
 			{#each controller.groupedAlbums as group (group.key)}
-				{#if mobile}
-					<MbAlbumItem {group} {interactive} onSelect={controller.selectAlbum} />
-				{:else}
-					<PcAlbumItem {group} {interactive} onSelect={controller.selectAlbum} />
-				{/if}
+				<div
+					class="feed-card-slot"
+					class:is-mobile={mobile}
+					role="presentation"
+					onpointerenter={(e) => {
+						if (e.pointerType !== 'mouse') return;
+						prefetchDetailApi(`/api/catalog/products/${group.primaryItem.id}`);
+						if (typeof group.albumId === 'number') {
+							prefetchDetailApi(`/api/catalog/albums/${group.albumId}`);
+						}
+						prefetchDetailImage(group.frontCoverUrl);
+					}}
+					ontouchstart={() => {
+						prefetchDetailApi(`/api/catalog/products/${group.primaryItem.id}`);
+						if (typeof group.albumId === 'number') {
+							prefetchDetailApi(`/api/catalog/albums/${group.albumId}`);
+						}
+						prefetchDetailImage(group.frontCoverUrl);
+					}}
+				>
+					{#if mobile}
+						<MbAlbumItem {group} {interactive} onSelect={controller.selectAlbum} />
+					{:else}
+						<PcAlbumItem {group} {interactive} onSelect={controller.selectAlbum} />
+					{/if}
+				</div>
 			{/each}
 		</div>
 	{/snippet}
@@ -81,5 +103,14 @@
 		column-gap: 0;
 		row-gap: 0.15rem;
 		padding-top: 0.15rem;
+	}
+
+	.feed-card-slot {
+		min-width: 0;
+	}
+
+	.feed-card-slot.is-mobile {
+		content-visibility: auto;
+		contain-intrinsic-size: auto 104px;
 	}
 </style>

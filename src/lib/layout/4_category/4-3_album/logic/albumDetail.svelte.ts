@@ -1,10 +1,5 @@
 import { api, auth } from '#lib/auth/auth.svelte';
-import {
-	mapPhysicalItem,
-	resolveAlbumMediaKind,
-	type CatalogAlbum,
-	type PhysicalItemDto
-} from '#lib/common/catalog/albums';
+import type { CatalogAlbum } from '#lib/common/catalog/albums';
 import {
 	DETAIL_GLOW_COLOR_OPTIONS,
 	getCachedImageAverageColor,
@@ -14,98 +9,24 @@ import { getGenreLabel } from '#lib/common/type/filterOptions';
 import { cartState, toast } from '#lib/common/logic';
 import { navigateDetailToDetail } from '#lib/common/logic/detailNavigation';
 import { addOptionToCart, goToCart } from '../../_shared/logic/productCart';
+import { fetchDetailWithPrefetch } from '../../_shared/logic/detailPrefetch';
 import { shareCurrentPage } from '../../_shared/logic/shareLink';
+import {
+	mapAlbumTracks,
+	mapPhysicalEditionsSorted,
+	mapProductFallbackEdition,
+	resolveAlbumTypeLabel,
+	type AlbumDetailFullDto,
+	type AlbumPhysicalEdition,
+	type AlbumTrackItem,
+	type CollectionItemDto,
+	type CursorPage,
+	type ProductDetailDto,
+	type ProductOptionItem
+} from './albumDetailMapper';
 import { albumDetailState, type AlbumMediaItem } from './albumDetailState.svelte';
 
-export interface ProductOptionItem {
-	id: number;
-	name: string;
-	vinylColor?: string | null;
-	price: number;
-	qty: number;
-	soldOut: boolean;
-}
-
-export interface ProductDetailDto {
-	id: number;
-	productType?: string;
-	name: string;
-	thumbnailUrl?: string | null;
-	purchaseUrl?: string | null;
-	artistId?: number | null;
-	artistName?: string | null;
-	albumId?: number | null;
-	albumTitle?: string | null;
-	format?: string | null;
-	releasedAt?: string | null;
-	options?: ProductOptionItem[] | null;
-}
-
-export interface AlbumTrackItem {
-	id: number;
-	trackNo: number;
-	title: string;
-	genres: string[];
-	moods: string[];
-	styles: string[];
-}
-
-interface AlbumTrackDto {
-	id: number;
-	trackNo?: number | null;
-	title: string;
-	genres?: string[] | null;
-	moods?: string[] | null;
-	styles?: string[] | null;
-}
-
-interface AlbumDetailFullDto {
-	id: number;
-	artistId?: number | null;
-	artistName?: string | null;
-	title: string;
-	type?: string | null;
-	genres?: string[] | null;
-	releasedAt?: string | null;
-	thumbnailUrl?: string | null;
-	tracks?: AlbumTrackDto[] | null;
-	physicalAlbums?: PhysicalItemDto[] | null;
-}
-
-export interface AlbumPhysicalEdition {
-	id: number;
-	name: string;
-	format: string;
-	kind: 'lp' | 'cd' | 'cassette';
-	thumbnailUrl: string;
-	minPrice: number | null;
-	soldOut: boolean;
-	releasedAt: string | null;
-}
-
-interface CollectionItemDto {
-	id: number;
-	physicalAlbumId: number;
-	optionId: number;
-}
-
-interface CursorPage<T> {
-	items: T[];
-	nextCursor: string | null;
-	hasNext: boolean;
-}
-
-const ALBUM_TYPE_LABELS: Record<string, string> = {
-	ALBUM: '정규 앨범',
-	EP: 'EP',
-	SINGLE: '싱글'
-};
-
-const FORMAT_ORDER: Record<string, number> = {
-	LP: 0,
-	CD: 1,
-	카세트: 2
-};
+export type { AlbumPhysicalEdition, AlbumTrackItem, ProductDetailDto, ProductOptionItem };
 
 /**
  * 4-3_album 상세 페이지 전용 컨트롤러
@@ -368,7 +289,9 @@ export class AlbumDetailController {
 		}
 
 		try {
-			const product = await api<ProductDetailDto>(`/api/catalog/products/${productId}`);
+			const product = await fetchDetailWithPrefetch<ProductDetailDto>(
+				`/api/catalog/products/${productId}`
+			);
 			if (token !== this.loadToken || !product) return;
 
 			const opts = Array.isArray(product.options) ? product.options : [];
@@ -386,20 +309,7 @@ export class AlbumDetailController {
 			}
 
 			// 상품 1개 기준 기본 에디션 먼저 세팅
-			const fallbackMapped = mapPhysicalItem({
-				id: product.id,
-				albumId: product.albumId,
-				albumTitle: product.albumTitle,
-				artistId: product.artistId,
-				artistName: product.artistName,
-				format: product.format,
-				name: product.name,
-				releasedAt: product.releasedAt,
-				thumbnailUrl: product.thumbnailUrl,
-				minPrice: firstAvail?.price ?? opts[0]?.price ?? null,
-				soldOut: opts.length > 0 ? opts.every((o) => o.soldOut) : false
-			});
-			this.editions = [this.toEdition(fallbackMapped, product.releasedAt ?? null)];
+			this.editions = [mapProductFallbackEdition(product, opts, firstAvail)];
 
 			// 소속 Album 상세(커버 · 장르 · 수록곡 · 전체 피지컬 에디션) 추가 조회
 			if (typeof product.albumId === 'number' && Number.isFinite(product.albumId)) {
@@ -426,11 +336,13 @@ export class AlbumDetailController {
 		token: number
 	): Promise<void> {
 		try {
-			const dto = await api<AlbumDetailFullDto>(`/api/catalog/albums/${albumId}`);
+			const dto = await fetchDetailWithPrefetch<AlbumDetailFullDto>(
+				`/api/catalog/albums/${albumId}`
+			);
 			if (token !== this.loadToken || !dto) return;
 
 			this.albumTitle = dto.title?.trim() || this.albumTitle;
-			this.albumTypeLabel = dto.type ? (ALBUM_TYPE_LABELS[dto.type.toUpperCase()] ?? dto.type) : '';
+			this.albumTypeLabel = resolveAlbumTypeLabel(dto.type);
 			this.artistId = dto.artistId ?? this.artistId;
 			this.artistName = dto.artistName?.trim() || this.artistName;
 			this.releasedAt = dto.releasedAt ?? this.releasedAt;
@@ -445,23 +357,10 @@ export class AlbumDetailController {
 				void this.resolveAccentGlow(this.coverUrl, token);
 			}
 
-			this.tracks = Array.isArray(dto.tracks)
-				? [...dto.tracks]
-						.sort((a, b) => (a.trackNo ?? 0) - (b.trackNo ?? 0))
-						.map((t, idx) => ({
-							id: t.id,
-							trackNo: t.trackNo ?? idx + 1,
-							title: t.title,
-							genres: Array.isArray(t.genres) ? t.genres.map((g) => getGenreLabel(g)) : [],
-							moods: Array.isArray(t.moods) ? t.moods : [],
-							styles: Array.isArray(t.styles) ? t.styles : []
-						}))
-				: [];
+			this.tracks = mapAlbumTracks(dto.tracks);
 
 			if (Array.isArray(dto.physicalAlbums) && dto.physicalAlbums.length > 0) {
-				const mappedEditions = dto.physicalAlbums
-					.map((p) => this.toEdition(mapPhysicalItem(p), p.releasedAt ?? null))
-					.sort((a, b) => (FORMAT_ORDER[a.format] ?? 99) - (FORMAT_ORDER[b.format] ?? 99));
+				const mappedEditions = mapPhysicalEditionsSorted(dto.physicalAlbums);
 
 				this.editions = mappedEditions;
 				if (!mappedEditions.some((e) => e.id === activeProductId) && mappedEditions.length > 0) {
@@ -513,18 +412,5 @@ export class AlbumDetailController {
 		const color = await loadImageAverageColor(url);
 		if (token !== this.loadToken || !color) return;
 		this.accentColor = color;
-	}
-
-	private toEdition(mapped: CatalogAlbum, releasedAt: string | null): AlbumPhysicalEdition {
-		return {
-			id: mapped.id,
-			name: mapped.title,
-			format: mapped.format || mapped.rawFormat || '음반',
-			kind: resolveAlbumMediaKind(mapped),
-			thumbnailUrl: mapped.mediaImageUrl?.trim() ?? '',
-			minPrice: mapped.price ?? null,
-			soldOut: mapped.stockStatus === '품절',
-			releasedAt
-		};
 	}
 }

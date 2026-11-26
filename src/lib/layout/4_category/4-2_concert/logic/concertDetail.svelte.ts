@@ -17,6 +17,7 @@ import {
 	getGenreLabel
 } from '#lib/common/type/filterOptions';
 import { shareCurrentPage } from '../../_shared/logic/shareLink';
+import { fetchDetailWithPrefetch } from '../../_shared/logic/detailPrefetch';
 import { concertDetailState } from './concertDetailState.svelte';
 
 export interface ConcertVenueDetail {
@@ -225,7 +226,7 @@ export class ConcertDetailController {
 		}
 
 		try {
-			const dto = await api<ConcertDetailDto>(`/api/concerts/${concertId}`);
+			const dto = await fetchDetailWithPrefetch<ConcertDetailDto>(`/api/concerts/${concertId}`);
 			if (token !== this.loadToken || !dto) return;
 
 			this.title = dto.title?.trim() || this.title;

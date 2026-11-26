@@ -428,18 +428,15 @@
 		left: 50%;
 		z-index: 4;
 		opacity: 0;
-		filter: blur(4px);
 		transform: translate(-50%, -50%) scale(0.84);
 		pointer-events: none;
 		transition:
-			opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1),
-			transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
-			filter 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+			opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+			transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 	}
 
 	.follow-center-slot.is-visible {
 		opacity: 1;
-		filter: blur(0px);
 		transform: translate(-50%, -50%) scale(1);
 		pointer-events: auto;
 	}

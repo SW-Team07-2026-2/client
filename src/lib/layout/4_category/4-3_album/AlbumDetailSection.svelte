@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { detailOverlay } from '#lib/common/logic';
 	import { AlbumDetailController } from './logic/albumDetail.svelte';
 	import AlbumDetail from './design/AlbumDetail.svelte';
 
@@ -12,6 +13,7 @@
 	let { id, mobile, backLabel = '목록으로', onClose }: Props = $props();
 
 	const controller = new AlbumDetailController();
+	const waveActive = $derived(detailOverlay.getSlot('album').phase === 'open');
 
 	$effect(() => {
 		controller.load(id);
@@ -44,6 +46,7 @@
 	inCart={controller.isCurrentOptionInCart}
 	collectionSubmitting={controller.collectionSubmitting}
 	isCollected={controller.isCurrentOptionCollected}
+	{waveActive}
 	{mobile}
 	{backLabel}
 	{onClose}

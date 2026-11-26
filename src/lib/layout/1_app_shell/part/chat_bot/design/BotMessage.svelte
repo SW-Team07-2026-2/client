@@ -80,9 +80,10 @@
 		font-size: 0.8rem;
 		font-weight: 500;
 		cursor: pointer;
-		transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-		-webkit-backdrop-filter: blur(8px);
-		backdrop-filter: blur(8px);
+		transition:
+			background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+			border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+			transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	.bot-action-pill:hover {

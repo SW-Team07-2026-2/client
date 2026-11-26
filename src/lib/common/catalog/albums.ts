@@ -1,4 +1,5 @@
 import { ALBUM_FORM_OPTIONS } from '#lib/common/type/filterOptions';
+import { formatWon, formatWonRange } from '#lib/common/utils/format';
 
 export type AlbumFormat = 'LP' | '한정판 LP' | 'CD' | '카세트' | 'KIT' | 'USB' | string;
 export type AlbumFormatCode = 'LP' | 'CD' | 'CASSETTE' | string;
@@ -88,18 +89,5 @@ export function resolveAlbumMediaKind(
 	return 'lp';
 }
 
-export function formatAlbumPrice(price?: number | null): string {
-	if (typeof price !== 'number' || !Number.isFinite(price)) return '';
-	return `${price.toLocaleString('ko-KR')}원`;
-}
-
-export function formatAlbumPriceRange(
-	minPrice?: number | null,
-	maxPrice?: number | null
-): string {
-	if (typeof minPrice !== 'number' || !Number.isFinite(minPrice)) return '';
-	if (typeof maxPrice === 'number' && Number.isFinite(maxPrice) && maxPrice > minPrice) {
-		return `${minPrice.toLocaleString('ko-KR')}원 ~ ${maxPrice.toLocaleString('ko-KR')}원`;
-	}
-	return `${minPrice.toLocaleString('ko-KR')}원`;
-}
+export const formatAlbumPrice = formatWon;
+export const formatAlbumPriceRange = formatWonRange;

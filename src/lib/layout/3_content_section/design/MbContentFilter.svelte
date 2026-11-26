@@ -180,9 +180,7 @@
 		position: fixed;
 		inset: 0;
 		z-index: 64;
-		background: color-mix(in srgb, var(--bg) 62%, transparent);
-		-webkit-backdrop-filter: blur(12px);
-		backdrop-filter: blur(12px);
+		background: color-mix(in srgb, var(--bg) 72%, transparent);
 	}
 
 	.mb-filter-center {

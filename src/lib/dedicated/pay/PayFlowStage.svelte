@@ -90,46 +90,50 @@
 	{step}
 	{slideDir}
 	mobile={isMobile.current}
-	cartLoading={cartCtrl.isLoading}
-	cartError={cartCtrl.errorMessage}
-	cartItems={cartCtrl.items}
-	selectedMap={cartCtrl.selectedMap}
-	busyOptions={cartCtrl.busyOptions}
-	clearing={cartCtrl.clearing}
-	isAllSelected={cartCtrl.isAllSelected}
-	selectedCount={cartCtrl.selectedCount}
-	selectedQtyTotal={cartCtrl.selectedQtyTotal}
-	selectedTotalPrice={cartCtrl.selectedTotalPrice}
-	canCheckout={cartCtrl.canCheckout}
-	getMaxQty={cartCtrl.maxQtyFor}
-	onToggleSelectAll={cartCtrl.toggleSelectAll}
-	onToggleSelect={cartCtrl.toggleSelect}
-	onStepQty={cartCtrl.stepQty}
-	onRemoveItem={cartCtrl.removeItem}
-	onClearCart={cartCtrl.clearCart}
-	onOpenProduct={cartCtrl.goToProduct}
-	onProceedToCheckout={cartCtrl.proceedToCheckout}
-	onGoToCatalog={cartCtrl.goToCatalog}
-	checkoutLoading={checkoutCtrl.isLoading}
-	checkoutError={checkoutCtrl.errorMessage}
-	checkoutItems={checkoutCtrl.items}
-	checkoutTotalPrice={checkoutCtrl.totalPrice}
-	checkoutTotalQty={checkoutCtrl.totalQty}
-	addresses={checkoutCtrl.addresses}
-	selectedAddressId={checkoutCtrl.selectedAddressId}
-	shipping={checkoutCtrl.shipping}
-	saveAsNewAddress={checkoutCtrl.saveAsNewAddress}
-	validationError={checkoutCtrl.validationError}
-	widgetLoading={checkoutCtrl.widgetLoading}
-	widgetError={checkoutCtrl.widgetError}
-	submitting={checkoutCtrl.submitting}
-	canSubmitPayment={checkoutCtrl.canSubmit}
-	paymentMethodsId={PAYMENT_METHODS_ID}
-	agreementId={AGREEMENT_ID}
-	onSelectAddress={checkoutCtrl.selectAddress}
-	onUpdateShipping={checkoutCtrl.updateShippingField}
-	onToggleSaveAddress={checkoutCtrl.setSaveAsNewAddress}
-	onSubmitPayment={checkoutCtrl.submitPayment}
-	onGoToCart={checkoutCtrl.goToCart}
+	cart={{
+		loading: cartCtrl.isLoading,
+		error: cartCtrl.errorMessage,
+		items: cartCtrl.items,
+		selectedMap: cartCtrl.selectedMap,
+		busyOptions: cartCtrl.busyOptions,
+		clearing: cartCtrl.clearing,
+		isAllSelected: cartCtrl.isAllSelected,
+		selectedCount: cartCtrl.selectedCount,
+		selectedQtyTotal: cartCtrl.selectedQtyTotal,
+		selectedTotalPrice: cartCtrl.selectedTotalPrice,
+		canCheckout: cartCtrl.canCheckout,
+		getMaxQty: cartCtrl.maxQtyFor,
+		onToggleSelectAll: cartCtrl.toggleSelectAll,
+		onToggleSelect: cartCtrl.toggleSelect,
+		onStepQty: cartCtrl.stepQty,
+		onRemoveItem: cartCtrl.removeItem,
+		onClearCart: cartCtrl.clearCart,
+		onOpenProduct: cartCtrl.goToProduct,
+		onProceedToCheckout: cartCtrl.proceedToCheckout,
+		onGoToCatalog: cartCtrl.goToCatalog
+	}}
+	checkout={{
+		loading: checkoutCtrl.isLoading,
+		error: checkoutCtrl.errorMessage,
+		items: checkoutCtrl.items,
+		totalPrice: checkoutCtrl.totalPrice,
+		totalQty: checkoutCtrl.totalQty,
+		addresses: checkoutCtrl.addresses,
+		selectedAddressId: checkoutCtrl.selectedAddressId,
+		shipping: checkoutCtrl.shipping,
+		saveAsNewAddress: checkoutCtrl.saveAsNewAddress,
+		validationError: checkoutCtrl.validationError,
+		widgetLoading: checkoutCtrl.widgetLoading,
+		widgetError: checkoutCtrl.widgetError,
+		submitting: checkoutCtrl.submitting,
+		canSubmitPayment: checkoutCtrl.canSubmit,
+		paymentMethodsId: PAYMENT_METHODS_ID,
+		agreementId: AGREEMENT_ID,
+		onSelectAddress: checkoutCtrl.selectAddress,
+		onUpdateShipping: checkoutCtrl.updateShippingField,
+		onToggleSaveAddress: checkoutCtrl.setSaveAsNewAddress,
+		onSubmitPayment: checkoutCtrl.submitPayment,
+		onGoToCart: checkoutCtrl.goToCart
+	}}
 	onBack={handleBack}
 />

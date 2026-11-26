@@ -4,6 +4,10 @@
 	import ProductDetailLayout from '../../_shared/design/ProductDetailLayout.svelte';
 	import ProductPurchasePanel from '../../_shared/design/ProductPurchasePanel.svelte';
 	import type { SpringDropdownOption } from '../../_shared/design/SpringDropdown.svelte';
+	import {
+		createWaveRectSetting,
+		resolveDetailGlowColor
+	} from '../../_shared/logic/detailTheme';
 	import type { GoodsOptionItem } from '../logic/goodsDetail.svelte';
 
 	interface Props {
@@ -24,6 +28,7 @@
 		totalPrice: number | null;
 		cartSubmitting: boolean;
 		inCart: boolean;
+		waveActive?: boolean;
 		mobile: boolean;
 		backLabel?: string;
 		onClose: () => void;
@@ -53,6 +58,7 @@
 		totalPrice,
 		cartSubmitting,
 		inCart,
+		waveActive = true,
 		mobile,
 		backLabel = '목록으로',
 		onClose,
@@ -71,25 +77,11 @@
 	let extractedWaveColor = $state('');
 	let heroMediaWidth = $state(340);
 
-	const glowColor = $derived(
-		extractedWaveColor &&
-			extractedWaveColor !== 'var(--muted-wave)' &&
-			extractedWaveColor !== 'var(--white)'
-			? extractedWaveColor
-			: accentColor
-	);
+	const glowColor = $derived(resolveDetailGlowColor(extractedWaveColor, accentColor));
 
-	const heroImageSetting = $derived.by(() => {
-		const w = Math.max(160, heroMediaWidth);
-		const h = w * 1.25;
-		const perimeter = 2 * (w + h) - 1.717 * HERO_RADIUS;
-		const waveLength = Math.round(perimeter / (HERO_WAVES_PER_EDGE * 4));
-		return {
-			radius: HERO_RADIUS,
-			waveLength,
-			pauseWhenIdle: false
-		};
-	});
+	const heroImageSetting = $derived(
+		createWaveRectSetting(heroMediaWidth, 1.25, HERO_RADIUS, HERO_WAVES_PER_EDGE)
+	);
 
 	const isCurrentSoldOut = $derived(selectedOption ? selectedOption.soldOut : isAllSoldOut);
 
@@ -137,7 +129,7 @@
 					objectPosition="50% 50%"
 					radius={HERO_RADIUS}
 					setting={heroImageSetting}
-					active={true}
+					active={waveActive}
 					disableWave={false}
 					bind:extractedWaveColor
 					fullWidth

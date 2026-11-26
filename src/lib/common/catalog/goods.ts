@@ -1,4 +1,5 @@
 import { GOODS_FORM_OPTIONS } from '#lib/common/type/filterOptions';
+import { formatWon } from '#lib/common/utils/format';
 
 export type GoodsBadge = 'NEW' | '한정판' | '품절임박' | '품절';
 
@@ -48,7 +49,4 @@ export function resolveGoodsImageUrl(goods: Pick<CatalogGoods, 'imageUrl'>): str
 	return goods.imageUrl?.trim() ?? '';
 }
 
-export function formatGoodsPrice(price?: number | null): string {
-	if (typeof price !== 'number' || !Number.isFinite(price)) return '';
-	return `${price.toLocaleString('ko-KR')}원`;
-}
+export const formatGoodsPrice = formatWon;

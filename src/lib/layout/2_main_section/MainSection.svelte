@@ -393,7 +393,7 @@
 		position: relative;
 		width: 100%;
 		min-height: 100%;
-		contain: layout style;
+		contain: style;
 	}
 
 	.main-section-stage.is-sliding .keepalive-pane {
@@ -432,7 +432,7 @@
 		position: relative;
 		z-index: 2;
 		width: 100%;
-		contain: layout style;
+		contain: style;
 	}
 
 	.pay-flow-keepalive.is-parked {

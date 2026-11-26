@@ -12,8 +12,10 @@
 		isLoading: boolean;
 		errorMessage: string | null;
 		title: string;
-		artistId: number | null;
-		artistName: string;
+		artistId?: number | null;
+		artistName?: string;
+		/** 좌측 비주얼 슬롯 커스텀 너비 (미지정 시 기본 clamp(280px, 34cqi, 400px)) */
+		visualWidth?: string;
 		onBack: () => void;
 		onShare?: () => void;
 		onGoToArtist?: () => void;
@@ -21,9 +23,11 @@
 		visual: Snippet;
 		/** 제목 상단 아이브로우 배지/메타 */
 		eyebrow?: Snippet;
-		/** 우측 하단 구매 패널 */
+		/** 기본 단일 아티스트 링크 대신 커스텀 아티스트 영역(예: 공연 멀티 라인업 칩) */
+		artistSlot?: Snippet;
+		/** 우측 하단 구매/예매 패널 */
 		purchase?: Snippet;
-		/** 히어로 하단 확장 섹션 (예: 앨범 수록곡 트랙리스트) */
+		/** 히어로 하단 확장 섹션 (예: 앨범 수록곡 트랙리스트, 공연 소개/유의사항) */
 		below?: Snippet;
 	}
 
@@ -35,13 +39,15 @@
 		isLoading,
 		errorMessage,
 		title,
-		artistId,
-		artistName,
+		artistId = null,
+		artistName = '',
+		visualWidth,
 		onBack,
 		onShare,
 		onGoToArtist,
 		visual,
 		eyebrow,
+		artistSlot,
 		purchase,
 		below
 	}: Props = $props();
@@ -64,7 +70,10 @@
 			</div>
 		{:else}
 			<header class="product-hero">
-				<div class="product-hero-visual-slot">
+				<div
+					class="product-hero-visual-slot"
+					style:--hero-visual-width={visualWidth || undefined}
+				>
 					{@render visual()}
 				</div>
 
@@ -77,7 +86,9 @@
 
 					<h1 class="product-hero-title">{title}</h1>
 
-					{#if artistName}
+					{#if artistSlot}
+						{@render artistSlot()}
+					{:else if artistName}
 						{#if artistId !== null && onGoToArtist}
 							<button type="button" class="artist-link-btn" onclick={onGoToArtist}>
 								<span>{artistName}</span>
@@ -165,7 +176,7 @@
 
 	.product-hero-visual-slot {
 		flex-shrink: 0;
-		width: clamp(280px, 34cqi, 400px);
+		width: var(--hero-visual-width, clamp(280px, 34cqi, 400px));
 	}
 
 	.product-hero-info {

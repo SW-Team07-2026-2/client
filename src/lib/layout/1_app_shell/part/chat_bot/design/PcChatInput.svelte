@@ -639,6 +639,7 @@
 		justify-content: center;
 		gap: 8px;
 		background: rgba(24, 24, 32, 0.92);
+		-webkit-backdrop-filter: blur(10px);
 		backdrop-filter: blur(10px);
 		border: none;
 		border-radius: 22px;

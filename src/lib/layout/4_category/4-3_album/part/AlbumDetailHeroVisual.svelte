@@ -2,6 +2,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { fade, fly } from 'svelte/transition';
 	import FdImage from '#lib/common/design/fluid/FdImage.svelte';
+	import { createWaveRectSetting } from '../../_shared/logic/detailTheme';
 	import type { AlbumPhysicalEdition, ProductOptionItem } from '../logic/albumDetail.svelte';
 	import AlbumMediaShape from './AlbumMediaShape.svelte';
 
@@ -11,6 +12,7 @@
 		editions: AlbumPhysicalEdition[];
 		selectedEdition: AlbumPhysicalEdition | null;
 		selectedOption: ProductOptionItem | null;
+		waveActive?: boolean;
 		mobile: boolean;
 		/** FdImage에서 추출한 커버 대표 물결 색상 (상위 DetailAmbientGlow 연동용) */
 		extractedWaveColor?: string;
@@ -22,8 +24,9 @@
 		editions,
 		selectedEdition,
 		selectedOption,
+		waveActive = true,
 		mobile,
-		extractedWaveColor = $bindable('var(--white)')
+		extractedWaveColor = $bindable('')
 	}: Props = $props();
 
 	const HERO_RADIUS = 26;
@@ -35,16 +38,9 @@
 
 	const canFlipMedia = $derived(editions.length > 0);
 
-	const heroImageSetting = $derived.by(() => {
-		const w = Math.max(160, heroMediaWidth);
-		const perimeter = 4 * w - 1.717 * HERO_RADIUS;
-		const waveLength = Math.round(perimeter / (HERO_WAVES_PER_EDGE * 4));
-		return {
-			radius: HERO_RADIUS,
-			waveLength,
-			pauseWhenIdle: false
-		};
-	});
+	const heroImageSetting = $derived(
+		createWaveRectSetting(heroMediaWidth, 1, HERO_RADIUS, HERO_WAVES_PER_EDGE)
+	);
 
 	const flipBackCaption = $derived.by(() => {
 		if (!selectedEdition) return '';
@@ -148,7 +144,7 @@
 						objectPosition="50% 50%"
 						radius={HERO_RADIUS}
 						setting={heroImageSetting}
-						active={true}
+						active={waveActive}
 						disableWave={false}
 						bind:extractedWaveColor
 						fullWidth

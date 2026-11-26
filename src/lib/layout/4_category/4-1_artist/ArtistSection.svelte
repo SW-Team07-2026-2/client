@@ -1,7 +1,9 @@
 <script lang="ts">
+	import { resolveArtistImageUrl } from '#lib/common/catalog/artists';
 	import { isMobile } from '#lib/common/logic';
 	import type { MainSectionDescriptor } from '../../2_main_section/logic/sectionRegistry';
 	import CatalogFeedView from '../_shared/design/CatalogFeedView.svelte';
+	import { prefetchDetailApi, prefetchDetailImage } from '../_shared/logic/detailPrefetch';
 	import { ArtistCategoryController } from './logic/artistCategory.svelte';
 	import PcArtistItem from './design/PcArtistItem.svelte';
 	import MbArtistItem from './design/MbArtistItem.svelte';
@@ -42,25 +44,39 @@
 	{#snippet content({ interactive })}
 		<div class="artist-grid" class:is-mobile={mobile} class:is-pc={!mobile}>
 			{#each controller.feed.items as artist (artist.id)}
-				{#if mobile}
-					<MbArtistItem
-						{artist}
-						following={controller.isFollowing(artist.id)}
-						followLoading={controller.isFollowPending(artist.id)}
-						{interactive}
-						onFollowToggle={controller.toggleFollow}
-						onSelect={controller.selectArtist}
-					/>
-				{:else}
-					<PcArtistItem
-						{artist}
-						following={controller.isFollowing(artist.id)}
-						followLoading={controller.isFollowPending(artist.id)}
-						{interactive}
-						onFollowToggle={controller.toggleFollow}
-						onSelect={controller.selectArtist}
-					/>
-				{/if}
+				<div
+					class="feed-card-slot"
+					role="presentation"
+					onpointerenter={(e) => {
+						if (e.pointerType !== 'mouse') return;
+						prefetchDetailApi(`/api/catalog/artists/${artist.id}`);
+						prefetchDetailImage(resolveArtistImageUrl(artist));
+					}}
+					ontouchstart={() => {
+						prefetchDetailApi(`/api/catalog/artists/${artist.id}`);
+						prefetchDetailImage(resolveArtistImageUrl(artist));
+					}}
+				>
+					{#if mobile}
+						<MbArtistItem
+							{artist}
+							following={controller.isFollowing(artist.id)}
+							followLoading={controller.isFollowPending(artist.id)}
+							{interactive}
+							onFollowToggle={controller.toggleFollow}
+							onSelect={controller.selectArtist}
+						/>
+					{:else}
+						<PcArtistItem
+							{artist}
+							following={controller.isFollowing(artist.id)}
+							followLoading={controller.isFollowPending(artist.id)}
+							{interactive}
+							onFollowToggle={controller.toggleFollow}
+							onSelect={controller.selectArtist}
+						/>
+					{/if}
+				</div>
 			{/each}
 		</div>
 	{/snippet}
@@ -97,5 +113,11 @@
 		grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
 		column-gap: 1.375rem;
 		row-gap: 2.25rem;
+	}
+
+	.feed-card-slot {
+		min-width: 0;
+		content-visibility: auto;
+		contain-intrinsic-size: auto 240px;
 	}
 </style>

@@ -189,8 +189,7 @@
 		margin: 0.85rem 0;
 		border-radius: 12px;
 		border: 1px solid rgba(255, 255, 255, 0.12);
-		background: rgba(20, 22, 32, 0.55);
-		backdrop-filter: blur(8px);
+		background: rgba(20, 22, 32, 0.72);
 		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 	}
 

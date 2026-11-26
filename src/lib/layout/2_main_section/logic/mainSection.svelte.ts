@@ -2,9 +2,9 @@ import { tick, untrack } from 'svelte';
 import { goto, preloadCode } from '$app/navigation';
 import { page } from '$app/state';
 import { catalogFeed, detailOverlay, isMobile } from '#lib/common/logic';
-import { prefersReducedMotion } from '#lib/common/type/spring';
 import { isCartOrCheckoutRoute } from '#lib/config/routes';
 import { FallbackCurtainHelper } from './fallbackCurtain';
+import { IdlePremountScheduler } from './idlePremount';
 import {
 	SLIDE_MOTION,
 	createKeepAliveSlideController,
@@ -13,6 +13,7 @@ import {
 } from './keepAliveSlide';
 import { attachMobileSwipe } from './mobileSwipe';
 import { resolvePinnedTransition, shouldUseSmoothPcScroll } from './pinnedTransition';
+import { SectionScrollMemory } from './scrollMemory.svelte';
 import {
 	MAIN_SECTIONS,
 	MAIN_SECTION_KEYS,
@@ -70,16 +71,8 @@ export class MainSectionController {
 	private pinnedHeaderEl: HTMLDivElement | undefined;
 	private pinnedControlEl: HTMLDivElement | undefined;
 	private slideController = createKeepAliveSlideController();
-
-	// 목록 스크롤과 상세 스크롤을 완전히 분리 기억 (모바일 상세 프레임 슬라이드 위치 동기화를 위해 $state 사용)
-	private listScrollPositions = $state<Record<MainSectionKey, number>>({
-		artist: 0,
-		concert: 0,
-		album: 0,
-		goods: 0,
-		mypage: 0
-	});
-	private detailScrollPositions: Record<string, number> = {};
+	private scrollMemory = new SectionScrollMemory();
+	private idlePremount = new IdlePremountScheduler();
 
 	private preNavScrollY = 0;
 	private pendingTargetScrollY: number | null = null;
@@ -92,44 +85,6 @@ export class MainSectionController {
 	private pendingPayFlowExitTop = 0;
 	private lastTrackedSection: MainSectionKey | null = null;
 	private swipeFallbackTimer: ReturnType<typeof setTimeout> | undefined;
-	private transitionScrollRafId = 0;
-	private idlePremountTimers: ReturnType<typeof setTimeout>[] = [];
-	private idleCallbackIds: number[] = [];
-
-	private cancelTransitionScroll(): void {
-		if (this.transitionScrollRafId) {
-			cancelAnimationFrame(this.transitionScrollRafId);
-			this.transitionScrollRafId = 0;
-		}
-	}
-
-	private animateTransitionScroll(fromY: number, toY: number, durationMs: number): void {
-		this.cancelTransitionScroll();
-		if (typeof window === 'undefined') return;
-		if (Math.abs(toY - fromY) <= 1 || prefersReducedMotion()) {
-			window.scrollTo({ top: toY, left: 0, behavior: 'auto' });
-			return;
-		}
-
-		window.scrollTo({ top: fromY, left: 0, behavior: 'auto' });
-		const startTime = performance.now();
-		const delta = toY - fromY;
-
-		const step = (now: number) => {
-			const t = Math.min(1, (now - startTime) / durationMs);
-			const inv = 1 - t;
-			const eased = 1 - inv * inv * inv;
-			window.scrollTo({ top: Math.round(fromY + delta * eased), left: 0, behavior: 'auto' });
-			if (t < 1) {
-				this.transitionScrollRafId = requestAnimationFrame(step);
-			} else {
-				this.transitionScrollRafId = 0;
-				window.scrollTo({ top: toY, left: 0, behavior: 'auto' });
-			}
-		};
-
-		this.transitionScrollRafId = requestAnimationFrame(step);
-	}
 
 	constructor() {
 		const initialKey = untrack(() => resolveMainSectionKey(page.url.pathname));
@@ -201,47 +156,16 @@ export class MainSectionController {
 		}
 	};
 
-	/**
-	 * 초기 렌더링 이후 유휴 시간(requestIdleCallback)을 활용해 아직 마운트되지 않은
-	 * 나머지 카테고리 Keep-Alive 패널을 순차 프리마운트합니다.
-	 * 첫 카테고리 이동 시 DOM 생성 · API 초기화를 건너뛰고 즉시 슬라이드 전환합니다.
-	 */
 	premountIdleSections = (): void => {
-		if (typeof window === 'undefined') return;
-		const unmounted = MAIN_SECTION_KEYS.filter((key) => !this.mountedSections[key]);
-		unmounted.forEach((key, idx) => {
-			const timer = setTimeout(
-				() => {
-					if (this.mountedSections[key]) return;
-					if (typeof window.requestIdleCallback === 'function') {
-						const id = window.requestIdleCallback(
-							() => {
-								this.ensureMounted(key);
-							},
-							{ timeout: 600 }
-						);
-						this.idleCallbackIds.push(id);
-					} else {
-						this.ensureMounted(key);
-					}
-				},
-				180 + idx * 160
-			);
-			this.idlePremountTimers.push(timer);
-		});
+		this.idlePremount.schedule(
+			MAIN_SECTION_KEYS,
+			(key) => this.mountedSections[key],
+			(key) => this.ensureMounted(key)
+		);
 	};
 
 	getSavedScrollY = (pathname?: string | null): number => {
-		if (!pathname) return 0;
-		const key = resolveMainSectionKey(pathname);
-		if (isMobile.current) {
-			return key ? this.listScrollPositions[key] : 0;
-		}
-		const detailId = parseMainSectionDetailId(pathname);
-		if (detailId !== null) {
-			return this.detailScrollPositions[pathname] ?? 0;
-		}
-		return key ? this.listScrollPositions[key] : 0;
+		return this.scrollMemory.getSavedScrollY(pathname, isMobile.current);
 	};
 
 	isSectionDetail = (key: MainSectionKey | null): boolean => {
@@ -249,7 +173,7 @@ export class MainSectionController {
 	};
 
 	getSectionListScrollY = (key: MainSectionKey): number => {
-		return this.listScrollPositions[key] ?? 0;
+		return this.scrollMemory.getListScrollY(key);
 	};
 
 	/** 라우트 변경 시 현재 섹션 마운트 및 전환 트리거 */
@@ -542,7 +466,7 @@ export class MainSectionController {
 			this.routeDir = resolveSlideDirection(fromIdx, toIdx);
 		}
 
-		this.cancelTransitionScroll();
+		this.scrollMemory.cancelAnimation();
 		this.preNavScrollY = Math.max(0, window.scrollY);
 		this.pendingTargetScrollY = null;
 		this.pendingSmoothScrollFromY = null;
@@ -551,16 +475,16 @@ export class MainSectionController {
 
 		// 1) 같은 카테고리 내 목록 -> 상세 진입 (상세는 자체 고정 프레임에서 스크롤하므로 배경 목록 스크롤 위치 유지)
 		if (fromKey && toKey === fromKey && fromDetailId === null && toDetailId !== null) {
-			this.listScrollPositions[fromKey] = this.preNavScrollY;
-			this.detailScrollPositions[toPath] = 0;
+			this.scrollMemory.saveListScrollY(fromKey, this.preNavScrollY);
+			this.scrollMemory.saveDetailScrollY(toPath, 0);
 			this.pendingTargetScrollY = null;
 			return;
 		}
 
 		// 2) 같은 카테고리 내 상세 -> 목록 복귀 (보존된 목록 스크롤이 현재 window.scrollY와 다르면 복원)
 		if (fromKey && toKey === fromKey && fromDetailId !== null && toDetailId === null) {
-			this.detailScrollPositions[fromPath] = 0;
-			const savedListY = this.listScrollPositions[fromKey] ?? 0;
+			this.scrollMemory.saveDetailScrollY(fromPath, 0);
+			const savedListY = this.scrollMemory.getListScrollY(fromKey);
 			this.pendingTargetScrollY =
 				Math.abs(this.preNavScrollY - savedListY) > 1 ? savedListY : null;
 			return;
@@ -585,12 +509,12 @@ export class MainSectionController {
 
 		if (isMobile.current) {
 			if (fromKey) {
-				this.listScrollPositions[fromKey] = this.preNavScrollY;
+				this.scrollMemory.saveListScrollY(fromKey, this.preNavScrollY);
 			}
 		} else if (fromDetailId !== null) {
-			this.detailScrollPositions[fromPath] = this.preNavScrollY;
+			this.scrollMemory.saveDetailScrollY(fromPath, this.preNavScrollY);
 		} else if (fromKey) {
-			this.listScrollPositions[fromKey] = this.preNavScrollY;
+			this.scrollMemory.saveListScrollY(fromKey, this.preNavScrollY);
 		}
 
 		if (toKey) {
@@ -635,7 +559,7 @@ export class MainSectionController {
 			this.pendingSmoothScrollFromY = null;
 
 			if (smoothFromY !== null) {
-				this.animateTransitionScroll(smoothFromY, targetY, SLIDE_MOTION.enterDuration);
+				this.scrollMemory.animateTo(smoothFromY, targetY, SLIDE_MOTION.enterDuration);
 				return;
 			}
 
@@ -673,7 +597,7 @@ export class MainSectionController {
 			getSavedScrollY: (pathname) => this.getSavedScrollY(pathname),
 			onSwipingChange: (swiping) => {
 				if (swiping && this.activeSection && typeof window !== 'undefined') {
-					this.listScrollPositions[this.activeSection] = Math.max(0, window.scrollY);
+					this.scrollMemory.saveListScrollY(this.activeSection, Math.max(0, window.scrollY));
 				}
 				this.isSwiping = swiping;
 			},
@@ -735,13 +659,8 @@ export class MainSectionController {
 
 	cleanup = (): void => {
 		clearTimeout(this.swipeFallbackTimer);
-		for (const t of this.idlePremountTimers) clearTimeout(t);
-		this.idlePremountTimers = [];
-		if (typeof window !== 'undefined' && typeof window.cancelIdleCallback === 'function') {
-			for (const id of this.idleCallbackIds) window.cancelIdleCallback(id);
-		}
-		this.idleCallbackIds = [];
-		this.cancelTransitionScroll();
+		this.idlePremount.cancelAll();
+		this.scrollMemory.cancelAnimation();
 		this.fallbackCurtain.clear();
 		this.exitingPayFlow = false;
 		this.payFlowExitTop = 0;

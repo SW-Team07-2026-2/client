@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { detailOverlay } from '#lib/common/logic';
 	import { ArtistDetailController } from './logic/artistDetail.svelte';
 	import ArtistDetail from './design/ArtistDetail.svelte';
 
@@ -12,6 +13,7 @@
 	let { id, mobile, backLabel = '목록으로', onClose }: Props = $props();
 
 	const controller = new ArtistDetailController();
+	const waveActive = $derived(detailOverlay.getSlot('artist').phase === 'open');
 
 	$effect(() => {
 		controller.load(id);
@@ -27,6 +29,7 @@
 	followLoading={controller.followLoading}
 	moreOpen={controller.moreOpen}
 	accentColor={controller.accentColor}
+	{waveActive}
 	{mobile}
 	{backLabel}
 	{onClose}

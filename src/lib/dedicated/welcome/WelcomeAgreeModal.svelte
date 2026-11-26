@@ -250,8 +250,8 @@
 		display: flex;
 		flex-direction: column;
 		background: rgba(7, 7, 9, 0.3);
-		backdrop-filter: blur(28px) saturate(180%);
 		-webkit-backdrop-filter: blur(28px) saturate(180%);
+		backdrop-filter: blur(28px) saturate(180%);
 		border: 1px solid rgba(255, 255, 255, 0.1);
 		border-radius: 28px;
 		box-shadow:
