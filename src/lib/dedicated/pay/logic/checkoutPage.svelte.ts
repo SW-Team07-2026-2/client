@@ -8,6 +8,7 @@ import {
 	PAYMENT_SUCCESS_ROUTE_PATH
 } from '#lib/config/routes';
 import { loadCheckoutDraft, saveCheckoutDraft } from './checkoutDraft';
+import { openDaumPostcode } from './daumPostcode';
 import { loadTossPaymentsSdk, type TossPaymentWidgets } from './tossSdk';
 import type {
 	CartViewResponse,
@@ -163,6 +164,25 @@ export class CheckoutPageController {
 
 	setSaveAsNewAddress = (checked: boolean): void => {
 		this.saveAsNewAddress = checked;
+	};
+
+	/** Daum(카카오) 우편번호 검색 팝업을 열어 우편번호와 기본 주소를 자동 입력합니다. */
+	searchAddress = async (): Promise<boolean> => {
+		try {
+			const selected = await openDaumPostcode();
+			if (!selected) return false;
+			this.shipping = {
+				...this.shipping,
+				zonecode: selected.zonecode,
+				address: selected.address
+			};
+			this.validationError = null;
+			return true;
+		} catch (err) {
+			console.error('Failed to open Daum Postcode:', err);
+			toast.error('주소 검색 서비스를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+			return false;
+		}
 	};
 
 	/** 토스페이먼츠 결제 위젯을 지정된 DOM 셀렉터에 렌더링합니다. */

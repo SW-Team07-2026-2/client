@@ -58,6 +58,7 @@
 		onSelectAddress: (id: number | 'manual') => void;
 		onUpdateShipping: (field: keyof ShippingFormInput, value: string) => void;
 		onToggleSaveAddress: (checked: boolean) => void;
+		onSearchAddress: () => Promise<boolean>;
 		onSubmitPayment: () => void;
 		onGoToCart: () => void;
 	}
@@ -216,6 +217,7 @@
 									onSelectAddress={checkout.onSelectAddress}
 									onUpdateShipping={checkout.onUpdateShipping}
 									onToggleSaveAddress={checkout.onToggleSaveAddress}
+									onSearchAddress={checkout.onSearchAddress}
 								/>
 							{/if}
 						</div>

@@ -132,6 +132,7 @@
 		onSelectAddress: checkoutCtrl.selectAddress,
 		onUpdateShipping: checkoutCtrl.updateShippingField,
 		onToggleSaveAddress: checkoutCtrl.setSaveAsNewAddress,
+		onSearchAddress: checkoutCtrl.searchAddress,
 		onSubmitPayment: checkoutCtrl.submitPayment,
 		onGoToCart: checkoutCtrl.goToCart
 	}}

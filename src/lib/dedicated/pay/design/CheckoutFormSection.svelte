@@ -25,6 +25,7 @@
 		onSelectAddress: (id: number | 'manual') => void;
 		onUpdateShipping: (field: keyof ShippingFormInput, value: string) => void;
 		onToggleSaveAddress: (checked: boolean) => void;
+		onSearchAddress: () => Promise<boolean>;
 	}
 
 	let {
@@ -43,8 +44,18 @@
 		agreementId,
 		onSelectAddress,
 		onUpdateShipping,
-		onToggleSaveAddress
+		onToggleSaveAddress,
+		onSearchAddress
 	}: Props = $props();
+
+	let detailInputEl = $state<HTMLInputElement | undefined>(undefined);
+
+	async function handleSearchAddress() {
+		const picked = await onSearchAddress();
+		if (picked) {
+			detailInputEl?.focus();
+		}
+	}
 </script>
 
 <!-- 주문·결제 좌측 섹션 (배송지 입력 · 주문 상품 요약 · 토스페이먼츠 위젯, 순수 렌더링) -->
@@ -122,25 +133,53 @@
 							class="field-input"
 							placeholder="06236"
 							value={shipping.zonecode}
+							onclick={() => {
+								if (!shipping.zonecode.trim()) void handleSearchAddress();
+							}}
 							oninput={(e) => onUpdateShipping('zonecode', e.currentTarget.value)}
 						/>
 					</label>
 
-					<label class="field-group">
-						<span class="field-label">기본 주소</span>
-						<input
-							type="text"
-							class="field-input"
-							placeholder="도로명 주소 입력"
-							value={shipping.address}
-							oninput={(e) => onUpdateShipping('address', e.currentTarget.value)}
-						/>
-					</label>
+					<div class="field-group is-search-btn">
+						<span class="field-label" aria-hidden="true">&nbsp;</span>
+						<button type="button" class="addr-search-btn" onclick={handleSearchAddress}>
+							<svg
+								width="15"
+								height="15"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"
+							>
+								<circle cx="11" cy="11" r="8" />
+								<path d="m21 21-4.3-4.3" />
+							</svg>
+							<span>주소 검색</span>
+						</button>
+					</div>
 				</div>
+
+				<label class="field-group">
+					<span class="field-label">기본 주소</span>
+					<input
+						type="text"
+						class="field-input"
+						placeholder="주소 검색을 눌러 도로명 주소를 입력해 주세요"
+						value={shipping.address}
+						onclick={() => {
+							if (!shipping.address.trim()) void handleSearchAddress();
+						}}
+						oninput={(e) => onUpdateShipping('address', e.currentTarget.value)}
+					/>
+				</label>
 
 				<label class="field-group">
 					<span class="field-label">상세 주소 (선택)</span>
 					<input
+						bind:this={detailInputEl}
 						type="text"
 						class="field-input"
 						placeholder="동 · 호수 등 상세 주소"
@@ -317,8 +356,48 @@
 
 	.form-row-zone {
 		display: grid;
-		grid-template-columns: 140px minmax(0, 1fr);
+		grid-template-columns: minmax(0, 1fr) auto;
 		gap: 0.75rem;
+		align-items: end;
+	}
+
+	.field-group.is-search-btn {
+		flex-shrink: 0;
+	}
+
+	.addr-search-btn {
+		height: 46px;
+		padding: 0 1.05rem;
+		border: 1px solid var(--line);
+		border-radius: 12px;
+		background: var(--surface);
+		color: var(--white-2);
+		font: inherit;
+		font-size: 0.88rem;
+		font-weight: var(--fw-semibold);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		white-space: nowrap;
+		cursor: pointer;
+		box-sizing: border-box;
+		transition:
+			background-color 0.16s ease,
+			border-color 0.16s ease,
+			color 0.16s ease,
+			transform 0.14s ease;
+	}
+
+	.addr-search-btn:hover {
+		background: var(--surface-2);
+		border-color: var(--line-wave);
+		color: var(--white);
+	}
+
+	.addr-search-btn:active {
+		background: var(--surface-3);
+		transform: scale(0.985);
 	}
 
 	.field-group {

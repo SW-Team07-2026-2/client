@@ -88,6 +88,11 @@
 	--dir-blur-ease: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+html,
+body {
+	overscroll-behavior-y: contain;
+}
+
 body {
 	font-family: var(--font-sans);
 	background-color: var(--bg);

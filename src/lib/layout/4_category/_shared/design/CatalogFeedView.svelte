@@ -102,25 +102,26 @@
 
 	.catalog-feed-stage {
 		width: 100%;
-		will-change: opacity, transform;
 	}
 
 	.catalog-feed-content {
 		animation: catalog-feed-enter var(--content-enter-ms, 280ms) cubic-bezier(0.22, 1, 0.36, 1)
-			both;
+			backwards;
 	}
 
 	.catalog-feed-content.is-exiting {
 		pointer-events: none;
+		will-change: opacity, transform;
 		animation: catalog-feed-exit var(--content-exit-ms, 160ms) cubic-bezier(0.4, 0, 1, 1) forwards;
 	}
 
 	.catalog-feed-skeleton {
 		animation: catalog-skeleton-enter var(--skeleton-enter-ms, 180ms)
-			cubic-bezier(0.22, 1, 0.36, 1) both;
+			cubic-bezier(0.22, 1, 0.36, 1) backwards;
 	}
 
 	.catalog-feed-skeleton.is-exiting {
+		will-change: opacity;
 		animation: catalog-skeleton-exit var(--skeleton-exit-ms, 130ms) cubic-bezier(0.4, 0, 1, 1)
 			forwards;
 	}

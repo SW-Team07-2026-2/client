@@ -173,7 +173,5 @@
 
 	.feed-card-slot {
 		min-width: 0;
-		content-visibility: auto;
-		contain-intrinsic-size: auto 310px;
 	}
 </style>

@@ -182,7 +182,7 @@
 			src={resolvedImageSrc}
 			alt={artist.name}
 			loading="eager"
-			decoding="async"
+			decoding="auto"
 			objectPosition="50% 40%"
 			disableWave={false}
 			active={isActive}

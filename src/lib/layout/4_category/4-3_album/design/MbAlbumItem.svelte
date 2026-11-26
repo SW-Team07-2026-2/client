@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { scrollReveal } from '#lib/common/logic';
 	import { formatAlbumPriceRange } from '#lib/common/catalog/albums';
+	import {
+		markImageCorsBlocked,
+		resolveImageCrossOrigin
+	} from '#lib/common/design/fluid/imageColor';
 	import type { AlbumCardGroup, AlbumSelectPayload } from '../logic/albumCategory.svelte';
 
 	interface Props {
@@ -12,9 +16,26 @@
 	let { group, interactive = true, onSelect }: Props = $props();
 
 	let pressed = $state(false);
+	let useCorsFallback = $state(false);
 
 	const coverUrl = $derived(group.frontCoverUrl);
 	const isSoldOut = $derived(group.isSoldOut);
+	const imgCrossOrigin = $derived<'anonymous' | undefined>(
+		!coverUrl || useCorsFallback ? undefined : resolveImageCrossOrigin(coverUrl)
+	);
+	const imgRenderKey = $derived(`${coverUrl}|${imgCrossOrigin ?? 'nocors'}`);
+
+	$effect(() => {
+		void coverUrl;
+		useCorsFallback = false;
+	});
+
+	function handleCoverError() {
+		if (imgCrossOrigin === 'anonymous' && coverUrl) {
+			markImageCorsBlocked(coverUrl);
+			useCorsFallback = true;
+		}
+	}
 
 	$effect(() => {
 		if (!interactive) {
@@ -55,13 +76,17 @@
 		<!-- 좌측 1:1 앨범 커버 -->
 		<div class="album-thumb">
 			{#if coverUrl}
-				<img
-					class="album-cover-img"
-					src={coverUrl}
-					alt={group.title}
-					loading="lazy"
-					decoding="async"
-				/>
+				{#key imgRenderKey}
+					<img
+						class="album-cover-img"
+						src={coverUrl}
+						alt={group.title}
+						crossorigin={imgCrossOrigin}
+						loading="eager"
+						decoding="auto"
+						onerror={handleCoverError}
+					/>
+				{/key}
 			{:else}
 				<div class="album-cover-fallback" aria-hidden="true"></div>
 			{/if}

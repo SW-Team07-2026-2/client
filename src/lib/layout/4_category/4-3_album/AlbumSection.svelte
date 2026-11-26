@@ -108,9 +108,4 @@
 	.feed-card-slot {
 		min-width: 0;
 	}
-
-	.feed-card-slot.is-mobile {
-		content-visibility: auto;
-		contain-intrinsic-size: auto 104px;
-	}
 </style>

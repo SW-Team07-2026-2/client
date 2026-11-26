@@ -5,7 +5,9 @@
 	} from '#lib/common/catalog/concerts';
 	import {
 		DETAIL_GLOW_COLOR_OPTIONS,
-		extractImageAverageColor
+		extractImageAverageColor,
+		markImageCorsBlocked,
+		resolveImageCrossOrigin
 	} from '#lib/common/design/fluid/imageColor';
 	import type { ConcertSelectPayload } from '../logic/concertCategory.svelte';
 
@@ -19,17 +21,34 @@
 
 	let imgError = $state(false);
 	let imgLoaded = $state(false);
+	let useCorsFallback = $state(false);
 	let imgEl = $state<HTMLImageElement | null>(null);
 
 	const posterUrl = $derived(resolveConcertPosterUrl(concert));
+	const imgCrossOrigin = $derived<'anonymous' | undefined>(
+		!posterUrl || useCorsFallback ? undefined : resolveImageCrossOrigin(posterUrl)
+	);
+	const imgRenderKey = $derived(`${posterUrl}|${imgCrossOrigin ?? 'nocors'}`);
 	const isClosed = $derived(concert.status === '매진' || concert.status === '판매종료');
 	const isOnSale = $derived(concert.status === '예매중' || concert.status === '판매중');
 
 	$effect(() => {
 		void posterUrl;
+		useCorsFallback = false;
 		imgError = false;
-		imgLoaded = false;
+		imgLoaded = Boolean(imgEl && imgEl.complete && imgEl.naturalWidth > 0);
 	});
+
+	function handleImgError() {
+		if (imgCrossOrigin === 'anonymous' && posterUrl) {
+			markImageCorsBlocked(posterUrl);
+			useCorsFallback = true;
+			imgError = false;
+			imgLoaded = false;
+			return;
+		}
+		imgError = true;
+	}
 
 	function formatPrice(price?: number | null): string {
 		if (typeof price !== 'number' || !Number.isFinite(price)) return '';
@@ -57,18 +76,20 @@
 	>
 		<div class="poster-frame">
 			{#if posterUrl && !imgError}
-				<img
-					bind:this={imgEl}
-					class="poster-img"
-					class:is-loaded={imgLoaded}
-					src={posterUrl}
-					alt={concert.title}
-					crossorigin="anonymous"
-					loading="lazy"
-					decoding="async"
-					onload={() => (imgLoaded = true)}
-					onerror={() => (imgError = true)}
-				/>
+				{#key imgRenderKey}
+					<img
+						bind:this={imgEl}
+						class="poster-img"
+						class:is-loaded={imgLoaded}
+						src={posterUrl}
+						alt={concert.title}
+						crossorigin={imgCrossOrigin}
+						loading="eager"
+						decoding="auto"
+						onload={() => (imgLoaded = true)}
+						onerror={handleImgError}
+					/>
+				{/key}
 			{:else}
 				<div class="poster-fallback" aria-hidden="true">
 					<span>{concert.title.slice(0, 1) || 'C'}</span>

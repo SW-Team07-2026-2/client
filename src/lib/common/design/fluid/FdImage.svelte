@@ -358,10 +358,21 @@
 	}
 
 	function handleImgLoad() {
-		imageLoaded = true;
-		ready = true;
-		if (typeof window === 'undefined' || !src || !imgEl) return;
-		resolveLoadedImgWaveColors(imgEl, src);
+		const target = imgEl;
+		const currentSrc = src;
+		const markLoaded = () => {
+			if (src !== currentSrc) return;
+			imageLoaded = true;
+			ready = true;
+			if (typeof window !== 'undefined' && currentSrc && target) {
+				resolveLoadedImgWaveColors(target, currentSrc);
+			}
+		};
+		if (target && typeof target.decode === 'function') {
+			void target.decode().then(markLoaded, markLoaded);
+		} else {
+			markLoaded();
+		}
 	}
 
 	function handleImgError() {
@@ -1497,6 +1508,7 @@
 			<img
 				bind:this={imgEl}
 				class="fd-img"
+				class:is-loaded={imageLoaded}
 				{src}
 				{alt}
 				crossorigin={imgCrossOrigin}
@@ -1580,6 +1592,10 @@
 		background: color-mix(in srgb, var(--surface-3, #2c2c2e) 45%, transparent);
 		user-select: none;
 		pointer-events: none;
+	}
+
+	.fd-img.is-loaded {
+		background: transparent;
 	}
 
 	.fd-image-idle-border {

@@ -45,89 +45,103 @@
 		if (!raw) return '';
 		return raw.replace('T', ' ').slice(0, 16);
 	});
+	const isWaveShell = $derived(status === 'confirming' || status === 'succeeded');
+	const isMobileFullscreenWave = $derived(mobile && isWaveShell);
 </script>
 
-<!-- 결제 후 결과 뷰 (승인 중 -> 완료 WebGL2 DistortionWave 전환 · 확인 지연 · 실패/취소, 순수 렌더링) -->
-<div class="result-page" class:is-mobile={mobile}>
-	<div class="result-card" class:is-wave-shell={status === 'confirming' || status === 'succeeded'}>
-		{#if status === 'confirming' || status === 'succeeded'}
+<!-- 결제 후 결과 뷰 (승인 중 -> 완료 WebGL2 DistortionWave 전환 · 모바일은 전체 화면 하단->상단 vertical 파동, 순수 렌더링) -->
+<div
+	class="result-page"
+	class:is-mobile={mobile}
+	class:is-fullscreen-wave={isMobileFullscreenWave}
+>
+	<div
+		class="result-card"
+		class:is-wave-shell={isWaveShell}
+		class:is-fullscreen-wave={isMobileFullscreenWave}
+	>
+		{#if isWaveShell}
 			<DistortionWave
 				revealed={status === 'succeeded'}
-				type="center"
+				type={mobile ? 'vertical' : 'center'}
 				palette="colorful"
-				origin={{ x: 0.5, y: 0.18 }}
-				duration={920}
+				origin={mobile ? { x: 0.5, y: 0.94 } : { x: 0.5, y: 0.18 }}
+				duration={mobile ? 980 : 920}
 			>
 				{#snippet children()}
-					<div class="wave-face is-confirming">
-						<div class="result-icon is-loading" role="status" aria-live="polite">
-							<LoadingSpinner size={30} />
+					<div class="wave-face is-confirming" class:is-fullscreen={isMobileFullscreenWave}>
+						<div class="wave-face-inner">
+							<div class="result-icon is-loading" role="status" aria-live="polite">
+								<LoadingSpinner size={30} />
+							</div>
+							<h1 class="result-title">결제를 승인하고 있습니다</h1>
+							<p class="result-desc">잠시만 기다려 주세요. 창을 닫지 마세요.</p>
 						</div>
-						<h1 class="result-title">결제를 승인하고 있습니다</h1>
-						<p class="result-desc">잠시만 기다려 주세요. 창을 닫지 마세요.</p>
 					</div>
 				{/snippet}
 
 				{#snippet revealedContent()}
-					<div class="wave-face is-succeeded">
-						<div class="result-icon is-success" aria-hidden="true">
-							<svg
-								width="30"
-								height="30"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2.4"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							>
-								<path d="M20 6 9 17l-5-5" />
-							</svg>
-						</div>
-						<h1 class="result-title">결제가 완료되었습니다</h1>
-						{#if orderName}
-							<p class="result-desc">{orderName}</p>
-						{/if}
-
-						<dl class="receipt-list">
-							{#if orderRef}
-								<div class="receipt-row">
-									<dt>주문 번호</dt>
-									<dd class="is-mono">{orderRef}</dd>
-								</div>
-							{/if}
-							{#if payment?.method}
-								<div class="receipt-row">
-									<dt>결제 수단</dt>
-									<dd>{payment.method}</dd>
-								</div>
-							{/if}
-							{#if formattedCompletedAt}
-								<div class="receipt-row">
-									<dt>결제 일시</dt>
-									<dd>{formattedCompletedAt}</dd>
-								</div>
-							{/if}
-							{#if amount !== null}
-								<div class="receipt-row is-total">
-									<dt>결제 금액</dt>
-									<dd><SlidingPrice value={amount} /></dd>
-								</div>
-							{/if}
-						</dl>
-
-						<div class="result-actions">
-							<div class="primary-btn-wrap">
-								<FdButton
-									setting={PRIMARY_BTN_SETTING}
-									fullWidth
-									class="result-primary-fd-btn"
-									onclick={onGoToOrders}
+					<div class="wave-face is-succeeded" class:is-fullscreen={isMobileFullscreenWave}>
+						<div class="wave-face-inner">
+							<div class="result-icon is-success" aria-hidden="true">
+								<svg
+									width="30"
+									height="30"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.4"
+									stroke-linecap="round"
+									stroke-linejoin="round"
 								>
-									주문 내역 확인
-								</FdButton>
+									<path d="M20 6 9 17l-5-5" />
+								</svg>
 							</div>
-							<button type="button" class="secondary-btn" onclick={onGoHome}>홈으로 돌아가기</button>
+							<h1 class="result-title">결제가 완료되었습니다</h1>
+							{#if orderName}
+								<p class="result-desc">{orderName}</p>
+							{/if}
+
+							<dl class="receipt-list">
+								{#if orderRef}
+									<div class="receipt-row">
+										<dt>주문 번호</dt>
+										<dd class="is-mono">{orderRef}</dd>
+									</div>
+								{/if}
+								{#if payment?.method}
+									<div class="receipt-row">
+										<dt>결제 수단</dt>
+										<dd>{payment.method}</dd>
+									</div>
+								{/if}
+								{#if formattedCompletedAt}
+									<div class="receipt-row">
+										<dt>결제 일시</dt>
+										<dd>{formattedCompletedAt}</dd>
+									</div>
+								{/if}
+								{#if amount !== null}
+									<div class="receipt-row is-total">
+										<dt>결제 금액</dt>
+										<dd><SlidingPrice value={amount} /></dd>
+									</div>
+								{/if}
+							</dl>
+
+							<div class="result-actions">
+								<div class="primary-btn-wrap">
+									<FdButton
+										setting={PRIMARY_BTN_SETTING}
+										fullWidth
+										class="result-primary-fd-btn"
+										onclick={onGoToOrders}
+									>
+										주문 내역 확인
+									</FdButton>
+								</div>
+								<button type="button" class="secondary-btn" onclick={onGoHome}>홈으로 돌아가기</button>
+							</div>
 						</div>
 					</div>
 				{/snippet}
@@ -209,6 +223,18 @@
 		padding: calc(var(--mb-detail-top-offset, 60px) + 2rem) var(--content-padding-x-mobile) 3rem;
 	}
 
+	.result-page.is-mobile.is-fullscreen-wave {
+		position: fixed;
+		inset: 0;
+		z-index: 60;
+		width: 100%;
+		height: 100dvh;
+		min-height: 0;
+		padding: 0;
+		overflow: hidden;
+		background: var(--bg);
+	}
+
 	.result-card {
 		width: 100%;
 		max-width: 460px;
@@ -227,6 +253,23 @@
 		padding: 0;
 	}
 
+	.result-card.is-fullscreen-wave {
+		width: 100%;
+		max-width: none;
+		height: 100%;
+		border-radius: 0;
+		background: var(--bg);
+	}
+
+	.result-card.is-fullscreen-wave :global(.distortion-wave-root) {
+		height: 100%;
+	}
+
+	.result-card.is-fullscreen-wave :global(.wave-layer) {
+		height: 100%;
+		overflow-y: auto;
+	}
+
 	.wave-face {
 		width: 100%;
 		padding: 2.25rem 1.75rem;
@@ -237,6 +280,22 @@
 		justify-content: center;
 		text-align: center;
 		box-sizing: border-box;
+	}
+
+	.wave-face.is-fullscreen {
+		min-height: 100%;
+		background: var(--bg);
+		padding: calc(2rem + env(safe-area-inset-top, 0px)) var(--content-padding-x-mobile)
+			calc(2.5rem + env(safe-area-inset-bottom, 0px));
+	}
+
+	.wave-face-inner {
+		width: 100%;
+		max-width: 400px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		text-align: center;
 	}
 
 	.wave-face.is-confirming {

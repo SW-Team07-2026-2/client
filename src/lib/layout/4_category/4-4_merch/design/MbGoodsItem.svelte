@@ -7,7 +7,9 @@
 	} from '#lib/common/catalog/goods';
 	import {
 		DETAIL_GLOW_COLOR_OPTIONS,
-		extractImageAverageColor
+		extractImageAverageColor,
+		markImageCorsBlocked,
+		resolveImageCrossOrigin
 	} from '#lib/common/design/fluid/imageColor';
 	import type { GoodsSelectPayload } from '../logic/goodsCategory.svelte';
 
@@ -20,11 +22,28 @@
 	let { goods, interactive = true, onSelect }: Props = $props();
 
 	let pressed = $state(false);
+	let useCorsFallback = $state(false);
 	let imgEl = $state<HTMLImageElement | null>(null);
 
 	const imageUrl = $derived(resolveGoodsImageUrl(goods));
+	const imgCrossOrigin = $derived<'anonymous' | undefined>(
+		!imageUrl || useCorsFallback ? undefined : resolveImageCrossOrigin(imageUrl)
+	);
+	const imgRenderKey = $derived(`${imageUrl}|${imgCrossOrigin ?? 'nocors'}`);
 	const priceText = $derived(formatGoodsPrice(goods.price));
 	const isSoldOut = $derived(goods.badge === '품절');
+
+	$effect(() => {
+		void imageUrl;
+		useCorsFallback = false;
+	});
+
+	function handleImgError() {
+		if (imgCrossOrigin === 'anonymous' && imageUrl) {
+			markImageCorsBlocked(imageUrl);
+			useCorsFallback = true;
+		}
+	}
 
 	$effect(() => {
 		if (!interactive) {
@@ -67,15 +86,18 @@
 	>
 		<div class="goods-media-frame">
 			{#if imageUrl}
-				<img
-					bind:this={imgEl}
-					class="goods-img"
-					src={imageUrl}
-					alt={goods.name}
-					crossorigin="anonymous"
-					loading="lazy"
-					decoding="async"
-				/>
+				{#key imgRenderKey}
+					<img
+						bind:this={imgEl}
+						class="goods-img"
+						src={imageUrl}
+						alt={goods.name}
+						crossorigin={imgCrossOrigin}
+						loading="eager"
+						decoding="auto"
+						onerror={handleImgError}
+					/>
+				{/key}
 			{:else}
 				<div class="goods-img-fallback" aria-hidden="true"></div>
 			{/if}
