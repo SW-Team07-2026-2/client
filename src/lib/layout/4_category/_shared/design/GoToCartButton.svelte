@@ -1,173 +1,117 @@
 <script lang="ts">
 	import FdButton from '#lib/common/design/fluid/FdButton.svelte';
-	import { FluidSetting } from '#lib/common/type/fluid';
+	import {
+		createOutlinedCtaSetting,
+		createPrimaryCtaSetting
+	} from '#lib/common/design/fluid/ctaPreset';
+	import ShoppingBagIcon from '#lib/common/design/icon/ShoppingBagIcon.svelte';
 
 	interface Props {
+		/**
+		 * 'outlined': 장바구니 담기 옆에 함께 배치될 때 (border 테두리 FdButton · 텍스트만)
+		 * 'primary': 좁은 화면에서 단독 표시될 때 (장바구니 담기와 동일한 메인 CTA 색상 FdButton + 아이콘)
+		 */
+		variant?: 'outlined' | 'primary';
 		/** 비활성화 여부 */
 		disabled?: boolean;
 		/** 클릭 콜백 (장바구니 이동) */
 		onclick?: () => void;
 	}
 
-	let { disabled = false, onclick }: Props = $props();
+	let { variant = 'outlined', disabled = false, onclick }: Props = $props();
 
-	const BUTTON_SETTING = new FluidSetting({
-		radius: 14,
-		inset: 6,
-		reach: 28,
-		bulge: 4,
-		bulgeWidth: 16,
-		layers: 2,
-		layerGap: 2.2,
-		waveAmp: 2.4,
-		waveLength: 52,
-		spin: 1.2,
-		pauseWhenIdle: true,
-		color: 'var(--surface)',
-		hoverColor: 'var(--surface-2)',
-		pressColor: 'var(--surface-3)',
-		waveColor: 'var(--surface-3)',
-		hoverWaveColor: 'var(--surface-3)',
-		textColor: 'var(--fg)',
-		borderWidth: 0
-	});
+	let btnWidth = $state(160);
+	let bagAnimating = $state(false);
+	let bagAnimTimer: ReturnType<typeof setTimeout> | undefined;
 
-	let animating = $state(false);
-	let animTimer: ReturnType<typeof setTimeout> | undefined;
+	const buttonSetting = $derived(
+		variant === 'primary'
+			? createPrimaryCtaSetting(btnWidth, disabled)
+			: createOutlinedCtaSetting(btnWidth, disabled)
+	);
 
-	function triggerAnim() {
-		clearTimeout(animTimer);
-		animating = false;
+	function triggerBagAnim() {
+		clearTimeout(bagAnimTimer);
+		bagAnimating = false;
 		if (typeof requestAnimationFrame === 'function') {
 			requestAnimationFrame(() => {
-				animating = true;
-				animTimer = setTimeout(() => {
-					animating = false;
+				bagAnimating = true;
+				bagAnimTimer = setTimeout(() => {
+					bagAnimating = false;
 				}, 620);
 			});
 		}
 	}
 
 	function handlePointerEnter(e: PointerEvent) {
-		if (e.pointerType === 'touch' || disabled) return;
-		triggerAnim();
+		if (variant !== 'primary' || e.pointerType === 'touch' || disabled) return;
+		triggerBagAnim();
 	}
 
 	function handleClick() {
 		if (disabled) return;
-		triggerAnim();
+		if (variant === 'primary') {
+			triggerBagAnim();
+		}
 		onclick?.();
 	}
 </script>
 
-<!-- 장바구니 이동 ShoppingBag 아이콘 전용 FdButton (호버 시 가방 세로 탄성 + 손잡이 들림 + 유체 물결, 순수 렌더링) -->
-<div class="go-cart-btn-wrap" role="presentation" onpointerenter={handlePointerEnter}>
+<!-- 장바구니 이동 FdButton: 병렬 배치 시 border 아웃라인 / 단독 배치 시 메인 CTA와 동일 스타일 + 아이콘 (순수 렌더링) -->
+<div
+	class="go-cart-btn-wrap"
+	role="presentation"
+	bind:clientWidth={btnWidth}
+	onpointerenter={handlePointerEnter}
+>
 	<FdButton
-		setting={BUTTON_SETTING}
+		setting={buttonSetting}
+		fullWidth
 		{disabled}
 		class="product-go-cart-fd-btn"
-		aria-label="장바구니로 이동"
-		title="장바구니로 이동"
 		onclick={handleClick}
 	>
-		<svg
-			class="shopping-bag-svg"
-			width="20"
-			height="20"
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="2"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-		>
-			<g class="bag-group" class:is-animating={animating}>
-				<path
-					d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z"
-				/>
-				<path d="M3.103 6.034h17.794" />
-				<path class="bag-handle" class:is-animating={animating} d="M16 10a4 4 0 0 1-8 0" />
-			</g>
-		</svg>
+		<span class="go-cart-inner">
+			{#if variant === 'primary'}
+				<ShoppingBagIcon size={18} animating={bagAnimating} />
+			{/if}
+			<span class="go-cart-label">장바구니 이동</span>
+		</span>
 	</FdButton>
 </div>
 
 <style>
 	.go-cart-btn-wrap {
-		display: inline-flex;
-		flex-shrink: 0;
+		width: 100%;
+		min-width: 0;
 	}
 
 	.go-cart-btn-wrap :global(.fd-wrap) {
 		margin: -6px;
+		width: calc(100% + 12px);
 	}
 
 	.go-cart-btn-wrap :global(.fd-btn.product-go-cart-fd-btn) {
-		width: 46px;
+		width: 100%;
 		height: 46px;
-		padding: 0;
+		padding: 0 1rem;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
+		font-size: 0.94rem;
+		font-weight: var(--fw-bold);
+		line-height: 1;
 	}
 
-	.shopping-bag-svg {
-		display: block;
-		overflow: visible;
+	.go-cart-inner {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		white-space: nowrap;
 	}
 
-	/* 가방 본체 하단 기준(50% 100%) 탄성 애니메이션: scaleY [1 -> 1.03 -> 0.97 -> 1] (0.6s ease-in-out) */
-	.bag-group {
-		transform-box: fill-box;
-		transform-origin: 50% 100%;
-		transform: scaleY(1);
-	}
-
-	.bag-group.is-animating {
-		animation: shopping-bag-bounce 0.6s ease-in-out;
-	}
-
-	/* 손잡이 들림 애니메이션: y [0 -> -1.2px -> 0] (0.6s ease-in-out) */
-	.bag-handle {
-		transform: translateY(0);
-	}
-
-	.bag-handle.is-animating {
-		animation: shopping-bag-handle 0.6s ease-in-out;
-	}
-
-	@keyframes shopping-bag-bounce {
-		0% {
-			transform: scaleY(1);
-		}
-		33% {
-			transform: scaleY(1.03);
-		}
-		67% {
-			transform: scaleY(0.97);
-		}
-		100% {
-			transform: scaleY(1);
-		}
-	}
-
-	@keyframes shopping-bag-handle {
-		0% {
-			transform: translateY(0);
-		}
-		50% {
-			transform: translateY(-1.2px);
-		}
-		100% {
-			transform: translateY(0);
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.bag-group.is-animating,
-		.bag-handle.is-animating {
-			animation: none;
-		}
+	.go-cart-label {
+		white-space: nowrap;
 	}
 </style>

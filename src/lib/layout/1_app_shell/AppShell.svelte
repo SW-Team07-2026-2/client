@@ -141,7 +141,6 @@
 					<MbNavigationBar
 						items={MOBILE_NAV_ITEMS}
 						selectedValue={ctrl.selectedMobileRoute}
-						profileImageUrl={ctrl.profileImageUrl}
 						onSelect={ctrl.handleMobileNavSelect}
 						onActiveReselect={ctrl.handleMobileActiveReselect}
 					/>

@@ -39,10 +39,57 @@ const PRIMARY_CTA_DISABLED_SETTING = PRIMARY_CTA_ACTIVE_BASE.with({
 	textColor: 'var(--muted)'
 });
 
+const OUTLINED_CTA_ACTIVE_BASE = new FluidSetting({
+	radius: 14,
+	inset: 6,
+	reach: 28,
+	bulge: 4,
+	bulgeWidth: 18,
+	layers: 2,
+	layerGap: 2.2,
+	waveAmp: 2.4,
+	waveLength: 88,
+	spin: 1.2,
+	pauseWhenIdle: true,
+	color: 'var(--surface)',
+	hoverColor: 'var(--surface-2)',
+	pressColor: 'var(--surface-4)',
+	waveColor: 'var(--surface-3)',
+	hoverWaveColor: 'var(--line)',
+	textColor: 'var(--white-2)',
+	borderWidth: 1,
+	borderColor: 'var(--line)',
+	hoverBorderColor: 'var(--line-wave)',
+	pressBorderColor: 'var(--muted)'
+});
+
+const OUTLINED_CTA_DISABLED_SETTING = OUTLINED_CTA_ACTIVE_BASE.with({
+	hoverReactive: false,
+	bulgeReactive: false,
+	clickReactive: false,
+	layerGap: 0,
+	waveAmp: 0,
+	color: 'var(--bg)',
+	hoverColor: 'var(--bg)',
+	pressColor: 'var(--bg)',
+	borderColor: 'var(--surface-3)',
+	hoverBorderColor: 'var(--surface-3)',
+	pressBorderColor: 'var(--surface-3)',
+	textColor: 'var(--muted)'
+});
+
 /** 메인 CTA 버튼의 활성/비활성 상태와 현재 폭에 맞는 `FluidSetting`을 반환합니다. */
 export function createPrimaryCtaSetting(width: number, disabled = false): FluidSetting {
 	if (disabled) return PRIMARY_CTA_DISABLED_SETTING;
 	const clampedWidth = Math.max(120, width);
 	const waveLength = Math.max(48, Math.round(clampedWidth / 2.5));
 	return PRIMARY_CTA_ACTIVE_BASE.with({ waveLength });
+}
+
+/** 테두리(Outlined) 보조 CTA 버튼의 활성/비활성 상태와 현재 폭에 맞는 `FluidSetting`을 반환합니다. */
+export function createOutlinedCtaSetting(width: number, disabled = false): FluidSetting {
+	if (disabled) return OUTLINED_CTA_DISABLED_SETTING;
+	const clampedWidth = Math.max(120, width);
+	const waveLength = Math.max(48, Math.round(clampedWidth / 2.5));
+	return OUTLINED_CTA_ACTIVE_BASE.with({ waveLength });
 }

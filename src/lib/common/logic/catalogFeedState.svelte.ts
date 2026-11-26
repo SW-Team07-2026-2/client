@@ -206,7 +206,17 @@ export function buildCatalogRequestKey(
 			: opts.genre?.trim() ?? '';
 
 	if (category === 'artist') {
-		return JSON.stringify([category, isFollow, q, genres, sort, refresh, authKey]);
+		return JSON.stringify([
+			category,
+			isFollow,
+			q,
+			genres,
+			(fs?.artistGenders ?? []).join(','),
+			(fs?.artistTypes ?? []).join(','),
+			sort,
+			refresh,
+			authKey
+		]);
 	}
 	if (category === 'concert') {
 		return JSON.stringify([
@@ -228,6 +238,7 @@ export function buildCatalogRequestKey(
 		q,
 		(fs?.forms ?? []).join(','),
 		normalizePriceRangeKey(fs?.priceRange),
+		Boolean(fs?.excludeSoldOut),
 		sort,
 		refresh,
 		authKey

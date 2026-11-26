@@ -59,12 +59,24 @@
 	let lockedScrollY = $state(0);
 
 	// 단일 액터 현재 정착 좌표 (px)
+	// 우측 액터는 뷰포트 폭 변화에도 화면 밖으로 밀리지 않도록 우측 끝 기준 거리(rightEdgePx)를 함께 추적
 	let leftBox = $state<ActorBox>({ left: 16, top: 13, width: 34, height: 34 });
 	let rightBox = $state<ActorBox>({ left: 320, top: 13, width: 34, height: 34 });
+	let rightEdgePx = $state(16);
 	let actorsMeasured = $state(false);
 
 	let transitionTimer: ReturnType<typeof setTimeout> | undefined;
 	let runSeq = 0;
+
+	function getViewportWidth(): number {
+		if (typeof window === 'undefined') return 390;
+		return stageEl?.clientWidth || window.innerWidth || document.documentElement.clientWidth || 390;
+	}
+
+	function setRightBox(box: ActorBox, vw = getViewportWidth()): void {
+		rightBox = box;
+		rightEdgePx = Math.round((vw - (box.left + box.width)) * 100) / 100;
+	}
 
 	function paneOffsetPercent(pane: MobileShellPane): number {
 		if (pane === 'left') return 100;
@@ -118,28 +130,34 @@
 	/** 현재 settledPane 기준으로 두 단일 액터의 정착 좌표를 측정·동기화 */
 	function syncSettledActorBoxes() {
 		if (typeof window === 'undefined') return;
-		const vw = window.innerWidth || document.documentElement.clientWidth || 390;
+		const vw = getViewportWidth();
 
 		if (settledPane === 'center') {
 			const lf = measureAnchorRect('left-from');
 			const rf = measureAnchorRect('right-from');
-			if (lf) leftBox = lf;
-			if (rf) rightBox = rf;
+			if (lf && lf.left >= -8 && lf.left < vw) leftBox = lf;
+			if (rf && rf.left >= 0 && rf.left + rf.width <= vw + 8) {
+				setRightBox(rf, vw);
+			} else if (!actorsMeasured) {
+				setRightBox({ left: Math.max(0, vw - 50), top: 13, width: 34, height: 34 }, vw);
+			}
 			actorsMeasured = Boolean(lf || rf);
 		} else if (settledPane === 'left') {
 			const lt = measureAnchorRect('left-to');
 			const rf = measureAnchorRect('right-from');
 			if (lt) leftBox = lt;
 			if (rf) {
-				rightBox = rf;
+				setRightBox(rf, vw);
 			} else {
-				rightBox = { ...rightBox, left: vw + 16 };
+				setRightBox({ ...rightBox, left: vw + 16 }, vw);
 			}
 			actorsMeasured = true;
 		} else {
 			const rt = measureAnchorRect('right-to');
 			const lf = measureAnchorRect('left-from');
-			if (rt) rightBox = rt;
+			if (rt && rt.left >= 0 && rt.left + rt.width <= vw + 8) {
+				setRightBox(rt, vw);
+			}
 			if (lf) {
 				leftBox = lf;
 			} else {
@@ -209,7 +227,7 @@
 			if (seq !== runSeq) return;
 		}
 
-		const vw = window.innerWidth || document.documentElement.clientWidth || 390;
+		const vw = getViewportWidth();
 		const fromShiftPx = (paneOffsetPercent(fromPane) / 100) * vw;
 		const toShiftPx = (paneOffsetPercent(toPane) / 100) * vw;
 		const deltaShiftPx = toShiftPx - fromShiftPx;
@@ -251,7 +269,7 @@
 
 		// 출발 좌표로 정확히 스냅 후 애니메이션 시작
 		leftBox = leftStart;
-		rightBox = rightStart;
+		setRightBox(rightStart, vw);
 		actorsMeasured = true;
 		isTransitioning = true;
 		await tick();
@@ -280,15 +298,19 @@
 		if (leftAnim) anims.push(leftAnim);
 		if (rightAnim) anims.push(rightAnim);
 
+		let didFinish = false;
 		const finish = () => {
-			if (seq !== runSeq) return;
+			if (didFinish || seq !== runSeq) return;
+			didFinish = true;
 			clearTimeout(transitionTimer);
 			settledPane = toPane;
 			leftBox = leftEnd;
-			rightBox = rightEnd;
+			setRightBox(rightEnd, vw);
 
 			if (trackEl && toPane !== 'center') {
 				trackEl.style.transform = `translate3d(${paneOffsetPercent(toPane)}%, 0, 0)`;
+			} else if (trackEl) {
+				trackEl.style.transform = '';
 			}
 			trackEl?.getAnimations().forEach((a) => a.cancel());
 			leftActorEl?.getAnimations().forEach((a) => a.cancel());
@@ -306,6 +328,11 @@
 						showMobileHeader();
 					}
 					syncSettledActorBoxes();
+					requestAnimationFrame(() => {
+						if (seq === runSeq && !isTransitioning) {
+							syncSettledActorBoxes();
+						}
+					});
 				});
 			}
 		};
@@ -343,12 +370,21 @@
 
 	onMount(() => {
 		syncSettledActorBoxes();
+		const rafId = requestAnimationFrame(() => {
+			if (!isTransitioning) syncSettledActorBoxes();
+		});
 		const handleResize = () => {
 			if (!isTransitioning) syncSettledActorBoxes();
 		};
 		window.addEventListener('resize', handleResize);
+		window.visualViewport?.addEventListener('resize', handleResize);
+		const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(handleResize) : null;
+		if (stageEl && ro) ro.observe(stageEl);
 		return () => {
+			cancelAnimationFrame(rafId);
+			ro?.disconnect();
 			window.removeEventListener('resize', handleResize);
+			window.visualViewport?.removeEventListener('resize', handleResize);
 		};
 	});
 
@@ -437,14 +473,14 @@
 		{@render leftActor({ pane: activePane })}
 	</div>
 
-	<!-- 단일 공유 액터: 우측(BellIcon) — 리마운트 없이 실제 1개 인스턴스가 슬롯 간 이동 -->
+	<!-- 단일 공유 액터: 우측(BellIcon) — 리마운트 없이 실제 1개 인스턴스가 슬롯 간 이동 (우측 끝 기준 배치로 폭 변화에도 유실 방지) -->
 	<div
 		bind:this={rightActorEl}
 		class="mb-shell-actor"
 		class:is-ready={actorsMeasured}
 		class:is-header-hidden={hideActorsWithCenterHeader}
 		class:is-offscreen={!isTransitioning && settledPane === 'left'}
-		style:left="{rightBox.left}px"
+		style:right="{rightEdgePx}px"
 		style:top="{rightBox.top}px"
 		style:width="{rightBox.width}px"
 		style:height="{rightBox.height}px"

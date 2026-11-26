@@ -42,10 +42,13 @@ function sanitizePriceRange(raw: unknown): [number, number] | null {
 function sanitizeSlice(raw: unknown): CategoryFilterSlice {
 	if (!raw || typeof raw !== 'object') return createEmptyFilterSlice();
 	const obj = raw as Record<string, unknown>;
+	const rawArtistTypes = sanitizeStringArray(obj.artistTypes).map((v) =>
+		v === 'TEAM' ? 'GROUP' : v
+	);
 	return {
 		genres: sanitizeStringArray(obj.genres),
 		artistGenders: sanitizeStringArray(obj.artistGenders),
-		artistTypes: sanitizeStringArray(obj.artistTypes),
+		artistTypes: Array.from(new Set(rawArtistTypes)),
 		regions: sanitizeStringArray(obj.regions),
 		statuses: sanitizeStringArray(obj.statuses),
 		concertTypes: sanitizeStringArray(obj.concertTypes),

@@ -185,6 +185,8 @@ export function buildCatalogQueryParams(opts: {
 
 	if (opts.category === 'artist') {
 		appendCommaParam(params, 'genre', genres);
+		appendCommaParam(params, 'gender', fs?.artistGenders ?? []);
+		appendCommaParam(params, 'composition', fs?.artistTypes ?? []);
 	} else if (opts.category === 'concert') {
 		appendCommaParam(params, 'saleStatus', fs?.statuses ?? []);
 		appendCommaParam(params, 'type', fs?.concertTypes ?? []);
@@ -193,9 +195,15 @@ export function buildCatalogQueryParams(opts: {
 	} else if (opts.category === 'album') {
 		appendCommaParam(params, 'format', fs?.forms ?? []);
 		appendPriceParams(params, fs?.priceRange ?? null);
+		if (fs?.excludeSoldOut) {
+			params.set('excludeSoldOut', 'true');
+		}
 	} else if (opts.category === 'goods') {
 		appendCommaParam(params, 'category', fs?.forms ?? []);
 		appendPriceParams(params, fs?.priceRange ?? null);
+		if (fs?.excludeSoldOut) {
+			params.set('excludeSoldOut', 'true');
+		}
 	}
 
 	if (opts.feedMode === 'follow') {

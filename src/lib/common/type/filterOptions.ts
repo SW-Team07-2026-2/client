@@ -146,10 +146,10 @@ export const ARTIST_GENDER_OPTIONS: readonly FilterOption[] = [
 	{ value: 'MIXED', label: '혼성' }
 ];
 
-/** 아티스트 구성 필터 (솔로 / 팀) */
+/** 아티스트 구성 필터 (솔로 / 팀 — 백엔드 composition Enum: SOLO | GROUP) */
 export const ARTIST_TYPE_OPTIONS: readonly FilterOption[] = [
 	{ value: 'SOLO', label: '솔로' },
-	{ value: 'TEAM', label: '팀' }
+	{ value: 'GROUP', label: '팀' }
 ];
 
 /** 공연 지역 필터 (권역별 그룹핑: 도 단위 우선 배치 + 소속 광역/특별시) */

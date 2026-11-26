@@ -40,7 +40,6 @@
 		onlogout
 	}: Props = $props();
 
-	let avatarImgError = $state(false);
 	let isHovered = $state(false);
 	let isPinned = $state(false);
 
@@ -226,31 +225,6 @@
 				onclick={handleTriggerClick}
 			>
 				<span bind:this={measureEl} class="profile-btn-inner">
-					<span class="avatar-ring">
-						{#if auth.user?.profileImageUrl && !avatarImgError}
-							<img
-								src={auth.user.profileImageUrl}
-								alt=""
-								class="avatar-img"
-								onerror={() => (avatarImgError = true)}
-							/>
-						{:else}
-							<svg
-								class="avatar-svg"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1.8"
-								aria-hidden="true"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"
-								/>
-							</svg>
-						{/if}
-					</span>
 					{#if showNickname}
 						<span class="profile-nickname">{auth.user?.nickname || '로그인'}</span>
 					{/if}
@@ -373,24 +347,10 @@
 	.profile-btn-inner {
 		display: inline-flex;
 		align-items: center;
-		justify-content: flex-start;
-		padding: 0 0.9rem 0 0.3rem;
-		gap: 0.55rem;
+		justify-content: center;
+		padding: 0 1rem;
 		width: max-content;
 		box-sizing: border-box;
-	}
-
-	.avatar-ring {
-		width: 28px;
-		height: 28px;
-		border-radius: 9999px;
-		background: #17161f;
-		border: 1px solid #2a2a30;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		overflow: hidden;
 	}
 
 	.profile-nickname {
@@ -399,7 +359,7 @@
 		color: var(--lq-text, #f4f4f5);
 		line-height: 1;
 		white-space: nowrap;
-		max-width: 120px;
+		max-width: 132px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		transition: color 0.18s ease;
@@ -408,19 +368,6 @@
 	.profile-btn:hover .profile-nickname,
 	.profile-card.is-expanded .profile-nickname {
 		color: #ffffff;
-	}
-
-	.avatar-svg {
-		width: 18px;
-		height: 18px;
-		color: #e4e4e7;
-	}
-
-	.avatar-img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		display: block;
 	}
 
 	/* ── 확장 메뉴 영역 (초기 투명도 0 -> 확장 시 부드럽게 페이드인) ── */

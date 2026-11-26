@@ -4,6 +4,7 @@
 	import { fade, fly } from 'svelte/transition';
 	import FdButton from '#lib/common/design/fluid/FdButton.svelte';
 	import { createPrimaryCtaSetting } from '#lib/common/design/fluid/ctaPreset';
+	import ShoppingBagIcon from '#lib/common/design/icon/ShoppingBagIcon.svelte';
 	import SlidingPrice from '#lib/common/design/SlidingPrice.svelte';
 	import SpringNumberStepper from '#lib/common/design/SpringNumberStepper.svelte';
 	import { LoadingSpinner } from '#lib/dedicated/loading';
@@ -67,9 +68,21 @@
 		leadingAction
 	}: Props = $props();
 
+	/** 두 버튼('장바구니 담기' + '장바구니 이동')을 가로로 나란히 배치할 최소 폭 */
+	const NARROW_CTA_BREAKPOINT = 280;
+
+	let ctaGroupWidth = $state(0);
 	let cartBtnWidth = $state(200);
+	let bagAnimating = $state(false);
+	let bagAnimTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const hasPrimary = $derived(primaryOptions.length > 1 && Boolean(onSelectPrimary));
+	const isNarrowCta = $derived(ctaGroupWidth > 0 && ctaGroupWidth < NARROW_CTA_BREAKPOINT);
+	const canGoToCart = $derived(inCart && Boolean(onGoToCart));
+	/** 좁은 가로 폭에서 이미 담겨 있으면 '장바구니 이동'만 단독 표시 */
+	const showGoCartOnly = $derived(isNarrowCta && canGoToCart && !soldOut);
+	/** 충분한 가로 폭에서 이미 담겨 있으면 두 버튼을 나란히 표시 */
+	const showBothCta = $derived(!isNarrowCta && canGoToCart && !soldOut);
 
 	const cartBtnSetting = $derived(
 		createPrimaryCtaSetting(cartBtnWidth, soldOut || !canSubmitCart)
@@ -78,9 +91,33 @@
 	const cartBtnLabel = $derived(
 		cartSubmitting ? '담는 중...' : soldOut ? '품절된 상품입니다' : '장바구니 담기'
 	);
+
+	function triggerBagAnim() {
+		clearTimeout(bagAnimTimer);
+		bagAnimating = false;
+		if (typeof requestAnimationFrame === 'function') {
+			requestAnimationFrame(() => {
+				bagAnimating = true;
+				bagAnimTimer = setTimeout(() => {
+					bagAnimating = false;
+				}, 620);
+			});
+		}
+	}
+
+	function handleAddPointerEnter(e: PointerEvent) {
+		if (e.pointerType === 'touch' || soldOut || !canSubmitCart) return;
+		triggerBagAnim();
+	}
+
+	function handleAddClick() {
+		if (soldOut || cartSubmitting || !canSubmitCart) return;
+		triggerBagAnim();
+		onAddToCart();
+	}
 </script>
 
-<!-- 상품 상세 공용 구매 패널: 1행(형태·옵션·수량) + 2행(보조액션·장바구니 담기·슬라이딩 가격, 순수 렌더링) -->
+<!-- 상품 상세 공용 구매 패널: 1행(형태·옵션·수량) + 2행(보조액션·장바구니 담기/이동·슬라이딩 가격, 순수 렌더링) -->
 <div class="product-purchase-panel">
 	<div class="selector-grid" class:has-primary={hasPrimary}>
 		{#if hasPrimary}
@@ -129,37 +166,53 @@
 			{@render leadingAction()}
 		{/if}
 
-		<div class="primary-cart-wrap" bind:clientWidth={cartBtnWidth}>
-			<FdButton
-				setting={cartBtnSetting}
-				fullWidth
-				disabled={soldOut || cartSubmitting || !canSubmitCart}
-				class="product-primary-cart-fd-btn"
-				onclick={onAddToCart}
-			>
-				<span class="btn-label-stage">
-					{#key cartBtnLabel}
-						<span
-							class="btn-label-slide"
-							in:fly={{ y: 12, duration: 220, easing: cubicOut }}
-							out:fly={{ y: -12, duration: 150, easing: cubicOut }}
-						>
-							{cartBtnLabel}
+		<div class="cart-cta-group" class:is-split={showBothCta} bind:clientWidth={ctaGroupWidth}>
+			{#if showGoCartOnly && onGoToCart}
+				<div class="go-cart-slot is-solo" in:fade={{ duration: 160 }}>
+					<GoToCartButton variant="primary" onclick={onGoToCart} />
+				</div>
+			{:else}
+				<div
+					class="primary-cart-wrap"
+					role="presentation"
+					bind:clientWidth={cartBtnWidth}
+					onpointerenter={handleAddPointerEnter}
+				>
+					<FdButton
+						setting={cartBtnSetting}
+						fullWidth
+						disabled={soldOut || cartSubmitting || !canSubmitCart}
+						class="product-primary-cart-fd-btn"
+						onclick={handleAddClick}
+					>
+						<span class="btn-label-stage">
+							{#key cartBtnLabel}
+								<span
+									class="btn-label-slide"
+									in:fly={{ y: 12, duration: 220, easing: cubicOut }}
+									out:fly={{ y: -12, duration: 150, easing: cubicOut }}
+								>
+									{#if !soldOut}
+										<ShoppingBagIcon size={18} animating={bagAnimating} />
+									{/if}
+									<span>{cartBtnLabel}</span>
+								</span>
+							{/key}
 						</span>
-					{/key}
-				</span>
-			</FdButton>
-		</div>
+					</FdButton>
+				</div>
 
-		{#if inCart && onGoToCart}
-			<div
-				class="go-cart-slot"
-				in:fly={{ x: -8, duration: 220, easing: cubicOut }}
-				out:fade={{ duration: 140 }}
-			>
-				<GoToCartButton onclick={onGoToCart} />
-			</div>
-		{/if}
+				{#if showBothCta && onGoToCart}
+					<div
+						class="go-cart-slot"
+						in:fly={{ x: -8, duration: 220, easing: cubicOut }}
+						out:fade={{ duration: 140 }}
+					>
+						<GoToCartButton variant="outlined" onclick={onGoToCart} />
+					</div>
+				{/if}
+			{/if}
+		</div>
 
 		<div class="price-summary">
 			<SlidingPrice value={totalPrice} {soldOut} />
@@ -225,9 +278,24 @@
 		padding-top: 0.25rem;
 	}
 
-	.primary-cart-wrap {
-		flex: 1 1 150px;
+	.cart-cta-group {
+		flex: 1 1 160px;
 		min-width: 140px;
+		display: flex;
+		align-items: center;
+	}
+
+	/* 병렬 배치 시 '장바구니 담기'(아이콘 포함)가 '장바구니 이동'보다 아이콘 크기(+20px)만큼만 더 넓게 배분 */
+	.cart-cta-group.is-split {
+		display: grid;
+		grid-template-columns: calc(50% + 10px - 0.3rem) calc(50% - 10px - 0.3rem);
+		gap: 0.6rem;
+		align-items: center;
+	}
+
+	.primary-cart-wrap {
+		width: 100%;
+		min-width: 0;
 	}
 
 	.primary-cart-wrap :global(.fd-wrap) {
@@ -238,14 +306,19 @@
 	.primary-cart-wrap :global(.fd-btn.product-primary-cart-fd-btn) {
 		width: 100%;
 		height: 46px;
-		padding: 0 1.25rem;
+		padding: 0 1rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		font-size: 0.94rem;
 		font-weight: var(--fw-bold);
+		line-height: 1;
 	}
 
 	.go-cart-slot {
-		display: inline-flex;
-		flex-shrink: 0;
+		width: 100%;
+		min-width: 0;
+		display: flex;
 	}
 
 	.btn-label-stage {
@@ -259,6 +332,10 @@
 
 	.btn-label-slide {
 		grid-area: 1 / 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
 		white-space: nowrap;
 	}
 

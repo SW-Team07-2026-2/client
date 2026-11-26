@@ -8,20 +8,11 @@
 	interface Props {
 		items: readonly AppShellMobileNavItem[];
 		selectedValue: string;
-		profileImageUrl?: string;
 		onSelect?: (nextValue: string) => void;
 		onActiveReselect?: (currentValue: string) => void;
 	}
 
-	let {
-		items,
-		selectedValue,
-		profileImageUrl = '',
-		onSelect,
-		onActiveReselect
-	}: Props = $props();
-
-	let avatarImgError = $state(false);
+	let { items, selectedValue, onSelect, onActiveReselect }: Props = $props();
 
 	const scrub = new MbNavScrubController(untrack(() => selectedValue), {
 		getItems: () => items,
@@ -55,11 +46,6 @@
 		void tick().then(() => {
 			scrub.syncSelectedValue(next);
 		});
-	});
-
-	$effect(() => {
-		void profileImageUrl;
-		avatarImgError = false;
 	});
 
 	function bindTrack(node: HTMLDivElement) {
@@ -122,23 +108,18 @@
 					class:is-active={isActive}
 					onclick={(e) => scrub.handleButtonClick(e, item.value)}
 				>
-					{#if item.value === '/mypage'}
-						<span class="mobile-avatar-ring" class:is-active={isActive} aria-hidden="true">
-							{#if profileImageUrl && !avatarImgError}
-								<img
-									src={profileImageUrl}
-									alt=""
-									class="mobile-avatar-img"
-									onerror={() => (avatarImgError = true)}
-								/>
+					<span class="mobile-icon" aria-hidden="true">
+						{#if item.value === '/mypage'}
+							{#if isActive}
+								<svg viewBox="0 0 24 24" fill="currentColor">
+									<path
+										fill-rule="evenodd"
+										clip-rule="evenodd"
+										d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z"
+									/>
+								</svg>
 							{:else}
-								<svg
-									class="mobile-avatar-svg"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="1.85"
-								>
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85">
 									<path
 										stroke-linecap="round"
 										stroke-linejoin="round"
@@ -146,10 +127,7 @@
 									/>
 								</svg>
 							{/if}
-						</span>
-					{:else}
-						<span class="mobile-icon" aria-hidden="true">
-							{#if item.value === '/artist'}
+						{:else if item.value === '/artist'}
 								{#if isActive}
 									<svg viewBox="0 0 24 24" fill="none">
 										<path
@@ -285,7 +263,6 @@
 								{/if}
 							{/if}
 						</span>
-					{/if}
 				</button>
 			{/each}
 		</div>
@@ -418,39 +395,5 @@
 	.mobile-icon svg {
 		width: 100%;
 		height: 100%;
-	}
-
-	.mobile-avatar-ring {
-		width: 28px;
-		height: 28px;
-		border-radius: 999px;
-		background: var(--surface);
-		border: 1.5px solid var(--line);
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		overflow: hidden;
-		pointer-events: none;
-		transition:
-			border-color 0.2s ease,
-			background-color 0.2s ease;
-	}
-
-	.mobile-avatar-ring.is-active {
-		background: transparent;
-		border-color: transparent;
-	}
-
-	.mobile-avatar-img {
-		width: 100%;
-		height: 100%;
-		border-radius: 999px;
-		object-fit: cover;
-		display: block;
-	}
-
-	.mobile-avatar-svg {
-		width: 18px;
-		height: 18px;
 	}
 </style>

@@ -99,15 +99,19 @@ export class ArtistCategoryController {
 	}
 
 	private get hasActiveFilters(): boolean {
-		return countActiveFilters({
-			genres: catalogFeed.filterState.genres,
-			regions: [],
-			statuses: [],
-			concertTypes: [],
-			forms: [],
-			priceRange: null,
-			sort: ''
-		}) > 0;
+		return (
+			countActiveFilters({
+				genres: catalogFeed.filterState.genres,
+				artistGenders: catalogFeed.filterState.artistGenders,
+				artistTypes: catalogFeed.filterState.artistTypes,
+				regions: [],
+				statuses: [],
+				concertTypes: [],
+				forms: [],
+				priceRange: null,
+				sort: ''
+			}) > 0
+		);
 	}
 
 	/** 상위 섹션 활성 상태 및 검색/필터/피드 파라미터 동기화 */

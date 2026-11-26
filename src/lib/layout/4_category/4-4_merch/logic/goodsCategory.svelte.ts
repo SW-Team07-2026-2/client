@@ -131,11 +131,7 @@ export class GoodsCategoryController {
 				return;
 			}
 
-			const optLabel = (firstAvail.size || firstAvail.name || '').trim();
-			const suffix = optLabel && optLabel !== '기본' && optLabel !== 'FREE' ? ` (${optLabel})` : '';
-			await addOptionToCart(firstAvail.id, 1, {
-				successMessage: `장바구니에 담았습니다.${suffix}`
-			});
+			await addOptionToCart(firstAvail.id, 1);
 		} catch (err) {
 			console.error('Quick add goods to cart failed:', err);
 			toast.error('장바구니에 담지 못했습니다. 잠시 후 다시 시도해 주세요.');
