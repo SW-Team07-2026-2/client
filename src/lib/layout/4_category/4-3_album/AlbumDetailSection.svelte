@@ -41,6 +41,7 @@
 	maxOrderQty={controller.maxOrderQty}
 	totalPrice={controller.totalPrice}
 	cartSubmitting={controller.cartSubmitting}
+	inCart={controller.isCurrentOptionInCart}
 	collectionSubmitting={controller.collectionSubmitting}
 	isCollected={controller.isCurrentOptionCollected}
 	{mobile}
@@ -51,6 +52,7 @@
 	onSelectOption={controller.selectOption}
 	onStepQty={controller.stepQty}
 	onAddToCart={controller.addToCart}
+	onGoToCart={controller.goToCart}
 	onToggleCollection={controller.toggleCollection}
 	onShareLink={controller.shareLink}
 />

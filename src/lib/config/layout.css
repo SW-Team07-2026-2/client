@@ -43,6 +43,8 @@
 	--content-padding-x: 1.5rem;
 	--content-header-padding-x: calc(var(--content-padding-x));
 	--content-padding-x-mobile: 1rem;
+	--pc-catalog-card-min-width: 180px;
+	--pc-catalog-column-gap: 1.85rem;
 	--detail-frame-gap: 16px;
 	--detail-frame-margin-top: 0px;
 	--detail-frame-margin-right: 0px;

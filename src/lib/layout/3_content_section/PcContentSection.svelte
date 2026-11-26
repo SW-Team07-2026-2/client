@@ -27,7 +27,7 @@
 	const filterOpen = $derived(contentCtrl?.isFilterOpen(section.key) ?? false);
 
 	const initialCat = untrack(() => (isFilterableCategory(section.key) ? section.key : null));
-	const detailCtrl = initialCat ? new DetailStageController(initialCat) : null;
+	const detailCtrl = initialCat ? new DetailStageController(initialCat, false) : null;
 
 	let listAreaEl = $state<HTMLDivElement | null>(null);
 	let listFadeAnim: Animation | null = null;

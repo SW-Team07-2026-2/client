@@ -5,7 +5,7 @@ import {
 	type CatalogArtist
 } from '#lib/common/catalog/artists';
 import { toast } from '#lib/common/logic';
-import { copyCurrentPageLink } from '../../_shared/logic/shareLink';
+import { shareCurrentPage } from '../../_shared/logic/shareLink';
 import { artistDetailState } from './artistDetailState.svelte';
 
 /**
@@ -20,7 +20,7 @@ export class ArtistDetailController {
 	following = $state(false);
 	followLoading = $state(false);
 	moreOpen = $state(false);
-	accentColor = $state<string>('var(--white)');
+	accentColor = $state<string>('');
 
 	private currentId: number | null = null;
 	private loadToken = 0;
@@ -34,7 +34,11 @@ export class ArtistDetailController {
 
 		const cached = artistDetailState.getCachedArtist(artistId);
 		this.artist = cached?.artist ?? null;
-		this.accentColor = cached?.waveColor || 'var(--white)';
+		const cachedWave = cached?.waveColor?.trim() ?? '';
+		this.accentColor =
+			cachedWave && cachedWave !== 'var(--muted-wave)' && cachedWave !== 'var(--white)'
+				? cachedWave
+				: '';
 
 		const cachedFollow = artistDetailState.getFollowing(artistId);
 		this.following = cachedFollow ?? false;
@@ -52,8 +56,7 @@ export class ArtistDetailController {
 
 	setAccentColor = (color: string): void => {
 		const trimmed = color?.trim();
-		if (!trimmed || trimmed === 'var(--muted-wave)') {
-			this.accentColor = 'var(--white)';
+		if (!trimmed || trimmed === 'var(--muted-wave)' || trimmed === 'var(--white)') {
 			return;
 		}
 		this.accentColor = trimmed;
@@ -95,9 +98,14 @@ export class ArtistDetailController {
 		}
 	};
 
-	/** 현재 아티스트 페이지 URL 공유(클립보드 복사) */
+	/** 현재 아티스트 페이지 OS 공유 시트 호출 (미지원 환경은 클립보드 복사 폴백) */
 	shareLink = async (): Promise<void> => {
-		await copyCurrentPageLink('아티스트 링크가 복사되었습니다.');
+		const name = this.artist?.name?.trim();
+		await shareCurrentPage({
+			title: name ? `${name} · INDIG` : 'INDIG 아티스트',
+			text: name ? `${name} 아티스트 페이지를 확인해 보세요.` : undefined,
+			fallbackSuccessMessage: '아티스트 링크가 복사되었습니다.'
+		});
 	};
 
 	private async fetchDetail(artistId: number, token: number): Promise<void> {

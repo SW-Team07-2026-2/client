@@ -41,7 +41,13 @@
 				{#if mobile}
 					<MbGoodsItem {goods} {interactive} onSelect={controller.selectGoods} />
 				{:else}
-					<PcGoodsItem {goods} {interactive} onSelect={controller.selectGoods} />
+					<PcGoodsItem
+						{goods}
+						{interactive}
+						cartLoading={controller.isAddingToCart(goods.id)}
+						onSelect={controller.selectGoods}
+						onQuickAddToCart={controller.quickAddToCart}
+					/>
 				{/if}
 			{/each}
 		</div>
@@ -70,8 +76,8 @@
 	}
 
 	.goods-grid.is-pc {
-		grid-template-columns: repeat(auto-fill, minmax(204px, 1fr));
-		column-gap: 1.5rem;
+		grid-template-columns: repeat(auto-fill, minmax(var(--pc-catalog-card-min-width, 180px), 1fr));
+		column-gap: var(--pc-catalog-column-gap, 1.85rem);
 		row-gap: 2.35rem;
 	}
 

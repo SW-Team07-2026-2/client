@@ -3,6 +3,8 @@ import { goto, preloadCode } from '$app/navigation';
 import { page } from '$app/state';
 import { catalogFeed, detailOverlay, isMobile } from '#lib/common/logic';
 import { prefersReducedMotion } from '#lib/common/type/spring';
+import { isCartOrCheckoutRoute } from '#lib/config/routes';
+import { FallbackCurtainHelper } from './fallbackCurtain';
 import {
 	SLIDE_MOTION,
 	createKeepAliveSlideController,
@@ -46,7 +48,10 @@ export class MainSectionController {
 
 	exitingSection = $state<MainSectionKey | null>(null);
 	exitingDeltaY = $state(0);
+	exitingPayFlow = $state(false);
+	payFlowExitTop = $state(0);
 	isSliding = $state(false);
+	isVerticalSliding = $state(false);
 	swipePreviewSection = $state<MainSectionKey | null>(null);
 	swipePreviewTop = $state(0);
 	isSwiping = $state(false);
@@ -60,18 +65,20 @@ export class MainSectionController {
 	controlOffsetY = $state(0);
 
 	private paneEls: Partial<Record<MainSectionKey, HTMLDivElement>> = {};
+	private payFlowPaneEl: HTMLDivElement | undefined;
+	private fallbackCurtain = new FallbackCurtainHelper();
 	private pinnedHeaderEl: HTMLDivElement | undefined;
 	private pinnedControlEl: HTMLDivElement | undefined;
 	private slideController = createKeepAliveSlideController();
 
-	// 목록 스크롤과 상세 스크롤을 완전히 분리 기억
-	private listScrollPositions: Record<MainSectionKey, number> = {
+	// 목록 스크롤과 상세 스크롤을 완전히 분리 기억 (모바일 상세 프레임 슬라이드 위치 동기화를 위해 $state 사용)
+	private listScrollPositions = $state<Record<MainSectionKey, number>>({
 		artist: 0,
 		concert: 0,
 		album: 0,
 		goods: 0,
 		mypage: 0
-	};
+	});
 	private detailScrollPositions: Record<string, number> = {};
 
 	private preNavScrollY = 0;
@@ -81,9 +88,13 @@ export class MainSectionController {
 	private pendingFromHeaderHeight = 0;
 	private pendingSwipeOffsetPx = 0;
 	private pendingSwipeDurationMs = 0;
+	private pendingExitPayFlow = false;
+	private pendingPayFlowExitTop = 0;
 	private lastTrackedSection: MainSectionKey | null = null;
 	private swipeFallbackTimer: ReturnType<typeof setTimeout> | undefined;
 	private transitionScrollRafId = 0;
+	private idlePremountTimers: ReturnType<typeof setTimeout>[] = [];
+	private idleCallbackIds: number[] = [];
 
 	private cancelTransitionScroll(): void {
 		if (this.transitionScrollRafId) {
@@ -172,10 +183,52 @@ export class MainSectionController {
 		this.pinnedControlEl = el;
 	};
 
+	registerFallbackPaneEl = (el: HTMLDivElement | undefined): void => {
+		this.fallbackCurtain.registerPaneEl(el);
+	};
+
+	registerFallbackExitHostEl = (el: HTMLDivElement | undefined): void => {
+		this.fallbackCurtain.registerExitHostEl(el);
+	};
+
+	registerPayFlowPaneEl = (el: HTMLDivElement | undefined): void => {
+		this.payFlowPaneEl = el;
+	};
+
 	ensureMounted = (key: MainSectionKey): void => {
 		if (!this.mountedSections[key]) {
 			this.mountedSections[key] = true;
 		}
+	};
+
+	/**
+	 * 초기 렌더링 이후 유휴 시간(requestIdleCallback)을 활용해 아직 마운트되지 않은
+	 * 나머지 카테고리 Keep-Alive 패널을 순차 프리마운트합니다.
+	 * 첫 카테고리 이동 시 DOM 생성 · API 초기화를 건너뛰고 즉시 슬라이드 전환합니다.
+	 */
+	premountIdleSections = (): void => {
+		if (typeof window === 'undefined') return;
+		const unmounted = MAIN_SECTION_KEYS.filter((key) => !this.mountedSections[key]);
+		unmounted.forEach((key, idx) => {
+			const timer = setTimeout(
+				() => {
+					if (this.mountedSections[key]) return;
+					if (typeof window.requestIdleCallback === 'function') {
+						const id = window.requestIdleCallback(
+							() => {
+								this.ensureMounted(key);
+							},
+							{ timeout: 600 }
+						);
+						this.idleCallbackIds.push(id);
+					} else {
+						this.ensureMounted(key);
+					}
+				},
+				180 + idx * 160
+			);
+			this.idlePremountTimers.push(timer);
+		});
 	};
 
 	getSavedScrollY = (pathname?: string | null): number => {
@@ -196,9 +249,6 @@ export class MainSectionController {
 	};
 
 	getSectionListScrollY = (key: MainSectionKey): number => {
-		if (key === this.activeSection && typeof window !== 'undefined') {
-			return Math.max(0, window.scrollY);
-		}
 		return this.listScrollPositions[key] ?? 0;
 	};
 
@@ -331,10 +381,133 @@ export class MainSectionController {
 						}
 					});
 				});
+			} else if (prevKey && !activeKey) {
+				// 메인 섹션 -> 독립 섹션(/cart, /checkout 등): 메인 섹션이 통째로 아래로 내려가고 위에서 새 섹션이 내려옴
+				this.fallbackCurtain.clear();
+				this.exitingPayFlow = false;
+				this.payFlowExitTop = 0;
+				const fromIsDetail = this.isSectionDetail(prevKey);
+				const fromHeaderH = !isMobile.current && !fromIsDetail ? this.pendingFromHeaderHeight : 0;
+				const baseExitingDeltaY = this.pendingExitingDeltaY;
+				this.pendingExitingDeltaY = 0;
+
+				this.exitingSection = prevKey;
+				this.exitingDeltaY = baseExitingDeltaY + fromHeaderH;
+				this.isVerticalSliding = true;
+
+				const hadHeader = !isMobile.current && !fromIsDetail;
+				const hadControl = getMainSection(prevKey).supportsOptions && !fromIsDetail;
+				this.headerSection = hadHeader ? prevKey : null;
+				this.headerOffsetY = hadHeader ? baseExitingDeltaY : 0;
+				this.controlSection = hadControl ? prevKey : null;
+				this.controlOffsetY =
+					hadControl && !isMobile.current ? baseExitingDeltaY + fromHeaderH : 0;
+
+				const isLivePayFlow = isCartOrCheckoutRoute(pathname);
+				void tick().then(() => {
+					const outEl = this.paneEls[prevKey];
+					const inEl =
+						isLivePayFlow && this.payFlowPaneEl
+							? this.payFlowPaneEl
+							: this.fallbackCurtain.paneEl;
+					const elementsOut: (HTMLElement | undefined)[] = [outEl];
+					if (hadHeader && this.pinnedHeaderEl) elementsOut.push(this.pinnedHeaderEl);
+					if (hadControl && this.pinnedControlEl) elementsOut.push(this.pinnedControlEl);
+
+					this.slideController.start({
+						elementsOut,
+						elementsIn: [inEl],
+						dir: -1,
+						axis: 'y',
+						onStateChange: (sliding) => {
+							this.isSliding = sliding;
+							if (!sliding) this.isVerticalSliding = false;
+						},
+						onFinish: () => {
+							this.exitingSection = null;
+							this.exitingDeltaY = 0;
+							this.stageMinHeight = '';
+							this.headerSection = null;
+							this.headerOffsetY = 0;
+							this.controlSection = null;
+							this.controlOffsetY = 0;
+							this.isVerticalSliding = false;
+						}
+					});
+				});
+			} else if (!prevKey && activeKey) {
+				// 독립 섹션(/cart, /checkout 등) -> 메인 섹션 복귀:
+				// Keep-Alive PayFlow는 cloneNode 없이 라이브 패널을 100dvh 커튼으로 잘라 위로 퇴장시키고,
+				// 그 외 폴백 라우트(/payments/*)만 FallbackCurtain 스냅샷을 사용합니다.
+				const toIsDetail = activeDetailId !== null;
+				this.pendingExitingDeltaY = 0;
+
+				const useLivePayFlowExit = this.pendingExitPayFlow && Boolean(this.payFlowPaneEl);
+				const exitTop = this.pendingPayFlowExitTop;
+				this.pendingExitPayFlow = false;
+				this.pendingPayFlowExitTop = 0;
+
+				this.exitingPayFlow = useLivePayFlowExit;
+				this.payFlowExitTop = useLivePayFlowExit ? exitTop : 0;
+				this.exitingSection = null;
+				this.exitingDeltaY = 0;
+				this.isVerticalSliding = true;
+
+				const hasHeader = !isMobile.current && !toIsDetail;
+				const hasControl = getMainSection(activeKey).supportsOptions && !toIsDetail;
+				this.headerSection = hasHeader ? activeKey : null;
+				this.headerOffsetY = 0;
+				this.controlSection = hasControl ? activeKey : null;
+				this.controlOffsetY = 0;
+
+				void tick().then(() => {
+					const inEl = this.paneEls[activeKey];
+					const elementsIn: (HTMLElement | undefined)[] = [inEl];
+					if (hasHeader && this.pinnedHeaderEl) elementsIn.push(this.pinnedHeaderEl);
+					if (hasControl && this.pinnedControlEl) elementsIn.push(this.pinnedControlEl);
+
+					const outEl = useLivePayFlowExit
+						? this.payFlowPaneEl
+						: this.fallbackCurtain.mountExitCurtain();
+
+					this.slideController.start({
+						elementsOut: outEl ? [outEl] : [],
+						elementsIn,
+						dir: 1,
+						axis: 'y',
+						onStateChange: (sliding) => {
+							this.isSliding = sliding;
+							if (!sliding) this.isVerticalSliding = false;
+						},
+						onFinish: () => {
+							this.fallbackCurtain.clear();
+							this.exitingPayFlow = false;
+							this.payFlowExitTop = 0;
+							this.exitingSection = null;
+							this.exitingDeltaY = 0;
+							this.stageMinHeight = '';
+							this.headerSection =
+								this.activeSection && !this.isDetailRoute ? this.activeSection : null;
+							this.headerOffsetY = 0;
+							this.controlSection =
+								this.activeSection &&
+								getMainSection(this.activeSection).supportsOptions &&
+								!this.isDetailRoute
+									? this.activeSection
+									: null;
+							this.controlOffsetY = 0;
+							this.isVerticalSliding = false;
+						}
+					});
+				});
 			} else {
+				this.fallbackCurtain.clear();
+				this.exitingPayFlow = false;
+				this.payFlowExitTop = 0;
 				this.slideController.cancel((sliding) => {
 					this.isSliding = sliding;
 				});
+				this.isVerticalSliding = false;
 				this.exitingSection = null;
 				this.exitingDeltaY = 0;
 				this.headerSection = activeKey && !this.isDetailRoute ? activeKey : null;
@@ -356,7 +529,7 @@ export class MainSectionController {
 	): void => {
 		if (typeof window === 'undefined' || !fromPath || !toPath || fromPath === toPath) return;
 
-		detailOverlay.recordNavigation(fromPath, toPath);
+		detailOverlay.recordNavigation(fromPath, toPath, isMobile.current);
 
 		const fromKey = resolveMainSectionKey(fromPath);
 		const toKey = resolveMainSectionKey(toPath);
@@ -393,8 +566,28 @@ export class MainSectionController {
 			return;
 		}
 
-		// 3) 다른 카테고리/섹션 간 전환 (목록/상세 각각 독립 스크롤 기억·복원)
-		if (fromDetailId !== null) {
+		// 3) 다른 카테고리/섹션 간 전환 (목록/상세/독립 섹션 각각 독립 스크롤 기억·복원)
+		if (!fromKey && toKey) {
+			if (isCartOrCheckoutRoute(fromPath) && this.payFlowPaneEl) {
+				this.fallbackCurtain.clearPendingSnapshot();
+				this.pendingExitPayFlow = true;
+				this.pendingPayFlowExitTop = Math.round(this.payFlowPaneEl.getBoundingClientRect().top);
+			} else {
+				this.pendingExitPayFlow = false;
+				this.pendingPayFlowExitTop = 0;
+				this.fallbackCurtain.captureSnapshot();
+			}
+		} else {
+			this.pendingExitPayFlow = false;
+			this.pendingPayFlowExitTop = 0;
+			this.fallbackCurtain.clearPendingSnapshot();
+		}
+
+		if (isMobile.current) {
+			if (fromKey) {
+				this.listScrollPositions[fromKey] = this.preNavScrollY;
+			}
+		} else if (fromDetailId !== null) {
 			this.detailScrollPositions[fromPath] = this.preNavScrollY;
 		} else if (fromKey) {
 			this.listScrollPositions[fromKey] = this.preNavScrollY;
@@ -405,13 +598,15 @@ export class MainSectionController {
 			this.pendingTargetScrollY = targetY;
 
 			// PC에서 이전/다음 페이지 모두 217px 이하 스크롤이면, 헤더·옵션바를 제자리에 두고 부드럽게 스크롤 이동하며 전환
-			const smoothPcHeaderTransition = shouldUseSmoothPcScroll({
-				isMobile: isMobile.current,
-				fromDetailId,
-				toDetailId,
-				fromY: this.preNavScrollY,
-				toY: targetY
-			});
+			const smoothPcHeaderTransition =
+				Boolean(fromKey) &&
+				shouldUseSmoothPcScroll({
+					isMobile: isMobile.current,
+					fromDetailId,
+					toDetailId,
+					fromY: this.preNavScrollY,
+					toY: targetY
+				});
 
 			if (smoothPcHeaderTransition) {
 				this.pendingSmoothScrollFromY = this.preNavScrollY;
@@ -422,6 +617,11 @@ export class MainSectionController {
 
 			const requiredHeight = Math.max(targetY, this.preNavScrollY);
 			this.stageMinHeight = requiredHeight > 0 ? `${requiredHeight + window.innerHeight}px` : '';
+		} else if (fromKey) {
+			// 메인 섹션 -> 독립 섹션(/cart 등): 상단(y = 0)에서 시작하고 퇴장 메인은 현재 스크롤 위치 유지 후 하강
+			this.pendingTargetScrollY = 0;
+			this.pendingExitingDeltaY = -this.preNavScrollY;
+			this.stageMinHeight = `${window.innerHeight}px`;
 		}
 	};
 
@@ -472,6 +672,9 @@ export class MainSectionController {
 				catalogFeed.getCategoryNavHref(getMainSection(key).href, this.pathname),
 			getSavedScrollY: (pathname) => this.getSavedScrollY(pathname),
 			onSwipingChange: (swiping) => {
+				if (swiping && this.activeSection && typeof window !== 'undefined') {
+					this.listScrollPositions[this.activeSection] = Math.max(0, window.scrollY);
+				}
 				this.isSwiping = swiping;
 			},
 			onPreviewChange: (key, topOffset) => {
@@ -532,9 +735,19 @@ export class MainSectionController {
 
 	cleanup = (): void => {
 		clearTimeout(this.swipeFallbackTimer);
+		for (const t of this.idlePremountTimers) clearTimeout(t);
+		this.idlePremountTimers = [];
+		if (typeof window !== 'undefined' && typeof window.cancelIdleCallback === 'function') {
+			for (const id of this.idleCallbackIds) window.cancelIdleCallback(id);
+		}
+		this.idleCallbackIds = [];
 		this.cancelTransitionScroll();
+		this.fallbackCurtain.clear();
+		this.exitingPayFlow = false;
+		this.payFlowExitTop = 0;
 		this.slideController.cancel((sliding) => {
 			this.isSliding = sliding;
 		});
+		this.isVerticalSliding = false;
 	};
 }

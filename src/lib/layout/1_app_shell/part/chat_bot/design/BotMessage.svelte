@@ -2,7 +2,7 @@
 	import { fade } from 'svelte/transition';
 	import type { ChatActionPayload } from '../logic/chatStream';
 	import type { ChatMessage } from '../logic/types';
-	import MarkdownViewer from './MarkdownViewer.svelte';
+	import MarkdownViewer from '#lib/common/design/MarkdownViewer.svelte';
 
 	interface Props {
 		message: ChatMessage;

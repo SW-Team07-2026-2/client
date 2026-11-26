@@ -3,6 +3,7 @@
 	import { LoadingSpinner } from '#lib/dedicated/loading';
 	import { resolveArtistImageUrl, type CatalogArtist } from '#lib/common/catalog/artists';
 	import DetailAmbientGlow from '../../_shared/design/DetailAmbientGlow.svelte';
+	import DetailTopNav from '#lib/common/design/DetailTopNav.svelte';
 	import ArtistFollowButton from '../part/detail_part/ArtistFollowButton.svelte';
 	import ArtistShareButton from '../part/detail_part/ArtistShareButton.svelte';
 	import ArtistMoreToggleButton from '../part/detail_part/ArtistMoreToggleButton.svelte';
@@ -46,14 +47,16 @@
 	/** 정사각형 한 변당 유지할 물결 개수 (이미지 크기에 비례해 waveLength 자동 조절) */
 	const HERO_WAVES_PER_EDGE = 2.5;
 
-	let extractedWaveColor = $state('var(--white)');
+	let extractedWaveColor = $state('');
 	let heroMediaWidth = $state(340);
 
 	const imageSrc = $derived(artist ? resolveArtistImageUrl(artist) : '');
 	const glowColor = $derived(
-		extractedWaveColor && extractedWaveColor !== 'var(--muted-wave)'
+		extractedWaveColor &&
+			extractedWaveColor !== 'var(--muted-wave)' &&
+			extractedWaveColor !== 'var(--white)'
 			? extractedWaveColor
-			: accentColor || 'var(--white)'
+			: accentColor
 	);
 	const heroImageSetting = $derived.by(() => {
 		const w = Math.max(160, heroMediaWidth);
@@ -78,24 +81,7 @@
 		<DetailAmbientGlow color={glowColor} />
 
 		<div class="detail-container">
-			<div class="detail-top-nav">
-				<button type="button" class="detail-back-btn" onclick={onClose}>
-					<svg
-						width="16"
-						height="16"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						aria-hidden="true"
-					>
-						<path d="m15 18-6-6 6-6" />
-					</svg>
-					<span>{backLabel}</span>
-				</button>
-			</div>
+			<DetailTopNav {mobile} {backLabel} onBack={onClose} />
 
 			{#if isLoading && !artist}
 				<div class="detail-state-box" role="status" aria-live="polite">
@@ -184,34 +170,6 @@
 		margin: 0 auto;
 		padding: 1.5rem var(--content-padding-x) 4rem;
 		box-sizing: border-box;
-	}
-
-	.detail-top-nav {
-		margin-bottom: 1.75rem;
-	}
-
-	.detail-back-btn {
-		height: 34px;
-		padding: 0 0.85rem 0 0.65rem;
-		border-radius: 999px;
-		border: var(--thin-border);
-		background: color-mix(in srgb, var(--surface) 75%, transparent);
-		color: var(--muted);
-		font: inherit;
-		font-size: 0.84rem;
-		font-weight: var(--fw-medium);
-		display: inline-flex;
-		align-items: center;
-		gap: 0.3rem;
-		cursor: pointer;
-		transition:
-			color 0.16s ease,
-			background-color 0.16s ease;
-	}
-
-	.detail-back-btn:hover {
-		color: var(--white);
-		background: var(--surface-2);
 	}
 
 	.detail-state-box {

@@ -6,6 +6,10 @@ export interface CategoryDetailSlot {
 	phase: DetailPhase;
 	activeId: number | null;
 	closingId: number | null;
+	/** [PC 전용] 이 카테고리 상세에서 '이전' 버튼 클릭 시 복귀할 상세 경로 (목록 복귀 시 null) */
+	returnPath: string | null;
+	/** [모바일 전용] 현재 상세가 자기 카테고리 목록(`/${category}`)에서 바로 진입했는지 여부 */
+	enteredFromOwnList: boolean;
 }
 
 const CATEGORIES: readonly CatalogCategoryKey[] = ['artist', 'concert', 'album', 'goods'];
@@ -20,7 +24,9 @@ function createEmptySlot(): CategoryDetailSlot {
 	return {
 		phase: 'closed',
 		activeId: null,
-		closingId: null
+		closingId: null,
+		returnPath: null,
+		enteredFromOwnList: false
 	};
 }
 
@@ -51,8 +57,10 @@ class DetailOverlayStore {
 	});
 
 	private fallbackTimers = new Map<CatalogCategoryKey, ReturnType<typeof setTimeout>>();
-	/** 상세 -> 상세 이동 시 복귀 대상 경로를 추적하는 인앱 히스토리 스택 */
+	/** 상세 내부 링크/버튼을 통해 이동한 복귀 대상 경로 스택 */
 	private historyStack = $state<string[]>([]);
+	/** 상세 내부에서 다른 상세로 이동하기 직전에 등록되는 목표 경로 */
+	private pendingInDetailTarget: string | null = null;
 
 	get previousDetailPath(): string | null {
 		return this.historyStack.length > 0 ? this.historyStack[this.historyStack.length - 1] : null;
@@ -63,34 +71,80 @@ class DetailOverlayStore {
 	}
 
 	/**
-	 * 라우트 이동 시 상세 히스토리 스택을 동기화합니다.
-	 * - 목록 등 비-상세 페이지로 이동하거나 목록 -> 상세 진입 시 스택을 초기화합니다.
-	 * - 상세 -> 상세 이동 시, 직전 스택 최상단으로의 복귀면 pop, 신규 점프면 push합니다.
+	 * 상세 페이지 내부의 링크/버튼(예: 앨범 상세 -> 아티스트 상세)으로
+	 * 다른 상세 페이지로 이동하기 직전에 호출합니다.
+	 * 이 마크가 있을 때만 '이전' 복귀 히스토리에 기록됩니다.
 	 */
-	recordNavigation(fromPath?: string | null, toPath?: string | null): void {
+	markInDetailJump(targetPath: string): void {
+		this.pendingInDetailTarget = normalizeDetailPath(targetPath);
+	}
+
+	/**
+	 * 라우트 이동 시 상세 히스토리 스택과 진입 대상 슬롯의 복귀 상태를 동기화합니다.
+	 * - 모바일: '이전' 히스토리를 사용하지 않으며, 자기 카테고리 목록에서 바로 진입했는지 여부만 기록합니다.
+	 * - PC: 상세 내부 점프(markInDetailJump)일 때만 히스토리에 push하고, 복귀 시 pop합니다.
+	 * - 퇴장하는 출발지 슬롯의 상태는 좌우 슬라이드 중 아이콘이 바뀌지 않도록 유지합니다.
+	 */
+	recordNavigation(fromPath?: string | null, toPath?: string | null, mobile = false): void {
 		const from = normalizeDetailPath(fromPath);
 		const to = normalizeDetailPath(toPath);
+		const expectedJumpTarget = this.pendingInDetailTarget;
+		this.pendingInDetailTarget = null;
+
 		if (!from || !to || from === to) return;
 
 		const fromDetail = parseCatalogDetailRoute(from);
 		const toDetail = parseCatalogDetailRoute(to);
 
+		if (mobile) {
+			if (this.historyStack.length > 0) {
+				this.historyStack = [];
+			}
+			if (toDetail) {
+				const slot = this.slots[toDetail.category];
+				slot.returnPath = null;
+				slot.enteredFromOwnList = from === `/${toDetail.category}`;
+			}
+			return;
+		}
+
 		if (!toDetail || !fromDetail) {
 			if (this.historyStack.length > 0) {
 				this.historyStack = [];
 			}
+			if (toDetail) {
+				const slot = this.slots[toDetail.category];
+				slot.returnPath = null;
+				slot.enteredFromOwnList = from === `/${toDetail.category}`;
+			}
+			return;
+		}
+
+		if (expectedJumpTarget === to) {
+			const next = [...this.historyStack, from];
+			this.historyStack =
+				next.length > MAX_DETAIL_HISTORY ? next.slice(next.length - MAX_DETAIL_HISTORY) : next;
+			const slot = this.slots[toDetail.category];
+			slot.returnPath = from;
+			slot.enteredFromOwnList = false;
 			return;
 		}
 
 		const top = this.historyStack[this.historyStack.length - 1];
 		if (top === to) {
 			this.historyStack = this.historyStack.slice(0, -1);
+			const slot = this.slots[toDetail.category];
+			slot.returnPath = this.previousDetailPath;
+			slot.enteredFromOwnList = false;
 			return;
 		}
 
-		const next = [...this.historyStack, from];
-		this.historyStack =
-			next.length > MAX_DETAIL_HISTORY ? next.slice(next.length - MAX_DETAIL_HISTORY) : next;
+		if (this.historyStack.length > 0) {
+			this.historyStack = [];
+		}
+		const slot = this.slots[toDetail.category];
+		slot.returnPath = null;
+		slot.enteredFromOwnList = false;
 	}
 
 	private clearTimer(category: CatalogCategoryKey): void {
@@ -184,6 +238,8 @@ class DetailOverlayStore {
 		slot.phase = 'closed';
 		slot.activeId = null;
 		slot.closingId = null;
+		slot.returnPath = null;
+		slot.enteredFromOwnList = false;
 	}
 }
 

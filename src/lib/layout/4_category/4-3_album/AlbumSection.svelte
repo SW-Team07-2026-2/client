@@ -70,8 +70,8 @@
 	}
 
 	.album-grid.is-pc {
-		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-		column-gap: 2rem;
+		grid-template-columns: repeat(auto-fill, minmax(var(--pc-catalog-card-min-width, 180px), 1fr));
+		column-gap: var(--pc-catalog-column-gap, 1.85rem);
 		row-gap: 3.25rem;
 		padding-top: 2.25rem;
 	}

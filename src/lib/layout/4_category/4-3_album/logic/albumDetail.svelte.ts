@@ -1,4 +1,3 @@
-import { goto } from '$app/navigation';
 import { api, auth } from '#lib/auth/auth.svelte';
 import {
 	mapPhysicalItem,
@@ -6,10 +5,16 @@ import {
 	type CatalogAlbum,
 	type PhysicalItemDto
 } from '#lib/common/catalog/albums';
-import { loadImageAverageColor } from '#lib/common/design/fluid/imageColor';
+import {
+	DETAIL_GLOW_COLOR_OPTIONS,
+	getCachedImageAverageColor,
+	loadImageAverageColor
+} from '#lib/common/design/fluid/imageColor';
 import { getGenreLabel } from '#lib/common/type/filterOptions';
-import { toast } from '#lib/common/logic';
-import { copyCurrentPageLink } from '../../_shared/logic/shareLink';
+import { cartState, toast } from '#lib/common/logic';
+import { navigateDetailToDetail } from '#lib/common/logic/detailNavigation';
+import { addOptionToCart, goToCart } from '../../_shared/logic/productCart';
+import { shareCurrentPage } from '../../_shared/logic/shareLink';
 import { albumDetailState, type AlbumMediaItem } from './albumDetailState.svelte';
 
 export interface ProductOptionItem {
@@ -120,7 +125,7 @@ export class AlbumDetailController {
 	genres = $state<string[]>([]);
 	releasedAt = $state<string | null>(null);
 	coverUrl = $state('');
-	accentColor = $state<string>('var(--white)');
+	accentColor = $state<string>('');
 	tracks = $state<AlbumTrackItem[]>([]);
 
 	editions = $state<AlbumPhysicalEdition[]>([]);
@@ -200,6 +205,10 @@ export class AlbumDetailController {
 		return typeof this.collectionByOption[opt.id] === 'number';
 	}
 
+	get isCurrentOptionInCart(): boolean {
+		return cartState.hasOption(this.selectedOption?.id);
+	}
+
 	/** productId 변경 시 캐시 즉시 복원 후 상품·앨범 상세·보유 음반 비동기 동기화 */
 	load = (productId: number): void => {
 		if (this.currentRouteId === productId && this.albumTitle) return;
@@ -211,7 +220,7 @@ export class AlbumDetailController {
 		this.optionsByEdition = {};
 		this.selectedEditionId = productId;
 		this.selectedOptionId = null;
-		this.accentColor = 'var(--white)';
+		this.accentColor = '';
 
 		const cached: CatalogAlbum | null = albumDetailState.getCachedAlbum(productId);
 		if (cached) {
@@ -225,6 +234,10 @@ export class AlbumDetailController {
 			const meta = albumDetailState.getAlbumMeta(cached.albumId);
 			if (meta?.coverUrl) this.coverUrl = meta.coverUrl;
 			if (meta?.title) this.albumTitle = meta.title;
+			if (this.coverUrl) {
+				this.accentColor =
+					getCachedImageAverageColor(this.coverUrl, DETAIL_GLOW_COLOR_OPTIONS) ?? '';
+			}
 		} else {
 			this.albumId = null;
 			this.albumTitle = '';
@@ -234,9 +247,13 @@ export class AlbumDetailController {
 		}
 
 		const token = ++this.loadToken;
+		if (this.coverUrl && !this.accentColor) {
+			void this.resolveAccentGlow(this.coverUrl, token);
+		}
 		void this.fetchInitial(productId, token);
 		if (auth.isLoggedIn) {
 			void this.fetchMyCollections(token);
+			void cartState.ensureLoaded();
 		}
 	};
 
@@ -273,31 +290,16 @@ export class AlbumDetailController {
 		const opt = this.selectedOption;
 		if (!opt || opt.soldOut || this.cartSubmitting) return;
 
-		if (!auth.isLoggedIn) {
-			toast.info('로그인 후 장바구니에 담을 수 있습니다.');
-			return;
-		}
-
 		this.cartSubmitting = true;
 		try {
-			await api(`/api/cart/items/${opt.id}`, {
-				method: 'PUT',
-				body: JSON.stringify({ qty: this.qty })
-			});
-			toast.success('장바구니에 담았습니다.');
-		} catch (err) {
-			const code = (err as { code?: string })?.code;
-			if (code === 'CART_FULL') {
-				toast.error('장바구니가 가득 찼습니다. (최대 20종 · 옵션당 10개)');
-			} else if (code === 'OUT_OF_STOCK') {
-				toast.error('재고가 부족합니다.');
-			} else {
-				console.error('Add to cart failed:', err);
-				toast.error('장바구니에 담지 못했습니다. 잠시 후 다시 시도해 주세요.');
-			}
+			await addOptionToCart(opt.id, this.qty);
 		} finally {
 			this.cartSubmitting = false;
 		}
+	};
+
+	goToCart = (): void => {
+		goToCart();
 	};
 
 	/** 보유 음반(콜렉션) 등록 / 해제 */
@@ -322,7 +324,6 @@ export class AlbumDetailController {
 				const next = { ...this.collectionByOption };
 				delete next[opt.id];
 				this.collectionByOption = next;
-				toast.info('보유 음반에서 제거했습니다.');
 			} else {
 				const created = await api<CollectionItemDto>('/api/members/collections', {
 					method: 'POST',
@@ -337,7 +338,6 @@ export class AlbumDetailController {
 						[opt.id]: created.id
 					};
 				}
-				toast.success('보유 음반에 등록했습니다.');
 			}
 		} catch (err) {
 			console.error('Collection toggle failed:', err);
@@ -349,11 +349,17 @@ export class AlbumDetailController {
 
 	goToArtist = (): void => {
 		if (this.artistId === null) return;
-		void goto(`/artist/${this.artistId}`, { reset: false });
+		navigateDetailToDetail(`/artist/${this.artistId}`);
 	};
 
 	shareLink = async (): Promise<void> => {
-		await copyCurrentPageLink('앨범 링크가 복사되었습니다.');
+		const title = this.albumTitle.trim();
+		const artist = this.artistName.trim();
+		await shareCurrentPage({
+			title: title ? `${title} · INDIG` : 'INDIG 앨범',
+			text: title && artist ? `${artist} - ${title}` : title || undefined,
+			fallbackSuccessMessage: '앨범 링크가 복사되었습니다.'
+		});
 	};
 
 	private async fetchInitial(productId: number, token: number): Promise<void> {
@@ -505,8 +511,8 @@ export class AlbumDetailController {
 
 	private async resolveAccentGlow(url: string, token: number): Promise<void> {
 		const color = await loadImageAverageColor(url);
-		if (token !== this.loadToken) return;
-		this.accentColor = color ?? 'var(--white)';
+		if (token !== this.loadToken || !color) return;
+		this.accentColor = color;
 	}
 
 	private toEdition(mapped: CatalogAlbum, releasedAt: string | null): AlbumPhysicalEdition {

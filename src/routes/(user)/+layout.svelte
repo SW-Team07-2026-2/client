@@ -4,6 +4,8 @@
 	import { page } from '$app/state';
 	import { auth } from '#lib/auth';
 	import { isMobile } from '#lib/common/logic';
+	import { CART_ROUTE_PATH, CHECKOUT_ROUTE_PATH, isPayFlowRoute } from '#lib/config/routes';
+	import { PayFlowStage, type PayFlowStep } from '#lib/dedicated/pay';
 	import { AppShell, mobileScrollVisibility } from '#lib/layout/1_app_shell';
 	import {
 		MainSection,
@@ -34,6 +36,32 @@
 
 	const activeSectionKey = $derived(resolveMainSectionKey(page.url.pathname));
 	const isDetailRoute = $derived(parseMainSectionDetailId(page.url.pathname) !== null);
+	const isPayRoute = $derived(isPayFlowRoute(page.url.pathname));
+	const payFlowStep = $derived.by<PayFlowStep | null>(() => {
+		const normalized = page.url.pathname.replace(/\/+$/, '') || '/';
+		if (normalized === CART_ROUTE_PATH) return 'cart';
+		if (normalized === CHECKOUT_ROUTE_PATH) return 'checkout';
+		return null;
+	});
+
+	// Keep-Alive 장바구니/결제 스테이지: 첫 진입 전 유휴 시간에 백그라운드 프리마운트
+	let payFlowMounted = $state(false);
+	let lastPayFlowStep = $state<PayFlowStep>('cart');
+
+	$effect.pre(() => {
+		if (payFlowStep !== null) {
+			lastPayFlowStep = payFlowStep;
+			payFlowMounted = true;
+		}
+	});
+
+	$effect(() => {
+		if (isCheckingAuth || !auth.isLoggedIn || payFlowMounted) return;
+		const timer = setTimeout(() => {
+			payFlowMounted = true;
+		}, 800);
+		return () => clearTimeout(timer);
+	});
 
 	let ptrState = $state<PullToRefreshState>({
 		pullPx: 0,
@@ -85,8 +113,11 @@
 </script>
 
 {#if !isCheckingAuth && auth.isLoggedIn}
-	<AppShell mobileHeaderAlwaysVisible={isDetailRoute}>
-		<MainSection>
+	<AppShell
+		mobileHeaderAlwaysVisible={isDetailRoute || isPayRoute}
+		hideMobileBottomNav={isPayRoute}
+	>
+		<MainSection payFlowActive={payFlowStep !== null}>
 			{#snippet pinnedHeader({ section })}
 				{#if !isMobile.current && section}
 					<PcContentHeader
@@ -128,6 +159,12 @@
 							onFeedChange={(val) => contentCtrl.setFeedMode(val)}
 						/>
 					{/if}
+				{/if}
+			{/snippet}
+
+			{#snippet payFlow({ active })}
+				{#if payFlowMounted}
+					<PayFlowStage step={payFlowStep ?? lastPayFlowStep} {active} />
 				{/if}
 			{/snippet}
 

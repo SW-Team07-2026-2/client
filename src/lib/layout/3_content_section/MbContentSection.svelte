@@ -28,7 +28,7 @@
 	const hasActiveFilters = $derived(contentCtrl?.hasActiveFilters(section.key) ?? false);
 
 	const initialCat = untrack(() => (isFilterableCategory(section.key) ? section.key : null));
-	const detailCtrl = initialCat ? new DetailStageController(initialCat) : null;
+	const detailCtrl = initialCat ? new DetailStageController(initialCat, true) : null;
 
 	let listAreaEl = $state<HTMLDivElement | null>(null);
 	let listFadeAnim: Animation | null = null;
@@ -87,11 +87,15 @@
 	{/if}
 
 	{#if detailCtrl && filterableKey && detailCtrl.isVisible && detailCtrl.renderId !== null}
+		{@const currentDetailId = detailCtrl.renderId}
 		<MbDetailFrame
-			itemId={detailCtrl.renderId}
+			itemId={currentDetailId}
 			phase={detailCtrl.phase}
+			{active}
 			sliding={isSliding}
 			{listScrollY}
+			savedScrollTop={detailCtrl.getScrollTop(currentDetailId)}
+			onScrollChange={(top) => detailCtrl.saveScrollTop(currentDetailId, top)}
 			onExpandFinish={detailCtrl.finishExpand}
 			onCloseFinish={detailCtrl.finishClose}
 			onClose={detailCtrl.close}

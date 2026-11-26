@@ -20,13 +20,20 @@
 	interface Props {
 		/** 메인 레이아웃(2_main_section)이 들어오는 본문 슬롯 */
 		children: Snippet;
-		/** true면 모바일 상단 헤더를 스크롤 방향과 무관하게 항상 표시 (상세 페이지 등) */
+		/** true면 모바일 상단 헤더를 스크롤 방향과 무관하게 항상 표시 (상세 페이지 · 결제 플로우 등) */
 		mobileHeaderAlwaysVisible?: boolean;
+		/** true면 모바일 하단 네비게이션 바를 숨김 (장바구니 · 결제 등 전용 CTA 바 사용 페이지) */
+		hideMobileBottomNav?: boolean;
 		/** 본문 외 추가 최상위 오버레이 슬롯 */
 		overlay?: Snippet;
 	}
 
-	let { children, mobileHeaderAlwaysVisible = false, overlay }: Props = $props();
+	let {
+		children,
+		mobileHeaderAlwaysVisible = false,
+		hideMobileBottomNav = false,
+		overlay
+	}: Props = $props();
 
 	const ctrl = new AppShellController();
 	const rootSplash = getRootSplashContext();
@@ -124,19 +131,21 @@
 			{/snippet}
 
 			{#snippet centerBody()}
-				<main class="app-shell-body is-mobile">
+				<main class="app-shell-body is-mobile" class:no-bottom-nav={hideMobileBottomNav}>
 					{@render children()}
 				</main>
 			{/snippet}
 
 			{#snippet centerFooter()}
-				<MbNavigationBar
-					items={MOBILE_NAV_ITEMS}
-					selectedValue={ctrl.selectedMobileRoute}
-					profileImageUrl={ctrl.profileImageUrl}
-					onSelect={ctrl.handleMobileNavSelect}
-					onActiveReselect={ctrl.handleMobileActiveReselect}
-				/>
+				{#if !hideMobileBottomNav}
+					<MbNavigationBar
+						items={MOBILE_NAV_ITEMS}
+						selectedValue={ctrl.selectedMobileRoute}
+						profileImageUrl={ctrl.profileImageUrl}
+						onSelect={ctrl.handleMobileNavSelect}
+						onActiveReselect={ctrl.handleMobileActiveReselect}
+					/>
+				{/if}
 			{/snippet}
 
 			{#snippet right()}
@@ -146,7 +155,7 @@
 			{#snippet leftActor({ pane })}
 				<button
 					type="button"
-					class="mb-actor-btn"
+					class="mb-actor-btn is-bot"
 					onclick={() => handleMobileBotActorClick(pane)}
 					aria-label={pane === 'left' ? 'AI 봇 표정 반응 보기' : 'AI 봇과 대화창 열기'}
 				>
@@ -219,6 +228,10 @@
 		);
 	}
 
+	.app-shell-body.is-mobile.no-bottom-nav {
+		padding-bottom: 0;
+	}
+
 	.mb-actor-btn {
 		width: 34px;
 		height: 34px;
@@ -236,7 +249,7 @@
 		-webkit-tap-highlight-color: transparent;
 	}
 
-	.mb-actor-btn:active {
+	.mb-actor-btn:not(.is-bot):active {
 		transform: scale(0.92);
 	}
 

@@ -1,10 +1,8 @@
 export { default as CategoryView } from './CategoryView.svelte';
 export { default as CategoryDetailView } from './CategoryDetailView.svelte';
 export { default as ArtistSection } from './4-1_artist/ArtistSection.svelte';
-export {
-	default as ConcertCategory,
-	type ConcertViewMode
-} from './4-2_concert/ConcertCategory.svelte';
+export { default as ConcertSection } from './4-2_concert/ConcertSection.svelte';
+export { type ConcertViewMode } from './4-2_concert/logic/concertCategory.svelte';
 export { default as AlbumSection } from './4-3_album/AlbumSection.svelte';
 export { default as GoodsSection } from './4-4_merch/GoodsSection.svelte';
 export { default as MyPageCategory } from './4-5_mypage/MyPageCategory.svelte';

@@ -30,7 +30,7 @@
 		reach: 26,
 		bulge: 4,
 		bulgeWidth: 16,
-		layers: 1,
+		layers: 2,
 		layerGap: 0,
 		waveAmp: 0,
 		waveLength: 48,

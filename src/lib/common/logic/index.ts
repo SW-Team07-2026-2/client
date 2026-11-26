@@ -3,6 +3,7 @@ export { useAnalytics } from './useAnalytics.svelte';
 export { bgm } from './bgmManager.svelte';
 export { isMobile } from './isMobile.svelte';
 export { toast } from './toast.svelte';
+export { cartState, type CartItemDto, type CartViewDto } from './cartState.svelte';
 export {
 	catalogFeed,
 	buildCatalogRequestKey,
@@ -14,6 +15,12 @@ export {
 	type CategoryDetailSlot,
 	type DetailPhase
 } from './detailOverlayState.svelte';
+export {
+	navigateDetailToDetail,
+	closeDetailStage,
+	resolveMobilePopstateRedirect,
+	type CloseDetailStageOptions
+} from './detailNavigation';
 export {
 	scrollReveal,
 	type ScrollRevealOptions,

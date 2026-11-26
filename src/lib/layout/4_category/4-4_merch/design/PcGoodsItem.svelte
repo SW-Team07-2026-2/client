@@ -1,27 +1,52 @@
 <script lang="ts">
 	import { scrollReveal } from '#lib/common/logic';
+	import FdLine from '#lib/common/design/fluid/FdLine.svelte';
+	import {
+		DETAIL_GLOW_COLOR_OPTIONS,
+		extractImageAverageColor
+	} from '#lib/common/design/fluid/imageColor';
 	import {
 		formatGoodsPrice,
 		resolveGoodsImageUrl,
 		type CatalogGoods
 	} from '#lib/common/catalog/goods';
 	import type { GoodsSelectPayload } from '../logic/goodsCategory.svelte';
+	import GoodsQuickCartButton from '../part/GoodsQuickCartButton.svelte';
 
 	interface Props {
 		goods: CatalogGoods;
 		interactive?: boolean;
+		cartLoading?: boolean;
 		onSelect?: (payload: GoodsSelectPayload) => void;
+		onQuickAddToCart?: (goods: CatalogGoods) => void;
 	}
 
-	let { goods, interactive = true, onSelect }: Props = $props();
+	let {
+		goods,
+		interactive = true,
+		cartLoading = false,
+		onSelect,
+		onQuickAddToCart
+	}: Props = $props();
 
 	let hovered = $state(false);
 	let focused = $state(false);
+	let imgEl = $state<HTMLImageElement | null>(null);
 
 	const imageUrl = $derived(resolveGoodsImageUrl(goods));
 	const priceText = $derived(formatGoodsPrice(goods.price));
 	const isSoldOut = $derived(goods.badge === '품절');
 	const isActive = $derived(interactive && (hovered || focused));
+	const showQuickCart = $derived((isActive || cartLoading) && !isSoldOut);
+
+	const bottomWaveSetting = {
+		color: 'var(--muted)',
+		layers: 2,
+		layerGap: 18,
+		waveAmp: 6,
+		waveLength: 68,
+		spin: 1.05
+	};
 
 	$effect(() => {
 		if (!interactive) {
@@ -31,11 +56,18 @@
 	});
 
 	function handleSelect() {
+		if (imgEl && imageUrl) {
+			extractImageAverageColor(imgEl, imageUrl, DETAIL_GLOW_COLOR_OPTIONS);
+		}
 		onSelect?.({ goods });
+	}
+
+	function handleQuickCart() {
+		onQuickAddToCart?.(goods);
 	}
 </script>
 
-<!-- PC 전용 굿즈 카드 아이템 (4:5 에디토리얼 룩북 프레임 · hover 리프트 & 줌 · 스크롤 모션, 순수 렌더링) -->
+<!-- PC 전용 굿즈 카드 아이템 (4:5 룩북 프레임 · hover 줌 + 하단 내부 유체 물결 & 빠른 장바구니 버튼, 순수 렌더링) -->
 <article
 	use:scrollReveal={{ topMargin: 76, bottomMargin: 28 }}
 	class="pc-goods-item scroll-reveal"
@@ -62,49 +94,76 @@
 		}
 	}}
 >
-	<button
-		type="button"
-		class="goods-card-btn"
-		aria-label={`${goods.name} - ${goods.artistName}`}
-		onclick={handleSelect}
-	>
-		<div class="goods-media-frame">
-			{#if imageUrl}
-				<img
-					class="goods-img"
-					src={imageUrl}
-					alt={goods.name}
-					loading="lazy"
-					decoding="async"
+	<div class="goods-card-shell">
+		<button
+			type="button"
+			class="goods-card-btn"
+			aria-label={`${goods.name} - ${goods.artistName}`}
+			onclick={handleSelect}
+		>
+			<div class="goods-media-frame">
+				{#if imageUrl}
+					<img
+						bind:this={imgEl}
+						class="goods-img"
+						src={imageUrl}
+						alt={goods.name}
+						crossorigin="anonymous"
+						loading="lazy"
+						decoding="async"
+					/>
+				{:else}
+					<div class="goods-img-fallback" aria-hidden="true"></div>
+				{/if}
+
+				{#if !isSoldOut}
+					<div class="goods-bottom-wave" aria-hidden="true">
+						<FdLine
+							active={showQuickCart}
+							direction="up"
+							thickness={0}
+							baseHeight={18}
+							setting={bottomWaveSetting}
+						/>
+					</div>
+				{/if}
+
+				{#if isSoldOut}
+					<div class="goods-soldout-overlay">
+						<span class="goods-soldout-badge">품절</span>
+					</div>
+				{/if}
+			</div>
+
+			<div class="goods-info">
+				{#if goods.artistName}
+					<span class="goods-artist">{goods.artistName}</span>
+				{/if}
+				<h3 class="goods-name">{goods.name}</h3>
+				{#if goods.category || priceText}
+					<div class="goods-meta-row">
+						{#if goods.category}
+							<span class="goods-category-pill">{goods.category}</span>
+						{/if}
+						{#if priceText}
+							<span class="goods-price">{priceText}</span>
+						{/if}
+					</div>
+				{/if}
+			</div>
+		</button>
+
+		{#if !isSoldOut && onQuickAddToCart}
+			<div class="goods-quick-cart-slot">
+				<GoodsQuickCartButton
+					visible={showQuickCart}
+					loading={cartLoading}
+					ariaLabel={`${goods.name} 장바구니에 바로 담기`}
+					onclick={handleQuickCart}
 				/>
-			{:else}
-				<div class="goods-img-fallback" aria-hidden="true"></div>
-			{/if}
-
-			{#if isSoldOut}
-				<div class="goods-soldout-overlay">
-					<span class="goods-soldout-badge">품절</span>
-				</div>
-			{/if}
-		</div>
-
-		<div class="goods-info">
-			{#if goods.artistName}
-				<span class="goods-artist">{goods.artistName}</span>
-			{/if}
-			<h3 class="goods-name">{goods.name}</h3>
-			{#if goods.category || priceText}
-				<div class="goods-meta-row">
-					{#if goods.category}
-						<span class="goods-category-pill">{goods.category}</span>
-					{/if}
-					{#if priceText}
-						<span class="goods-price">{priceText}</span>
-					{/if}
-				</div>
-			{/if}
-		</div>
-	</button>
+			</div>
+		{/if}
+	</div>
 </article>
 
 <style>
@@ -113,6 +172,11 @@
 		width: 100%;
 		box-sizing: border-box;
 		user-select: none;
+	}
+
+	.goods-card-shell {
+		position: relative;
+		width: 100%;
 	}
 
 	.goods-card-btn {
@@ -145,16 +209,12 @@
 		background: var(--surface);
 		border: var(--thin-border);
 		box-shadow: 0 8px 22px rgba(0, 0, 0, 0.36);
-		transform: translate3d(0, 0, 0);
-		will-change: transform;
 		transition:
-			transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
 			box-shadow 0.34s cubic-bezier(0.22, 1, 0.36, 1),
 			border-color 0.24s ease;
 	}
 
 	.pc-goods-item.is-active .goods-media-frame {
-		transform: translate3d(0, -4px, 0);
 		box-shadow: 0 18px 34px rgba(0, 0, 0, 0.56);
 		border-color: color-mix(in srgb, var(--white) 24%, transparent);
 	}
@@ -177,6 +237,33 @@
 		width: 100%;
 		height: 100%;
 		background: linear-gradient(155deg, var(--surface-2), var(--surface-dim));
+	}
+
+	/* 이미지 하단 모서리 안쪽에서 위 방향으로 일렁이는 어두운 회색 그림자형 유체 물결 */
+	.goods-bottom-wave {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: -2px;
+		z-index: 2;
+		opacity: 0.78;
+		pointer-events: none;
+	}
+
+	/* 4:5 미디어 프레임 하단 중앙(물결 일렁이는 영역)에 배치되는 빠른 장바구니 버튼 슬롯 */
+	.goods-quick-cart-slot {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		aspect-ratio: 4 / 5;
+		z-index: 4;
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+		padding-bottom: 12px;
+		box-sizing: border-box;
+		pointer-events: none;
 	}
 
 	.pc-goods-item.is-sold-out .goods-img {

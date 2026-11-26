@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onDestroy, onMount, type Snippet } from 'svelte';
-	import { afterNavigate, beforeNavigate } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { detailOverlay, isMobile } from '#lib/common/logic';
+	import { resolveMobilePopstateRedirect } from '#lib/common/logic/detailNavigation';
 	import { ContentSection } from '../3_content_section';
 	import { syncDetailListFade } from '../3_content_section/logic/detailTransition';
 	import { setMainSectionContext } from './logic/context';
@@ -29,11 +30,15 @@
 		pinnedControl?: Snippet<
 			[{ section: MainSectionDescriptor; isDetailRoute: boolean; routeDir: SlideDirection }]
 		>;
+		/** Keep-Alive로 유지되는 장바구니 · 주문/결제 플로우 슬롯 */
+		payFlow?: Snippet<[{ active: boolean }]>;
+		/** 현재 라우트가 장바구니 · 주문/결제 플로우인지 여부 */
+		payFlowActive?: boolean;
 		/** 메인 레지스트리에 속하지 않는 예외 라우트 폴백 슬롯 */
 		children?: Snippet;
 	}
 
-	let { pinnedHeader, pinnedControl, children }: Props = $props();
+	let { pinnedHeader, pinnedControl, payFlow, payFlowActive = false, children }: Props = $props();
 
 	const ctrl = new MainSectionController();
 	let stageEl = $state<HTMLDivElement | undefined>(undefined);
@@ -86,6 +91,33 @@
 		};
 	}
 
+	function bindFallbackPane(node: HTMLDivElement) {
+		ctrl.registerFallbackPaneEl(node);
+		return {
+			destroy() {
+				ctrl.registerFallbackPaneEl(undefined);
+			}
+		};
+	}
+
+	function bindFallbackExitHost(node: HTMLDivElement) {
+		ctrl.registerFallbackExitHostEl(node);
+		return {
+			destroy() {
+				ctrl.registerFallbackExitHostEl(undefined);
+			}
+		};
+	}
+
+	function bindPayFlowPane(node: HTMLDivElement) {
+		ctrl.registerPayFlowPaneEl(node);
+		return {
+			destroy() {
+				ctrl.registerPayFlowPaneEl(undefined);
+			}
+		};
+	}
+
 	function bindPinnedHeader(node: HTMLDivElement) {
 		pinnedHeaderEl = node;
 		ctrl.registerPinnedHeaderEl(node);
@@ -133,6 +165,23 @@
 	});
 
 	beforeNavigate((nav) => {
+		// 모바일 OS/브라우저 뒤로가기(popstate) 정책:
+		// - 상세 페이지 -> 현재 보고 있는 카테고리의 목록으로 복귀
+		// - 아티스트 외 목록/메인 탭 -> 아티스트 목록(`/artist`)으로 복귀
+		if (nav.type === 'popstate') {
+			const mobileRedirectTarget = resolveMobilePopstateRedirect(
+				nav.from?.url.pathname,
+				nav.to?.url.pathname
+			);
+			if (mobileRedirectTarget) {
+				nav.cancel();
+				setTimeout(() => {
+					void goto(mobileRedirectTarget, { reset: false, replaceState: true });
+				}, 0);
+				return;
+			}
+		}
+
 		ctrl.handleBeforeNavigate(
 			nav.from?.url.pathname,
 			nav.to?.url.pathname,
@@ -146,6 +195,7 @@
 
 	onMount(() => {
 		ctrl.preloadRoutes();
+		ctrl.premountIdleSections();
 		if (!stageEl) return;
 		return ctrl.attachSwipe(stageEl);
 	});
@@ -165,13 +215,15 @@
 <div
 	class="main-section-root"
 	class:is-sliding={ctrl.isSliding || ctrl.isSwiping || ctrl.exitingSection !== null}
+	class:is-vertical-sliding={ctrl.isVerticalSliding}
 >
 	<!-- 1) 좌우 이동 시 제자리에 유지되는 상단 헤더 영역 (PC 다이나믹 타이틀 헤더) -->
 	{#if pinnedHeader && headerDescriptor}
 		<div
 			use:bindPinnedHeader
 			class="main-pinned-header"
-			class:is-overlay-exit={ctrl.isDetailRoute && (ctrl.isSliding || ctrl.exitingSection !== null)}
+			class:is-overlay-exit={(ctrl.isDetailRoute || ctrl.activeSection === null) &&
+				(ctrl.isSliding || ctrl.exitingSection !== null)}
 			style:top={ctrl.headerOffsetY !== 0 ? `${ctrl.headerOffsetY}px` : undefined}
 			style:pointer-events={ctrl.headerOffsetY !== 0 ? 'none' : undefined}
 		>
@@ -245,11 +297,35 @@
 			{/if}
 		{/each}
 
-		{#if ctrl.activeSection === null && children}
-			<div class="fallback-route-pane">
+		{#if payFlow}
+			<div
+				use:bindPayFlowPane
+				class="pay-flow-keepalive"
+				class:is-active={payFlowActive}
+				class:is-exiting={ctrl.exitingPayFlow}
+				class:is-parked={!payFlowActive && !ctrl.exitingPayFlow}
+				inert={!payFlowActive ? true : undefined}
+				aria-hidden={!payFlowActive ? true : undefined}
+			>
+				<div
+					class="pay-flow-inner"
+					style:transform={ctrl.exitingPayFlow && ctrl.payFlowExitTop !== 0
+						? `translate3d(0, ${ctrl.payFlowExitTop}px, 0)`
+						: undefined}
+				>
+					{@render payFlow({ active: payFlowActive })}
+				</div>
+			</div>
+		{/if}
+
+		{#if ctrl.activeSection === null && !payFlowActive && children}
+			<div use:bindFallbackPane class="fallback-route-pane">
 				{@render children()}
 			</div>
 		{/if}
+
+		<!-- 독립 섹션(/cart, /checkout 등) -> 메인 복귀 시 위로 퇴장하는 스냅샷 호스트 -->
+		<div use:bindFallbackExitHost class="fallback-exit-host" aria-hidden="true"></div>
 	</div>
 </div>
 
@@ -317,6 +393,7 @@
 		position: relative;
 		width: 100%;
 		min-height: 100%;
+		contain: layout style;
 	}
 
 	.main-section-stage.is-sliding .keepalive-pane {
@@ -336,7 +413,83 @@
 		display: none;
 	}
 
+	.main-section-root.is-vertical-sliding {
+		overflow: clip;
+	}
+
 	.fallback-route-pane {
+		position: relative;
+		z-index: 2;
 		width: 100%;
+	}
+
+	.main-section-root.is-vertical-sliding .fallback-route-pane,
+	.main-section-root.is-vertical-sliding .pay-flow-keepalive {
+		will-change: transform;
+	}
+
+	.pay-flow-keepalive {
+		position: relative;
+		z-index: 2;
+		width: 100%;
+		contain: layout style;
+	}
+
+	.pay-flow-keepalive.is-parked {
+		display: none;
+	}
+
+	/* Keep-Alive 장바구니/결제 퇴장 시 cloneNode 없이 라이브 패널을 100dvh 커튼으로 잘라 위로 퇴장 */
+	.pay-flow-keepalive.is-exiting {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 100dvh;
+		overflow: hidden;
+		background: var(--bg);
+		z-index: 6;
+		pointer-events: none;
+		will-change: transform;
+		-webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 84%, transparent 100%);
+		mask-image: linear-gradient(to bottom, #000 0%, #000 84%, transparent 100%);
+	}
+
+	.pay-flow-inner {
+		width: 100%;
+	}
+
+	.fallback-exit-host {
+		position: fixed;
+		inset: 0;
+		z-index: 6;
+		pointer-events: none;
+		overflow: hidden;
+	}
+
+	/* 폴백 독립 페이지(/payments/* 등) 퇴장 시 현재 뷰포트(100dvh)만 잘라내고 하단 경계를 페이드 처리 */
+	.fallback-exit-host :global(.fallback-exit-curtain) {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 100dvh;
+		overflow: hidden;
+		background: var(--bg);
+		pointer-events: none;
+		will-change: transform;
+		-webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 84%, transparent 100%);
+		mask-image: linear-gradient(to bottom, #000 0%, #000 84%, transparent 100%);
+	}
+
+	.fallback-exit-host :global(.fallback-exit-curtain)::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		height: 72px;
+		pointer-events: none;
+		background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--bg) 72%, transparent));
 	}
 </style>

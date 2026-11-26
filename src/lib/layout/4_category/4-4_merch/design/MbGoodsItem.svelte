@@ -5,6 +5,10 @@
 		resolveGoodsImageUrl,
 		type CatalogGoods
 	} from '#lib/common/catalog/goods';
+	import {
+		DETAIL_GLOW_COLOR_OPTIONS,
+		extractImageAverageColor
+	} from '#lib/common/design/fluid/imageColor';
 	import type { GoodsSelectPayload } from '../logic/goodsCategory.svelte';
 
 	interface Props {
@@ -16,6 +20,7 @@
 	let { goods, interactive = true, onSelect }: Props = $props();
 
 	let pressed = $state(false);
+	let imgEl = $state<HTMLImageElement | null>(null);
 
 	const imageUrl = $derived(resolveGoodsImageUrl(goods));
 	const priceText = $derived(formatGoodsPrice(goods.price));
@@ -28,6 +33,9 @@
 	});
 
 	function handleSelect() {
+		if (imgEl && imageUrl) {
+			extractImageAverageColor(imgEl, imageUrl, DETAIL_GLOW_COLOR_OPTIONS);
+		}
 		onSelect?.({ goods });
 	}
 </script>
@@ -60,9 +68,11 @@
 		<div class="goods-media-frame">
 			{#if imageUrl}
 				<img
+					bind:this={imgEl}
 					class="goods-img"
 					src={imageUrl}
 					alt={goods.name}
+					crossorigin="anonymous"
 					loading="lazy"
 					decoding="async"
 				/>

@@ -2,8 +2,9 @@ import { tick } from 'svelte';
 import { prefersReducedMotion } from '#lib/common/type/spring';
 
 export type SlideDirection = 1 | -1;
+export type SlideAxis = 'x' | 'y';
 
-/** 좌우 슬라이드 전환 공통 모션 상수 */
+/** 슬라이드 전환 공통 모션 상수 */
 export const SLIDE_MOTION = {
 	distance: 100,
 	enterDuration: 480,
@@ -20,6 +21,8 @@ export interface KeepAliveSlideParams {
 	elementsOut: (HTMLElement | undefined)[];
 	elementsIn: (HTMLElement | undefined)[];
 	dir: SlideDirection;
+	/** 슬라이드 축 ('x': 좌우 카테고리 전환, 'y': 상하 독립 섹션 전환) */
+	axis?: SlideAxis;
 	startOffsetPx?: number;
 	durationOverrideMs?: number;
 	onStateChange: (sliding: boolean) => void;
@@ -30,23 +33,34 @@ function createSlideAnim(
 	el: HTMLElement | undefined,
 	kind: 'in' | 'out',
 	dir: SlideDirection,
+	axis: SlideAxis,
 	startOffsetPx: number,
 	durationOverrideMs: number
 ): Animation | null {
 	if (!el) return null;
 	el.getAnimations().forEach((a) => a.cancel());
 
-	const offsetX = `${(kind === 'in' ? dir : -dir) * SLIDE_MOTION.distance}%`;
-	const startTransform =
-		startOffsetPx !== 0
-			? kind === 'in'
-				? `translate3d(calc(${dir * SLIDE_MOTION.distance}% + ${startOffsetPx.toFixed(1)}px), 0, 0)`
-				: `translate3d(${startOffsetPx.toFixed(1)}px, 0, 0)`
-			: kind === 'in'
-				? `translate3d(${offsetX}, 0, 0)`
-				: 'translate3d(0, 0, 0)';
-	const endTransform =
-		kind === 'in' ? 'translate3d(0, 0, 0)' : `translate3d(${offsetX}, 0, 0)`;
+	let startTransform: string;
+	let endTransform: string;
+
+	if (axis === 'y') {
+		// dir = -1 (메인 -> 상단에서 내려오는 독립 섹션): in은 -100dvh -> 0, out(메인)은 0 -> +100dvh
+		// dir =  1 (독립 섹션 -> 메인 복귀): in(메인)은 +100dvh -> 0, out(독립 섹션)은 0 -> -100dvh
+		const offsetY = `${(kind === 'in' ? dir : -dir) * SLIDE_MOTION.distance}dvh`;
+		startTransform = kind === 'in' ? `translate3d(0, ${offsetY}, 0)` : 'translate3d(0, 0, 0)';
+		endTransform = kind === 'in' ? 'translate3d(0, 0, 0)' : `translate3d(0, ${offsetY}, 0)`;
+	} else {
+		const offsetX = `${(kind === 'in' ? dir : -dir) * SLIDE_MOTION.distance}%`;
+		startTransform =
+			startOffsetPx !== 0
+				? kind === 'in'
+					? `translate3d(calc(${dir * SLIDE_MOTION.distance}% + ${startOffsetPx.toFixed(1)}px), 0, 0)`
+					: `translate3d(${startOffsetPx.toFixed(1)}px, 0, 0)`
+				: kind === 'in'
+					? `translate3d(${offsetX}, 0, 0)`
+					: 'translate3d(0, 0, 0)';
+		endTransform = kind === 'in' ? 'translate3d(0, 0, 0)' : `translate3d(${offsetX}, 0, 0)`;
+	}
 
 	const anim = el.animate([{ transform: startTransform }, { transform: endTransform }], {
 		duration:
@@ -100,6 +114,7 @@ export function createKeepAliveSlideController() {
 			elementsOut,
 			elementsIn,
 			dir,
+			axis = 'x',
 			startOffsetPx = 0,
 			durationOverrideMs = 0,
 			onStateChange,
@@ -114,8 +129,12 @@ export function createKeepAliveSlideController() {
 
 		onStateChange(true);
 		const anims = [
-			...elementsOut.map((el) => createSlideAnim(el, 'out', dir, startOffsetPx, durationOverrideMs)),
-			...elementsIn.map((el) => createSlideAnim(el, 'in', dir, startOffsetPx, durationOverrideMs))
+			...elementsOut.map((el) =>
+				createSlideAnim(el, 'out', dir, axis, startOffsetPx, durationOverrideMs)
+			),
+			...elementsIn.map((el) =>
+				createSlideAnim(el, 'in', dir, axis, startOffsetPx, durationOverrideMs)
+			)
 		].filter((a): a is Animation => a !== null);
 
 		if (anims.length === 0) {

@@ -229,24 +229,15 @@
 			const nextHoverBorder = get('--fd-i-border-hover', nextBorder);
 			const nextPressBorder = get('--fd-i-border-press', nextHoverBorder);
 
-			if (
-				animateChange &&
-				(nextBase !== cBase ||
-					nextHover !== cHover ||
-					nextWave !== cWave ||
-					nextHoverWave !== cHoverWave ||
-					nextBorder !== cBorder ||
-					nextHoverBorder !== cHoverBorder)
-			) {
-				prevBase = cBase;
-				prevHover = cHover;
-				prevWave = cWave;
-				prevHoverWave = cHoverWave;
-				prevBorder = cBorder;
-				prevHoverBorder = cHoverBorder;
-				cs.x = 0;
-				cs.v = 0;
-			} else if (!animateChange) {
+			const colorChanged =
+				nextBase !== cBase ||
+				nextHover !== cHover ||
+				nextWave !== cWave ||
+				nextHoverWave !== cHoverWave ||
+				nextBorder !== cBorder ||
+				nextHoverBorder !== cHoverBorder;
+
+			if (!ready && !animateChange) {
 				prevBase = nextBase;
 				prevHover = nextHover;
 				prevWave = nextWave;
@@ -254,6 +245,15 @@
 				prevBorder = nextBorder;
 				prevHoverBorder = nextHoverBorder;
 				cs.x = 1;
+				cs.v = 0;
+			} else if (colorChanged) {
+				prevBase = cBase;
+				prevHover = cHover;
+				prevWave = cWave;
+				prevHoverWave = cHoverWave;
+				prevBorder = cBorder;
+				prevHoverBorder = cHoverBorder;
+				cs.x = 0;
 				cs.v = 0;
 			}
 
@@ -537,6 +537,8 @@
 				Math.abs(cs.v) > 0.01 ||
 				Math.abs(bs.x - bT) > 0.01 ||
 				Math.abs(bs.v) > 0.05 ||
+				Math.abs(curAmp - cfg.waveAmp) > 0.02 ||
+				Math.abs(curGap - cfg.layerGap) > 0.02 ||
 				Math.abs(curBorderW - targetBorderW) > 0.02;
 
 			if (!moving) {
@@ -661,16 +663,9 @@
 				c.fillStyle = prev;
 				c.globalAlpha = alpha * (1 - cv);
 				c.fill();
-			} else if (alpha >= 0.999) {
-				c.fillStyle = prev;
-				c.globalAlpha = 1;
-				c.fill();
-				c.fillStyle = curr;
-				c.globalAlpha = cv;
-				c.fill();
 			} else {
-				// 반투명 물결 레이어는 두 번 겹쳐 그리면 알파가 누적되고 마지막 프레임에 색이 튀므로
-				// 단일 패스 color-mix 보간으로 밝은 색 <-> 어두운 색 전환을 매끄럽게 유지
+				// 두 번 겹쳐 그리면(2-pass fill) 곡선 외곽의 안티앨리어싱 픽셀에 이전 색이 1px 테두리처럼 남으므로
+				// 단일 패스 color-mix 보간으로 모든 레이어의 색상 전환을 깔끔하게 유지
 				c.fillStyle = `color-mix(in srgb, ${prev}, ${curr} ${(cv * 100).toFixed(2)}%)`;
 				c.globalAlpha = alpha;
 				c.fill();
@@ -702,13 +697,6 @@
 			} else if (currTrans) {
 				c.strokeStyle = prev;
 				c.globalAlpha = alpha * (1 - cv);
-				c.stroke();
-			} else if (alpha >= 0.999) {
-				c.strokeStyle = prev;
-				c.globalAlpha = 1;
-				c.stroke();
-				c.strokeStyle = curr;
-				c.globalAlpha = cv;
 				c.stroke();
 			} else {
 				c.strokeStyle = `color-mix(in srgb, ${prev}, ${curr} ${(cv * 100).toFixed(2)}%)`;

@@ -455,8 +455,4 @@
 	.bot-trigger-button:hover {
 		transform: scale(1.08);
 	}
-
-	.bot-trigger-button:active {
-		transform: scale(0.95);
-	}
 </style>

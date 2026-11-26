@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { MainSectionDescriptor } from '../2_main_section/logic/sectionRegistry';
 	import ArtistSection from './4-1_artist/ArtistSection.svelte';
-	import ConcertCategory from './4-2_concert/ConcertCategory.svelte';
+	import ConcertSection from './4-2_concert/ConcertSection.svelte';
 	import AlbumSection from './4-3_album/AlbumSection.svelte';
 	import GoodsSection from './4-4_merch/GoodsSection.svelte';
 	import MyPageCategory from './4-5_mypage/MyPageCategory.svelte';
@@ -18,7 +18,7 @@
 {#if section.key === 'artist'}
 	<ArtistSection {section} {active} />
 {:else if section.key === 'concert'}
-	<ConcertCategory {section} {active} />
+	<ConcertSection {section} {active} />
 {:else if section.key === 'album'}
 	<AlbumSection {section} {active} />
 {:else if section.key === 'goods'}

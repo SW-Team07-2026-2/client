@@ -1,10 +1,15 @@
-import { goto } from '$app/navigation';
 import { api, auth } from '#lib/auth/auth.svelte';
 import { resolveGoodsImageUrl, type CatalogGoods } from '#lib/common/catalog/goods';
-import { loadImageAverageColor } from '#lib/common/design/fluid/imageColor';
+import {
+	DETAIL_GLOW_COLOR_OPTIONS,
+	getCachedImageAverageColor,
+	loadImageAverageColor
+} from '#lib/common/design/fluid/imageColor';
 import { GOODS_FORM_OPTIONS } from '#lib/common/type/filterOptions';
-import { toast } from '#lib/common/logic';
-import { copyCurrentPageLink } from '../../_shared/logic/shareLink';
+import { cartState } from '#lib/common/logic';
+import { navigateDetailToDetail } from '#lib/common/logic/detailNavigation';
+import { addOptionToCart, goToCart } from '../../_shared/logic/productCart';
+import { shareCurrentPage } from '../../_shared/logic/shareLink';
 import { goodsDetailState } from './goodsDetailState.svelte';
 
 export interface GoodsOptionItem {
@@ -48,7 +53,7 @@ export class GoodsDetailController {
 	artistName = $state('');
 	imageUrl = $state('');
 	purchaseUrl = $state<string | null>(null);
-	accentColor = $state<string>('var(--white)');
+	accentColor = $state<string>('');
 
 	options = $state<GoodsOptionItem[]>([]);
 	selectedOptionId = $state<number | null>(null);
@@ -86,6 +91,10 @@ export class GoodsDetailController {
 		return null;
 	}
 
+	get isCurrentOptionInCart(): boolean {
+		return cartState.hasOption(this.selectedOption?.id);
+	}
+
 	load = (goodsId: number): void => {
 		if (this.currentId === goodsId && this.name) return;
 		this.currentId = goodsId;
@@ -94,7 +103,7 @@ export class GoodsDetailController {
 		this.options = [];
 		this.selectedOptionId = null;
 		this.purchaseUrl = null;
-		this.accentColor = 'var(--white)';
+		this.accentColor = '';
 
 		const cached: CatalogGoods | null = goodsDetailState.getCachedGoods(goodsId);
 		if (cached) {
@@ -103,6 +112,10 @@ export class GoodsDetailController {
 			this.artistId = cached.artistId ?? null;
 			this.artistName = cached.artistName;
 			this.imageUrl = resolveGoodsImageUrl(cached);
+			if (this.imageUrl) {
+				this.accentColor =
+					getCachedImageAverageColor(this.imageUrl, DETAIL_GLOW_COLOR_OPTIONS) ?? '';
+			}
 		} else {
 			this.name = '';
 			this.categoryLabel = '';
@@ -112,7 +125,13 @@ export class GoodsDetailController {
 		}
 
 		const token = ++this.loadToken;
+		if (this.imageUrl && !this.accentColor) {
+			void this.resolveAccentGlow(this.imageUrl, token);
+		}
 		void this.fetchDetail(goodsId, token);
+		if (auth.isLoggedIn) {
+			void cartState.ensureLoaded();
+		}
 	};
 
 	selectOption = (optionId: number): void => {
@@ -131,40 +150,31 @@ export class GoodsDetailController {
 		const opt = this.selectedOption;
 		if (!opt || opt.soldOut || this.cartSubmitting) return;
 
-		if (!auth.isLoggedIn) {
-			toast.info('로그인 후 장바구니에 담을 수 있습니다.');
-			return;
-		}
-
 		this.cartSubmitting = true;
 		try {
-			await api(`/api/cart/items/${opt.id}`, {
-				method: 'PUT',
-				body: JSON.stringify({ qty: this.qty })
-			});
-			toast.success('장바구니에 담았습니다.');
-		} catch (err) {
-			const code = (err as { code?: string })?.code;
-			if (code === 'CART_FULL') {
-				toast.error('장바구니가 가득 찼습니다. (최대 20종 · 옵션당 10개)');
-			} else if (code === 'OUT_OF_STOCK') {
-				toast.error('재고가 부족합니다.');
-			} else {
-				console.error('Add goods to cart failed:', err);
-				toast.error('장바구니에 담지 못했습니다. 잠시 후 다시 시도해 주세요.');
-			}
+			await addOptionToCart(opt.id, this.qty);
 		} finally {
 			this.cartSubmitting = false;
 		}
 	};
 
+	goToCart = (): void => {
+		goToCart();
+	};
+
 	goToArtist = (): void => {
 		if (this.artistId === null) return;
-		void goto(`/artist/${this.artistId}`, { reset: false });
+		navigateDetailToDetail(`/artist/${this.artistId}`);
 	};
 
 	shareLink = async (): Promise<void> => {
-		await copyCurrentPageLink('굿즈 링크가 복사되었습니다.');
+		const title = this.name.trim();
+		const artist = this.artistName.trim();
+		await shareCurrentPage({
+			title: title ? `${title} · INDIG` : 'INDIG 굿즈',
+			text: title && artist ? `${artist} - ${title}` : title || undefined,
+			fallbackSuccessMessage: '굿즈 링크가 복사되었습니다.'
+		});
 	};
 
 	private async fetchDetail(goodsId: number, token: number): Promise<void> {
@@ -209,7 +219,7 @@ export class GoodsDetailController {
 
 	private async resolveAccentGlow(url: string, token: number): Promise<void> {
 		const color = await loadImageAverageColor(url);
-		if (token !== this.loadToken) return;
-		this.accentColor = color ?? 'var(--white)';
+		if (token !== this.loadToken || !color) return;
+		this.accentColor = color;
 	}
 }

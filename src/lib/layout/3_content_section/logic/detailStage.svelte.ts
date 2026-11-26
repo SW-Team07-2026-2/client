@@ -1,5 +1,5 @@
-import { goto } from '$app/navigation';
 import type { CatalogCategoryKey } from '#lib/common/catalog/catalogFeed';
+import { closeDetailStage } from '#lib/common/logic/detailNavigation';
 import {
 	detailOverlay,
 	type CategoryDetailSlot,
@@ -11,15 +11,33 @@ import { prefersReducedMotion } from '#lib/common/type/spring';
  * 3_content_section 상세 스테이지 컨트롤러
  * - detailOverlay 스토어와 라우트 detailId를 동기화하고,
  *   슬라이드 업/다운 전환, ESC 닫기, 모바일 배경 스크롤 잠금을 관리합니다.
+ * - PC(이전 상세 복귀 지원)와 모바일(항상 현재 카테고리 목록 복귀)의 복귀 정책을 분리 적용합니다.
  */
 export class DetailStageController {
 	readonly category: CatalogCategoryKey;
+	readonly mobile: boolean;
 	private prevDetailId: number | null = null;
 	private scrollLocked = false;
+	/** 모바일 상세 프레임 아이템별 독립 스크롤 위치 기억 (display: none 파킹 후 복원용) */
+	private scrollPositions = $state<Record<number, number>>({});
 
-	constructor(category: CatalogCategoryKey) {
+	constructor(category: CatalogCategoryKey, mobile: boolean) {
 		this.category = category;
+		this.mobile = mobile;
 	}
+
+	getScrollTop = (itemId: number | null): number => {
+		if (itemId === null) return 0;
+		return this.scrollPositions[itemId] ?? 0;
+	};
+
+	saveScrollTop = (itemId: number | null, scrollTop: number): void => {
+		if (itemId === null) return;
+		const normalized = Math.max(0, Math.round(scrollTop));
+		if (this.scrollPositions[itemId] !== normalized) {
+			this.scrollPositions[itemId] = normalized;
+		}
+	};
 
 	get slot(): CategoryDetailSlot {
 		return detailOverlay.getSlot(this.category);
@@ -38,7 +56,8 @@ export class DetailStageController {
 	}
 
 	get backLabel(): string {
-		return detailOverlay.hasPreviousDetail ? '이전' : '목록으로';
+		if (this.mobile) return '목록으로';
+		return this.slot.returnPath !== null ? '이전' : '목록으로';
 	}
 
 	/**
@@ -59,6 +78,7 @@ export class DetailStageController {
 		if (prev === null && detailId !== null) {
 			detailOverlay.beginExpand(this.category, detailId, { animate });
 		} else if (prev !== null && detailId === null) {
+			delete this.scrollPositions[prev];
 			detailOverlay.beginClose(this.category, prev, { animate });
 		} else if (prev !== null && detailId !== null && prev !== detailId) {
 			detailOverlay.beginExpand(this.category, detailId, { animate: false });
@@ -68,14 +88,14 @@ export class DetailStageController {
 		this.syncBodyScrollLock(mobile && active && this.isVisible);
 	};
 
-	/** 이전 상세가 있으면 직전 상세로 복귀, 없으면 현재 카테고리 목록 경로로 복귀 */
+	/** PC는 이전 상세(history.back) 또는 목록 복귀, 모바일은 항상 현재 카테고리 목록으로 복귀 */
 	close = (): void => {
-		const prevDetailPath = detailOverlay.previousDetailPath;
-		if (prevDetailPath) {
-			void goto(prevDetailPath, { reset: false });
-			return;
-		}
-		void goto(`/${this.category}`, { reset: false });
+		closeDetailStage({
+			category: this.category,
+			mobile: this.mobile,
+			returnPath: this.slot.returnPath,
+			enteredFromOwnList: this.slot.enteredFromOwnList
+		});
 	};
 
 	finishExpand = (): void => {
