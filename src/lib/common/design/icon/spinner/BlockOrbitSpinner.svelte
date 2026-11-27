@@ -7,9 +7,9 @@
 	let { size = 24, class: klass = '' }: Props = $props();
 </script>
 
-<!-- 3-블록 순환 SVG 로딩 아이콘 (순수 렌더링) -->
+<!-- 3-블록 순환 SVG 로딩 스피너 (순수 렌더링) -->
 <svg
-	class="indig-loading-spinner {klass}"
+	class="indig-block-orbit-spinner {klass}"
 	xmlns="http://www.w3.org/2000/svg"
 	width={size}
 	height={size}
@@ -99,7 +99,7 @@
 			attributeName="y"
 			begin="SVGU0vu2GEM.end"
 			dur="0.2s"
-			values="13;1"
+			values="1;13"
 		/>
 		<animate
 			id="SVG28A4To9L"
@@ -115,7 +115,7 @@
 			attributeName="y"
 			begin="SVG14lAaeuv.end"
 			dur="0.2s"
-			values="1;13"
+			values="13;1"
 		/>
 	</rect>
 </svg>

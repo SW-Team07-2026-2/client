@@ -8,6 +8,7 @@ declare global {
 		interface PageState {
 			botOpen?: boolean;
 			mobileOverlay?: 'chatbot' | 'notifications' | null;
+			postcodeModalOpen?: boolean;
 		}
 		// interface Platform {}
 	}

@@ -4,7 +4,7 @@
 	import type { ChatMessage } from '../logic/types';
 	import UserBubble from './UserBubble.svelte';
 	import BotMessage from './BotMessage.svelte';
-	import AiThinkingLoader from './AiThinkingLoader.svelte';
+	import { ThreeBodySpinner } from '#lib/common/design/icon/spinner';
 
 	interface Props {
 		messages: ChatMessage[];
@@ -77,7 +77,7 @@
 		<!-- 생각 중 로딩 펄스 & 백엔드 도구 호출 상태 안내 -->
 		<div class="bot-ambient-message generating" in:fade={{ duration: 150 }}>
 			<div class="thinking-status-row">
-				<AiThinkingLoader size={20} label="답변 생성 중" />
+				<ThreeBodySpinner size={20} label="답변 생성 중" />
 				{#if currentStatus}
 					<span class="thinking-status-text" in:fade={{ duration: 150 }}>
 						{cleanStatusText(currentStatus)}<span class="animated-dots">{animatedDots}</span>

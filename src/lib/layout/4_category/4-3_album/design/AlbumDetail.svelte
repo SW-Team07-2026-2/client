@@ -15,6 +15,7 @@
 	import type { AlbumMediaItem } from '../logic/albumDetailState.svelte';
 	import AlbumCollectionButton from '../part/AlbumCollectionButton.svelte';
 	import AlbumDetailHeroVisual from '../part/AlbumDetailHeroVisual.svelte';
+	import AlbumDetailSkeleton from './AlbumDetailSkeleton.svelte';
 
 	interface Props {
 		isLoading: boolean;
@@ -174,6 +175,10 @@
 	onShare={onShareLink}
 	{onGoToArtist}
 >
+	{#snippet skeleton()}
+		<AlbumDetailSkeleton />
+	{/snippet}
+
 	{#snippet visual()}
 		<AlbumDetailHeroVisual
 			{coverUrl}

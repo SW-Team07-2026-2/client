@@ -1,6 +1,11 @@
 <script lang="ts">
 	import AnimatedCheckbox from '#lib/common/design/AnimatedCheckbox.svelte';
 	import SlidingPrice from '#lib/common/design/SlidingPrice.svelte';
+	import {
+		SHIPPING_ADDRESS_DETAIL_MAX_LENGTH,
+		SHIPPING_PHONE_MAX_LENGTH,
+		SHIPPING_RECIPIENT_MAX_LENGTH
+	} from '#lib/config/pay';
 	import { LoadingSpinner } from '#lib/dedicated/loading';
 	import type {
 		CheckoutItemSnapshot,
@@ -104,6 +109,7 @@
 						<span class="field-label">수령인</span>
 						<input
 							type="text"
+							maxlength={SHIPPING_RECIPIENT_MAX_LENGTH}
 							class="field-input"
 							placeholder="이름 입력"
 							value={shipping.recipientName}
@@ -115,10 +121,15 @@
 						<span class="field-label">연락처</span>
 						<input
 							type="tel"
+							inputmode="numeric"
+							maxlength={SHIPPING_PHONE_MAX_LENGTH}
 							class="field-input"
 							placeholder="010-0000-0000"
 							value={shipping.phone}
-							oninput={(e) => onUpdateShipping('phone', e.currentTarget.value)}
+							oninput={(e) => {
+								onUpdateShipping('phone', e.currentTarget.value);
+								e.currentTarget.value = shipping.phone;
+							}}
 						/>
 					</label>
 				</div>
@@ -128,15 +139,11 @@
 						<span class="field-label">우편번호 (5자리)</span>
 						<input
 							type="text"
-							inputmode="numeric"
-							maxlength="5"
-							class="field-input"
-							placeholder="06236"
+							readonly
+							class="field-input is-readonly"
+							placeholder="주소 검색으로 입력"
 							value={shipping.zonecode}
-							onclick={() => {
-								if (!shipping.zonecode.trim()) void handleSearchAddress();
-							}}
-							oninput={(e) => onUpdateShipping('zonecode', e.currentTarget.value)}
+							onclick={handleSearchAddress}
 						/>
 					</label>
 
@@ -166,13 +173,11 @@
 					<span class="field-label">기본 주소</span>
 					<input
 						type="text"
-						class="field-input"
+						readonly
+						class="field-input is-readonly"
 						placeholder="주소 검색을 눌러 도로명 주소를 입력해 주세요"
 						value={shipping.address}
-						onclick={() => {
-							if (!shipping.address.trim()) void handleSearchAddress();
-						}}
-						oninput={(e) => onUpdateShipping('address', e.currentTarget.value)}
+						onclick={handleSearchAddress}
 					/>
 				</label>
 
@@ -181,6 +186,7 @@
 					<input
 						bind:this={detailInputEl}
 						type="text"
+						maxlength={SHIPPING_ADDRESS_DETAIL_MAX_LENGTH}
 						class="field-input"
 						placeholder="동 · 호수 등 상세 주소"
 						value={shipping.addressDetail}
@@ -425,6 +431,12 @@
 		box-sizing: border-box;
 		outline: none;
 		transition: background-color 0.15s ease;
+	}
+
+	.field-input.is-readonly {
+		background: var(--surface-dim);
+		color: var(--fg);
+		cursor: pointer;
 	}
 
 	.field-input:focus {

@@ -16,6 +16,7 @@
 		ConcertLineupArtist,
 		ConcertVenueDetail
 	} from '../logic/concertDetail.svelte';
+	import ConcertDetailSkeleton from './ConcertDetailSkeleton.svelte';
 
 	interface Props {
 		isLoading: boolean;
@@ -153,6 +154,10 @@
 	onBack={onClose}
 	onShare={onShareLink}
 >
+	{#snippet skeleton()}
+		<ConcertDetailSkeleton />
+	{/snippet}
+
 	{#snippet visual()}
 		<div
 			class="concert-hero-poster"

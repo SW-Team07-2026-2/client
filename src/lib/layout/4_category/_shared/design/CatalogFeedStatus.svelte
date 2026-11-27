@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { LoadingSpinner } from '#lib/dedicated/loading';
+	import { BlockOrbitSpinner, PulseDotsSpinner } from '#lib/common/design/icon/spinner';
 
 	interface Props {
 		isLoading: boolean;
@@ -53,7 +53,7 @@
 		{@render loading()}
 	{:else}
 		<div class="catalog-state-box" role="status" aria-live="polite">
-			<LoadingSpinner size={24} />
+			<BlockOrbitSpinner size={24} />
 		</div>
 	{/if}
 {:else if errorMessage}
@@ -75,7 +75,7 @@
 {#if !isLoading && hasNext}
 	<div use:observeSentinel class="catalog-load-more" aria-hidden={!isLoadingMore || undefined}>
 		{#if isLoadingMore}
-			<LoadingSpinner size={20} />
+			<PulseDotsSpinner size={24} />
 		{/if}
 	</div>
 {/if}

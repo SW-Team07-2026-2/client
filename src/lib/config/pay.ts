@@ -5,7 +5,7 @@ export const TOSS_PAYMENTS_SDK_URL = 'https://js.tosspayments.com/v2/standard';
 
 /** Daum(카카오) 우편번호 검색 서비스 v2 스크립트 주소 */
 export const DAUM_POSTCODE_SDK_URL =
-	'https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
+	'https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
 
 /** 토스페이먼츠 클라이언트 키 (공개 가능 키, .env의 VITE_TOSS_CLIENT_KEY) */
 export const TOSS_CLIENT_KEY: string =
@@ -16,3 +16,9 @@ export const PAY_CHECKOUT_DRAFT_STORAGE_KEY = 'indig_pay_checkout_draft_v1';
 
 /** 장바구니 옵션당 최대 수량 */
 export const CART_MAX_QTY_PER_OPTION = 10;
+
+/** 배송지 입력 필드 최대 글자 수 제한 */
+export const SHIPPING_RECIPIENT_MAX_LENGTH = 30;
+export const SHIPPING_PHONE_MAX_DIGITS = 11;
+export const SHIPPING_PHONE_MAX_LENGTH = 13;
+export const SHIPPING_ADDRESS_DETAIL_MAX_LENGTH = 100;

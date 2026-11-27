@@ -1,14 +1,19 @@
 import { goto } from '$app/navigation';
 import { api, auth } from '#lib/auth/auth.svelte';
 import { toast } from '#lib/common/logic';
-import { TOSS_CLIENT_KEY } from '#lib/config/pay';
+import {
+	SHIPPING_ADDRESS_DETAIL_MAX_LENGTH,
+	SHIPPING_PHONE_MAX_DIGITS,
+	SHIPPING_RECIPIENT_MAX_LENGTH,
+	TOSS_CLIENT_KEY
+} from '#lib/config/pay';
 import {
 	CART_ROUTE_PATH,
 	PAYMENT_FAIL_ROUTE_PATH,
 	PAYMENT_SUCCESS_ROUTE_PATH
 } from '#lib/config/routes';
 import { loadCheckoutDraft, saveCheckoutDraft } from './checkoutDraft';
-import { openDaumPostcode } from './daumPostcode';
+import { closeDaumPostcode, openDaumPostcode } from './daumPostcode';
 import { loadTossPaymentsSdk, type TossPaymentWidgets } from './tossSdk';
 import type {
 	CartViewResponse,
@@ -20,6 +25,23 @@ import type {
 
 interface AddressListResponse {
 	items?: ShippingAddress[] | null;
+}
+
+/** 한국 전화번호 숫자만 추출해 자동으로 하이픈(-) 포맷팅 (02 최대 10자리, 그 외 최대 11자리) */
+export function formatKoreanPhone(raw: string): string {
+	const digitsOnly = raw.replace(/\D/g, '');
+	if (digitsOnly.startsWith('02')) {
+		const d = digitsOnly.slice(0, 10);
+		if (d.length <= 2) return d;
+		if (d.length <= 5) return `${d.slice(0, 2)}-${d.slice(2)}`;
+		if (d.length <= 9) return `${d.slice(0, 2)}-${d.slice(2, 5)}-${d.slice(5)}`;
+		return `${d.slice(0, 2)}-${d.slice(2, 6)}-${d.slice(6)}`;
+	}
+	const d = digitsOnly.slice(0, SHIPPING_PHONE_MAX_DIGITS);
+	if (d.length <= 3) return d;
+	if (d.length <= 7) return `${d.slice(0, 3)}-${d.slice(3)}`;
+	if (d.length <= 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+	return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
 }
 
 /**
@@ -144,20 +166,28 @@ export class CheckoutPageController {
 		const found = this.addresses.find((a) => a.id === id);
 		if (found) {
 			this.shipping = {
-				recipientName: found.recipientName,
-				phone: found.phone,
+				recipientName: found.recipientName.slice(0, SHIPPING_RECIPIENT_MAX_LENGTH),
+				phone: formatKoreanPhone(found.phone),
 				zonecode: found.zonecode,
 				address: found.address,
-				addressDetail: found.addressDetail ?? ''
+				addressDetail: (found.addressDetail ?? '').slice(0, SHIPPING_ADDRESS_DETAIL_MAX_LENGTH)
 			};
 			this.saveAsNewAddress = false;
 		}
 	};
 
 	updateShippingField = (field: keyof ShippingFormInput, value: string): void => {
+		let nextValue = value;
+		if (field === 'phone') {
+			nextValue = formatKoreanPhone(value);
+		} else if (field === 'recipientName') {
+			nextValue = value.slice(0, SHIPPING_RECIPIENT_MAX_LENGTH);
+		} else if (field === 'addressDetail') {
+			nextValue = value.slice(0, SHIPPING_ADDRESS_DETAIL_MAX_LENGTH);
+		}
 		this.shipping = {
 			...this.shipping,
-			[field]: value
+			[field]: nextValue
 		};
 		this.validationError = null;
 	};
@@ -228,6 +258,7 @@ export class CheckoutPageController {
 	};
 
 	destroyTossWidget = async (): Promise<void> => {
+		closeDaumPostcode();
 		this.widgetReady = false;
 		try {
 			await this.paymentMethodsHandle?.destroy?.();

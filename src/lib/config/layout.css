@@ -273,3 +273,31 @@ html.is-pc body {
 		transition: none;
 	}
 }
+
+/* Daum(카카오) 우편번호 인앱 모달 스크롤 영역 다크 스크롤바 */
+.daum-postcode-viewport {
+	color-scheme: dark;
+	scrollbar-width: thin;
+	scrollbar-color: var(--line) transparent;
+}
+
+.daum-postcode-viewport::-webkit-scrollbar {
+	width: 8px;
+}
+
+.daum-postcode-viewport::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.daum-postcode-viewport::-webkit-scrollbar-thumb {
+	background: var(--line);
+	border-radius: 999px;
+	border: 2px solid transparent;
+	background-clip: content-box;
+}
+
+.daum-postcode-viewport::-webkit-scrollbar-thumb:hover {
+	background: var(--muted);
+	border: 2px solid transparent;
+	background-clip: content-box;
+}

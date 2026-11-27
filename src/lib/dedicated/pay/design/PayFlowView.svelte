@@ -280,7 +280,7 @@
 	}
 
 	.pay-page.is-mobile .pay-container {
-		padding: calc(var(--mb-detail-top-offset, 60px) + 0.75rem) var(--content-padding-x-mobile) 2.5rem;
+		padding: 0.75rem var(--content-padding-x-mobile) 2.5rem;
 	}
 
 	.pay-header {

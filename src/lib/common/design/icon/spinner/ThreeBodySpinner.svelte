@@ -21,6 +21,7 @@
 	}: Props = $props();
 </script>
 
+<!-- 3-바디 궤도 회전 로딩 스피너 (AI 챗봇 답변 생성 중 등, 순수 렌더링) -->
 <div
 	class="three-body {className}"
 	role="status"
@@ -107,7 +108,6 @@
 		0% {
 			transform: rotate(0deg);
 		}
-
 		100% {
 			transform: rotate(360deg);
 		}
@@ -119,7 +119,6 @@
 			transform: translateY(0%) scale(1);
 			opacity: 1;
 		}
-
 		50% {
 			transform: translateY(-66%) scale(0.65);
 			opacity: 0.8;
@@ -132,7 +131,6 @@
 			transform: translateY(0%) scale(1);
 			opacity: 1;
 		}
-
 		50% {
 			transform: translateY(66%) scale(0.65);
 			opacity: 0.8;

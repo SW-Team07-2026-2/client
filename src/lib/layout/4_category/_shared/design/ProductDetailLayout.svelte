@@ -15,9 +15,9 @@
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { LoadingSpinner } from '#lib/dedicated/loading';
 	import DetailAmbientGlow from './DetailAmbientGlow.svelte';
 	import DetailTopNav from '#lib/common/design/DetailTopNav.svelte';
+	import ProductDetailSkeleton from './ProductDetailSkeleton.svelte';
 
 	interface Props {
 		mobile: boolean;
@@ -48,6 +48,8 @@
 		purchase?: Snippet;
 		/** 히어로 하단 확장 섹션 (예: 아티스트 소개, 앨범 수록곡, 공연 소개/유의사항, 상세 정보) */
 		below?: Snippet;
+		/** 카테고리별 커스텀 로딩 스켈레톤 (미지정 시 공용 ProductDetailSkeleton 표시) */
+		skeleton?: Snippet;
 	}
 
 	let {
@@ -70,7 +72,8 @@
 		visual,
 		artistSlot,
 		purchase,
-		below
+		below,
+		skeleton
 	}: Props = $props();
 </script>
 
@@ -82,9 +85,11 @@
 		<DetailTopNav {mobile} {backLabel} {onBack} {onShare} {shareLabel} />
 
 		{#if isLoading && !title}
-			<div class="detail-state-box" role="status" aria-live="polite">
-				<LoadingSpinner size={24} />
-			</div>
+			{#if skeleton}
+				{@render skeleton()}
+			{:else}
+				<ProductDetailSkeleton {visualWidth} />
+			{/if}
 		{:else if errorMessage && !title}
 			<div class="detail-state-box" role="alert">
 				<p class="detail-error-text">{errorMessage}</p>

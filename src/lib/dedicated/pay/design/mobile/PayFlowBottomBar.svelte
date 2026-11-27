@@ -81,9 +81,9 @@
 		z-index: 40;
 		padding: 0.75rem var(--content-padding-x-mobile)
 			calc(0.85rem + env(safe-area-inset-bottom, 0px));
-		background: color-mix(in srgb, var(--bg) 92%, transparent);
-		-webkit-backdrop-filter: blur(10px);
-		backdrop-filter: blur(10px);
+		background: var(--glass-bg);
+		-webkit-backdrop-filter: var(--glass-filter);
+		backdrop-filter: var(--glass-filter);
 		border-top: var(--thin-border);
 		display: flex;
 		align-items: center;

@@ -9,6 +9,7 @@
 		resolveDetailGlowColor
 	} from '../../_shared/logic/detailTheme';
 	import ArtistFollowButton from '../part/detail_part/ArtistFollowButton.svelte';
+	import ArtistDetailSkeleton from './ArtistDetailSkeleton.svelte';
 
 	interface Props {
 		artist: CatalogArtist | null;
@@ -101,6 +102,10 @@
 	onBack={onClose}
 	onShare={onShareLink}
 >
+	{#snippet skeleton()}
+		<ArtistDetailSkeleton {mobile} />
+	{/snippet}
+
 	{#snippet visual()}
 		<div class="artist-hero-media" bind:clientWidth={heroMediaWidth}>
 			{#if imageSrc}

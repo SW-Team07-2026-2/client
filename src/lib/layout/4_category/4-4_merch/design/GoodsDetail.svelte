@@ -12,6 +12,7 @@
 		resolveDetailGlowColor
 	} from '../../_shared/logic/detailTheme';
 	import type { GoodsOptionItem } from '../logic/goodsDetail.svelte';
+	import GoodsDetailSkeleton from './GoodsDetailSkeleton.svelte';
 
 	interface Props {
 		isLoading: boolean;
@@ -136,6 +137,10 @@
 	onShare={onShareLink}
 	{onGoToArtist}
 >
+	{#snippet skeleton()}
+		<GoodsDetailSkeleton />
+	{/snippet}
+
 	{#snippet visual()}
 		<div class="goods-hero-media" class:is-soldout={isAllSoldOut} bind:clientWidth={heroMediaWidth}>
 			{#if imageUrl}

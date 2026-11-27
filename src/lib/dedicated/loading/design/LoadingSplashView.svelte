@@ -1,7 +1,7 @@
 <script lang="ts">
 	import titleLoadingSvg from '#lib/assets/title-loading.svg?raw';
 	import type { SplashPhase } from '../logic/loadingSplash.svelte';
-	import LoadingSpinner from './LoadingSpinner.svelte';
+	import { BlockOrbitSpinner } from '#lib/common/design/icon/spinner';
 
 	interface Props {
 		phase: SplashPhase;
@@ -46,7 +46,7 @@
 	<!-- SSR에 포함해 JS 로드 전에도 SVG 완성 1초 후(3.48s) 순수 CSS로 자동 노출 -->
 	<div class="splash-spinner" aria-hidden="true">
 		<div class="splash-spinner-inner">
-			<LoadingSpinner size={24} />
+			<BlockOrbitSpinner size={24} />
 		</div>
 	</div>
 </div>

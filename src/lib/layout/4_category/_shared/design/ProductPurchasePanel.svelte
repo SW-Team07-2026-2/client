@@ -7,7 +7,6 @@
 	import ShoppingBagIcon from '#lib/common/design/icon/ShoppingBagIcon.svelte';
 	import SlidingPrice from '#lib/common/design/SlidingPrice.svelte';
 	import SpringNumberStepper from '#lib/common/design/SpringNumberStepper.svelte';
-	import { LoadingSpinner } from '#lib/dedicated/loading';
 	import GoToCartButton from './GoToCartButton.svelte';
 	import SpringDropdown, { type SpringDropdownOption } from './SpringDropdown.svelte';
 
@@ -135,9 +134,13 @@
 		<div class="selector-group">
 			<span class="selector-label">{optionLabel}</span>
 			{#if optionsLoading && options.length === 0}
-				<div class="options-loading" in:fade={{ duration: 140 }}>
-					<LoadingSpinner size={16} />
-				</div>
+				<div
+					class="options-skeleton skeleton-shimmer"
+					role="status"
+					aria-busy="true"
+					aria-label="{optionLabel} 불러오는 중"
+					in:fade={{ duration: 140 }}
+				></div>
 			{:else}
 				<SpringDropdown
 					label="{optionLabel} 선택"
@@ -202,13 +205,16 @@
 					</FdButton>
 				</div>
 
-				{#if showBothCta && onGoToCart}
+				{#if onGoToCart}
 					<div
-						class="go-cart-slot"
-						in:fly={{ x: -8, duration: 220, easing: cubicOut }}
-						out:fade={{ duration: 140 }}
+						class="go-cart-reveal"
+						class:is-open={showBothCta}
+						aria-hidden={!showBothCta || undefined}
+						inert={!showBothCta || undefined}
 					>
-						<GoToCartButton variant="outlined" onclick={onGoToCart} />
+						<div class="go-cart-slot">
+							<GoToCartButton variant="outlined" onclick={onGoToCart} />
+						</div>
 					</div>
 				{/if}
 			{/if}
@@ -260,14 +266,10 @@
 		letter-spacing: 0.02em;
 	}
 
-	.options-loading {
+	.options-skeleton {
+		width: 100%;
 		height: 48px;
-		padding: 0 16px;
 		border-radius: 14px;
-		border: none;
-		background: var(--surface);
-		display: flex;
-		align-items: center;
 	}
 
 	.action-buttons {
@@ -285,16 +287,8 @@
 		align-items: center;
 	}
 
-	/* 병렬 배치 시 '장바구니 담기'(아이콘 포함)가 '장바구니 이동'보다 아이콘 크기(+20px)만큼만 더 넓게 배분 */
-	.cart-cta-group.is-split {
-		display: grid;
-		grid-template-columns: calc(50% + 10px - 0.3rem) calc(50% - 10px - 0.3rem);
-		gap: 0.6rem;
-		align-items: center;
-	}
-
 	.primary-cart-wrap {
-		width: 100%;
+		flex: 1 1 0%;
 		min-width: 0;
 	}
 
@@ -315,10 +309,47 @@
 		line-height: 1;
 	}
 
+	/* 병렬 배치 전환 시 '장바구니 담기'(+20px)와 '장바구니 이동'이 폭·위치·투명도를 함께 부드럽게 분할 */
+	.go-cart-reveal {
+		flex: 0 0 0%;
+		min-width: 0;
+		margin-left: 0;
+		opacity: 0;
+		transform: translate3d(10px, 0, 0) scale(0.94);
+		pointer-events: none;
+		overflow: hidden;
+		transition:
+			flex-basis 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+			margin-left 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+			opacity 0.26s ease,
+			transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
+	.go-cart-reveal.is-open {
+		flex-basis: calc(50% - 10px - 0.3rem);
+		margin-left: 0.6rem;
+		opacity: 1;
+		transform: translate3d(0, 0, 0) scale(1);
+		pointer-events: auto;
+		overflow: visible;
+		transition:
+			flex-basis 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+			margin-left 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+			opacity 0.28s ease 0.08s,
+			transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
 	.go-cart-slot {
 		width: 100%;
 		min-width: 0;
 		display: flex;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.go-cart-reveal,
+		.go-cart-reveal.is-open {
+			transition: none;
+		}
 	}
 
 	.btn-label-stage {
