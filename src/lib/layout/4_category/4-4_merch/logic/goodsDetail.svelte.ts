@@ -27,10 +27,11 @@ interface GoodsProductDetailDto {
 	productType?: string;
 	name: string;
 	thumbnailUrl?: string | null;
-	purchaseUrl?: string | null;
 	artistId?: number | null;
 	artistName?: string | null;
 	category?: string | null;
+	description?: string | null;
+	detailImageUrls?: string[] | null;
 	options?: GoodsOptionItem[] | null;
 }
 
@@ -53,7 +54,8 @@ export class GoodsDetailController {
 	artistId = $state<number | null>(null);
 	artistName = $state('');
 	imageUrl = $state('');
-	purchaseUrl = $state<string | null>(null);
+	description = $state('');
+	detailImageUrls = $state<string[]>([]);
 	accentColor = $state<string>('');
 
 	options = $state<GoodsOptionItem[]>([]);
@@ -103,7 +105,8 @@ export class GoodsDetailController {
 		this.qty = 1;
 		this.options = [];
 		this.selectedOptionId = null;
-		this.purchaseUrl = null;
+		this.description = '';
+		this.detailImageUrls = [];
 		this.accentColor = '';
 
 		const cached: CatalogGoods | null = goodsDetailState.getCachedGoods(goodsId);
@@ -197,7 +200,10 @@ export class GoodsDetailController {
 			this.artistId = dto.artistId ?? this.artistId;
 			this.artistName = dto.artistName?.trim() || this.artistName;
 			this.imageUrl = dto.thumbnailUrl?.trim() || this.imageUrl;
-			this.purchaseUrl = dto.purchaseUrl?.trim() || null;
+			this.description = dto.description?.trim() ?? '';
+			this.detailImageUrls = Array.isArray(dto.detailImageUrls)
+				? dto.detailImageUrls.map((u) => u?.trim()).filter((u): u is string => Boolean(u))
+				: [];
 
 			const opts = Array.isArray(dto.options) ? dto.options : [];
 			this.options = opts;

@@ -141,10 +141,28 @@
 							<div class="row-equal">
 								<FilterChipPart
 									title="예매 상태"
+									showAll={false}
 									items={CATEGORY_FILTER_OPTIONS.concertStatuses}
-									selected={filterState.statuses}
-									onchange={(statuses) => patch({ statuses })}
-								/>
+									selected={filterState.statuses.filter((s) => s !== 'CLOSED')}
+									onchange={(active) =>
+										patch({
+											statuses: filterState.statuses.includes('CLOSED')
+												? [...active, 'CLOSED']
+												: active
+										})}
+								>
+									{#snippet footer()}
+										<FilterTogglePart
+											embedded
+											title="종료된 공연 포함"
+											checked={filterState.statuses.includes('CLOSED')}
+											onchange={(includeClosed) => {
+												const active = filterState.statuses.filter((s) => s !== 'CLOSED');
+												patch({ statuses: includeClosed ? [...active, 'CLOSED'] : active });
+											}}
+										/>
+									{/snippet}
+								</FilterChipPart>
 								<FilterChipPart
 									title="공연 유형"
 									items={CATEGORY_FILTER_OPTIONS.concertTypes}

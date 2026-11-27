@@ -146,6 +146,8 @@ export class ArtistCategoryController {
 		return this.pendingFollowIds.has(artistId);
 	};
 
+	private static readonly MIN_FOLLOW_LOADING_MS = 340;
+
 	/** M4 POST / M5 DELETE /api/members/follows/{artistId} */
 	toggleFollow = async (artist: CatalogArtist, nextFollowing: boolean): Promise<void> => {
 		if (this.pendingFollowIds.has(artist.id)) return;
@@ -155,19 +157,10 @@ export class ArtistCategoryController {
 			return;
 		}
 
-		const prevFollowed = new Set(this.followedIds);
-		const updated = new Set(this.followedIds);
-		if (nextFollowing) {
-			updated.add(artist.id);
-		} else {
-			updated.delete(artist.id);
-		}
-		this.followedIds = updated;
-		artistDetailState.setFollowing(artist.id, nextFollowing);
-
 		const nextPending = new Set(this.pendingFollowIds);
 		nextPending.add(artist.id);
 		this.pendingFollowIds = nextPending;
+		const startedAt = performance.now();
 
 		try {
 			if (nextFollowing) {
@@ -180,10 +173,24 @@ export class ArtistCategoryController {
 					method: 'DELETE'
 				});
 			}
+
+			const elapsed = performance.now() - startedAt;
+			if (elapsed < ArtistCategoryController.MIN_FOLLOW_LOADING_MS) {
+				await new Promise((r) =>
+					setTimeout(r, ArtistCategoryController.MIN_FOLLOW_LOADING_MS - elapsed)
+				);
+			}
+
+			const updated = new Set(this.followedIds);
+			if (nextFollowing) {
+				updated.add(artist.id);
+			} else {
+				updated.delete(artist.id);
+			}
+			this.followedIds = updated;
+			artistDetailState.setFollowing(artist.id, nextFollowing);
 		} catch (err) {
 			console.error('Follow toggle failed:', err);
-			this.followedIds = prevFollowed;
-			artistDetailState.setFollowing(artist.id, !nextFollowing);
 			toast.error('팔로우 상태를 변경하지 못했습니다. 잠시 후 다시 시도해 주세요.');
 		} finally {
 			const donePending = new Set(this.pendingFollowIds);

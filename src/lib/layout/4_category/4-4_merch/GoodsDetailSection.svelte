@@ -29,7 +29,8 @@
 	artistId={controller.artistId}
 	artistName={controller.artistName}
 	imageUrl={controller.imageUrl}
-	purchaseUrl={controller.purchaseUrl}
+	description={controller.description}
+	detailImageUrls={controller.detailImageUrls}
 	accentColor={controller.accentColor}
 	options={controller.options}
 	selectedOption={controller.selectedOption}

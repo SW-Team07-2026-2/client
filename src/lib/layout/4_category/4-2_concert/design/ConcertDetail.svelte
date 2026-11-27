@@ -5,7 +5,9 @@
 	import FdImage from '#lib/common/design/fluid/FdImage.svelte';
 	import { createPrimaryCtaSetting } from '#lib/common/design/fluid/ctaPreset';
 	import SlidingPrice from '#lib/common/design/SlidingPrice.svelte';
-	import ProductDetailLayout from '../../_shared/design/ProductDetailLayout.svelte';
+	import ProductDetailLayout, {
+		type DetailMetaItem
+	} from '../../_shared/design/ProductDetailLayout.svelte';
 	import {
 		createWaveRectSetting,
 		resolveDetailGlowColor
@@ -93,9 +95,51 @@
 		createWaveRectSetting(heroMediaWidth, 4 / 3, HERO_RADIUS, HERO_WAVES_PER_EDGE)
 	);
 	const ctaSetting = $derived(createPrimaryCtaSetting(ctaBtnWidth, !isOnSale));
+
+	const metaItems = $derived.by<DetailMetaItem[]>(() => {
+		const list: DetailMetaItem[] = [];
+		if (saleStatusLabel) {
+			list.push({
+				label: '예매 상태',
+				value: saleStatusLabel,
+				tone: isOnSale ? 'accent' : isClosed ? 'muted' : 'default'
+			});
+		}
+		if (typeLabel) {
+			list.push({ label: '공연 유형', value: typeLabel });
+		}
+		if (genreLabel) {
+			list.push({ label: '장르', value: genreLabel });
+		}
+		if (startsAtText) {
+			list.push({
+				label: '공연 일시',
+				value: endsAtText ? `${startsAtText} ~ ${endsAtText}` : startsAtText
+			});
+		}
+		if (venue?.name) {
+			list.push({
+				label: '공연장',
+				value: venue.name,
+				sub: venue.region ? `(${venue.region})` : undefined,
+				note: venue.address || undefined
+			});
+		}
+		if (bookingOpenAtText) {
+			list.push({ label: '예매 오픈', value: bookingOpenAtText });
+		}
+		if (maxSeatsPerUser !== null) {
+			list.push({
+				label: '예매 제한',
+				value: `1인 최대 ${maxSeatsPerUser}매`,
+				sub: queueEnabled ? '· 대기열 운영' : undefined
+			});
+		}
+		return list;
+	});
 </script>
 
-<!-- 공연 상세 뷰 (공용 ProductDetailLayout + 3:4 FdImage 포스터 · 라인업 · 공연/공연장 정보 · 예매 CTA, 순수 렌더링) -->
+<!-- 공연 상세 뷰 (공용 ProductDetailLayout + 3:4 FdImage 포스터 · 라인업 · 공용 메타 표 · 예매 CTA, 순수 렌더링) -->
 <ProductDetailLayout
 	{mobile}
 	{backLabel}
@@ -104,6 +148,7 @@
 	{isLoading}
 	{errorMessage}
 	{title}
+	{metaItems}
 	visualWidth="clamp(260px, 32cqi, 370px)"
 	onBack={onClose}
 	onShare={onShareLink}
@@ -133,20 +178,6 @@
 				<div class="poster-fallback" aria-hidden="true"></div>
 			{/if}
 		</div>
-	{/snippet}
-
-	{#snippet eyebrow()}
-		{#if saleStatusLabel}
-			<span class="eyebrow-pill" class:is-onsale={isOnSale} class:is-closed={isClosed}>
-				{saleStatusLabel}
-			</span>
-		{/if}
-		{#if typeLabel}
-			<span class="eyebrow-pill">{typeLabel}</span>
-		{/if}
-		{#if genreLabel}
-			<span class="eyebrow-text">{genreLabel}</span>
-		{/if}
 	{/snippet}
 
 	{#snippet artistSlot()}
@@ -179,51 +210,6 @@
 	{/snippet}
 
 	{#snippet purchase()}
-		<dl class="concert-info-list">
-			{#if startsAtText}
-				<div class="info-row">
-					<dt>공연 일시</dt>
-					<dd>
-						{startsAtText}{#if endsAtText} ~ {endsAtText}{/if}
-					</dd>
-				</div>
-			{/if}
-
-			{#if venue?.name}
-				<div class="info-row">
-					<dt>공연장</dt>
-					<dd>
-						<span>{venue.name}</span>
-						{#if venue.region}
-							<span class="info-sub">({venue.region})</span>
-						{/if}
-						{#if venue.address}
-							<p class="info-address">{venue.address}</p>
-						{/if}
-					</dd>
-				</div>
-			{/if}
-
-			{#if bookingOpenAtText}
-				<div class="info-row">
-					<dt>예매 오픈</dt>
-					<dd>{bookingOpenAtText}</dd>
-				</div>
-			{/if}
-
-			{#if maxSeatsPerUser !== null}
-				<div class="info-row">
-					<dt>예매 제한</dt>
-					<dd>
-						1인 최대 {maxSeatsPerUser}매
-						{#if queueEnabled}
-							<span class="info-sub">· 대기열 운영</span>
-						{/if}
-					</dd>
-				</div>
-			{/if}
-		</dl>
-
 		<div class="booking-bar">
 			<div class="booking-cta-wrap" bind:clientWidth={ctaBtnWidth}>
 				<FdButton
@@ -312,30 +298,6 @@
 		background: linear-gradient(155deg, var(--surface-2), var(--surface-dim));
 	}
 
-	.eyebrow-pill {
-		padding: 0.16rem 0.6rem;
-		border-radius: 999px;
-		background: var(--surface-2);
-		color: var(--white-2);
-		font-size: 0.75rem;
-		font-weight: var(--fw-semibold);
-	}
-
-	.eyebrow-pill.is-onsale {
-		background: var(--white-2);
-		color: var(--bg);
-	}
-
-	.eyebrow-pill.is-closed {
-		background: var(--surface);
-		color: var(--muted);
-	}
-
-	.eyebrow-text {
-		font-size: 0.82rem;
-		color: var(--muted);
-	}
-
 	.lineup-row {
 		margin-top: 0.85rem;
 		display: flex;
@@ -366,47 +328,6 @@
 	.artist-chip-btn:hover {
 		background: var(--surface-2);
 		color: var(--white);
-	}
-
-	.concert-info-list {
-		width: 100%;
-		margin: 1.5rem 0 0;
-		padding: 1.25rem 0 0;
-		border-top: var(--thin-border);
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-
-	.info-row {
-		display: grid;
-		grid-template-columns: 86px minmax(0, 1fr);
-		gap: 0.75rem;
-		font-size: 0.9rem;
-		line-height: 1.45;
-	}
-
-	.info-row dt {
-		color: var(--muted);
-		font-weight: var(--fw-medium);
-	}
-
-	.info-row dd {
-		margin: 0;
-		color: var(--fg);
-		font-weight: var(--fw-medium);
-	}
-
-	.info-sub {
-		margin-left: 0.35rem;
-		font-size: 0.82rem;
-		color: var(--muted);
-	}
-
-	.info-address {
-		margin: 0.2rem 0 0;
-		font-size: 0.82rem;
-		color: var(--muted);
 	}
 
 	.booking-bar {

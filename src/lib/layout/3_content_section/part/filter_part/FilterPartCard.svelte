@@ -65,6 +65,8 @@
 	}
 
 	.filter-part-card.is-mobile {
+		height: auto;
+		flex-shrink: 0;
 		padding: 0.65rem 0.75rem;
 		border-radius: 14px;
 		gap: 0.35rem;

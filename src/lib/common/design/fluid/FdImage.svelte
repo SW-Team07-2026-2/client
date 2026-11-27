@@ -347,6 +347,11 @@
 			applyWaveColors(nextColors);
 			syncSetting?.();
 		};
+		// 상세 페이지 등 물결이 이미 활성화된 상태에서는 흰색 폴백 깜빡임을 막기 위해 즉시 추출
+		if (active || canvasActive) {
+			runExtract();
+			return;
+		}
 		const win = window as Window & {
 			requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
 		};
@@ -403,7 +408,11 @@
 
 		const cacheKey = `${fit}:${currentSrc}`;
 		const cachedColors = waveColorCache.get(cacheKey);
-		applyWaveColors(cachedColors ?? WHITE_WAVE_COLORS);
+		if (cachedColors) {
+			applyWaveColors(cachedColors);
+		} else if (useCorsFallback) {
+			applyWaveColors(WHITE_WAVE_COLORS);
+		}
 
 		const currentImgEl = untrack(() => imgEl);
 		if (currentImgEl && currentImgEl.complete && currentImgEl.naturalWidth > 0) {
@@ -548,6 +557,25 @@
 	function isTransparent(col: string): boolean {
 		const c = col.trim().toLowerCase();
 		return !c || c === 'transparent' || c === 'rgba(0, 0, 0, 0)' || c === 'rgba(0,0,0,0)';
+	}
+
+	function parseRgba(col: string): [number, number, number, number] | null {
+		const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i.exec(
+			col.trim()
+		);
+		if (!m) return null;
+		return [Number(m[1]), Number(m[2]), Number(m[3]), m[4] !== undefined ? Number(m[4]) : 1];
+	}
+
+	function lerpRgbaString(prev: string, curr: string, t: number): string | null {
+		const p = parseRgba(prev);
+		const q = parseRgba(curr);
+		if (!p || !q) return null;
+		const r = Math.round(p[0] + (q[0] - p[0]) * t);
+		const g = Math.round(p[1] + (q[1] - p[1]) * t);
+		const b = Math.round(p[2] + (q[2] - p[2]) * t);
+		const a = p[3] + (q[3] - p[3]) * t;
+		return a >= 0.999 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
 	}
 
 	function traceRoundedRect(c: CanvasRenderingContext2D, w: number, h: number, r: number) {
@@ -1128,12 +1156,19 @@
 				c.globalAlpha = alpha * (1 - cv);
 				c.fill();
 			} else {
-				c.fillStyle = prev;
-				c.globalAlpha = alpha;
-				c.fill();
-				c.fillStyle = curr;
-				c.globalAlpha = alpha * cv;
-				c.fill();
+				const blended = lerpRgbaString(prev, curr, cv);
+				if (blended) {
+					c.fillStyle = blended;
+					c.globalAlpha = alpha;
+					c.fill();
+				} else {
+					c.fillStyle = prev;
+					c.globalAlpha = alpha * (1 - cv);
+					c.fill();
+					c.fillStyle = curr;
+					c.globalAlpha = alpha * cv;
+					c.fill();
+				}
 			}
 		}
 
@@ -1164,12 +1199,19 @@
 				c.globalAlpha = alpha * (1 - cv);
 				c.stroke();
 			} else {
-				c.strokeStyle = prev;
-				c.globalAlpha = alpha;
-				c.stroke();
-				c.strokeStyle = curr;
-				c.globalAlpha = alpha * cv;
-				c.stroke();
+				const blended = lerpRgbaString(prev, curr, cv);
+				if (blended) {
+					c.strokeStyle = blended;
+					c.globalAlpha = alpha;
+					c.stroke();
+				} else {
+					c.strokeStyle = prev;
+					c.globalAlpha = alpha * (1 - cv);
+					c.stroke();
+					c.strokeStyle = curr;
+					c.globalAlpha = alpha * cv;
+					c.stroke();
+				}
 			}
 		}
 

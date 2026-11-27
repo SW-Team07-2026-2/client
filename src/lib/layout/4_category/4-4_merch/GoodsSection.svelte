@@ -53,12 +53,20 @@
 					}}
 				>
 					{#if mobile}
-						<MbGoodsItem {goods} {interactive} onSelect={controller.selectGoods} />
+						<MbGoodsItem
+							{goods}
+							{interactive}
+							cartLoading={controller.isAddingToCart(goods.id)}
+							cartCompleted={controller.isAddedToCart(goods.id)}
+							onSelect={controller.selectGoods}
+							onQuickAddToCart={controller.quickAddToCart}
+						/>
 					{:else}
 						<PcGoodsItem
 							{goods}
 							{interactive}
 							cartLoading={controller.isAddingToCart(goods.id)}
+							cartCompleted={controller.isAddedToCart(goods.id)}
 							onSelect={controller.selectGoods}
 							onQuickAddToCart={controller.quickAddToCart}
 						/>
@@ -98,8 +106,9 @@
 
 	.goods-grid.is-mobile {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		column-gap: 0.85rem;
-		row-gap: 1.65rem;
+		align-items: stretch;
+		column-gap: 0.65rem;
+		row-gap: 0.75rem;
 	}
 
 	.feed-card-slot {

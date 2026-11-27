@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { scrollReveal } from '#lib/common/logic';
-	import FdLine from '#lib/common/design/fluid/FdLine.svelte';
 	import {
 		DETAIL_GLOW_COLOR_OPTIONS,
 		extractImageAverageColor
@@ -17,6 +16,7 @@
 		goods: CatalogGoods;
 		interactive?: boolean;
 		cartLoading?: boolean;
+		cartCompleted?: boolean;
 		onSelect?: (payload: GoodsSelectPayload) => void;
 		onQuickAddToCart?: (goods: CatalogGoods) => void;
 	}
@@ -25,6 +25,7 @@
 		goods,
 		interactive = true,
 		cartLoading = false,
+		cartCompleted = false,
 		onSelect,
 		onQuickAddToCart
 	}: Props = $props();
@@ -37,16 +38,7 @@
 	const priceText = $derived(formatGoodsPrice(goods.price));
 	const isSoldOut = $derived(goods.badge === '품절');
 	const isActive = $derived(interactive && (hovered || focused));
-	const showQuickCart = $derived((isActive || cartLoading) && !isSoldOut);
-
-	const bottomWaveSetting = {
-		color: 'var(--muted)',
-		layers: 2,
-		layerGap: 18,
-		waveAmp: 6,
-		waveLength: 68,
-		spin: 1.05
-	};
+	const showQuickCart = $derived((isActive || cartLoading || cartCompleted) && !isSoldOut);
 
 	$effect(() => {
 		if (!interactive) {
@@ -116,18 +108,6 @@
 					<div class="goods-img-fallback" aria-hidden="true"></div>
 				{/if}
 
-				{#if !isSoldOut}
-					<div class="goods-bottom-wave" aria-hidden="true">
-						<FdLine
-							active={showQuickCart}
-							direction="up"
-							thickness={0}
-							baseHeight={18}
-							setting={bottomWaveSetting}
-						/>
-					</div>
-				{/if}
-
 				{#if isSoldOut}
 					<div class="goods-soldout-overlay">
 						<span class="goods-soldout-badge">품절</span>
@@ -158,6 +138,7 @@
 				<GoodsQuickCartButton
 					visible={showQuickCart}
 					loading={cartLoading}
+					completed={cartCompleted}
 					ariaLabel={`${goods.name} 장바구니에 바로 담기`}
 					onclick={handleQuickCart}
 				/>
@@ -239,18 +220,7 @@
 		background: linear-gradient(155deg, var(--surface-2), var(--surface-dim));
 	}
 
-	/* 이미지 하단 모서리 안쪽에서 위 방향으로 일렁이는 어두운 회색 그림자형 유체 물결 */
-	.goods-bottom-wave {
-		position: absolute;
-		left: 0;
-		right: 0;
-		bottom: -2px;
-		z-index: 2;
-		opacity: 0.78;
-		pointer-events: none;
-	}
-
-	/* 4:5 미디어 프레임 하단 중앙(물결 일렁이는 영역)에 배치되는 빠른 장바구니 버튼 슬롯 */
+	/* 4:5 미디어 프레임 하단 중앙에 배치되는 빠른 장바구니 버튼 슬롯 */
 	.goods-quick-cart-slot {
 		position: absolute;
 		top: 0;
@@ -261,7 +231,7 @@
 		display: flex;
 		align-items: flex-end;
 		justify-content: center;
-		padding-bottom: 12px;
+		padding-bottom: 14px;
 		box-sizing: border-box;
 		pointer-events: none;
 	}

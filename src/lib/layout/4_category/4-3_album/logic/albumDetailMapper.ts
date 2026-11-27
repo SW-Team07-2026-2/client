@@ -20,13 +20,14 @@ export interface ProductDetailDto {
 	productType?: string;
 	name: string;
 	thumbnailUrl?: string | null;
-	purchaseUrl?: string | null;
 	artistId?: number | null;
 	artistName?: string | null;
 	albumId?: number | null;
 	albumTitle?: string | null;
 	format?: string | null;
 	releasedAt?: string | null;
+	description?: string | null;
+	detailImageUrls?: string[] | null;
 	options?: ProductOptionItem[] | null;
 }
 
@@ -57,6 +58,7 @@ export interface AlbumDetailFullDto {
 	genres?: string[] | null;
 	releasedAt?: string | null;
 	thumbnailUrl?: string | null;
+	description?: string | null;
 	tracks?: AlbumTrackDto[] | null;
 	physicalAlbums?: PhysicalItemDto[] | null;
 }

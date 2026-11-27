@@ -4,8 +4,8 @@
 	import type { LayoutProps } from './$types';
 	import { onNavigate } from '$app/navigation';
 	import { page } from '$app/state';
-	import { FdToast } from '#lib/common/design/fluid';
-	import { isMobile, toast, useAnalytics } from '#lib/common/logic';
+	import ToastViewport from '#lib/common/design/toast/ToastViewport.svelte';
+	import { isMobile, useAnalytics } from '#lib/common/logic';
 	import {
 		LoadingSplash,
 		setRootSplashContext,
@@ -109,10 +109,4 @@
 	/>
 {/if}
 
-<FdToast
-	bind:open={toast.open}
-	type={toast.type}
-	message={toast.message}
-	duration={toast.duration}
-	trigger={toast.triggerId}
-/>
+<ToastViewport swipeDirection={['down', 'left']} progressBar={true} />

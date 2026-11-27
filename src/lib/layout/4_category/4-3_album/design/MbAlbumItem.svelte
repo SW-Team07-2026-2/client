@@ -158,10 +158,10 @@
 
 	.album-thumb {
 		position: relative;
-		width: 92px;
-		height: 92px;
+		width: 138px;
+		height: 138px;
 		flex-shrink: 0;
-		border-radius: 10px;
+		border-radius: 12px;
 		overflow: hidden;
 		background: var(--surface);
 	}
@@ -211,11 +211,11 @@
 
 	.album-soldout-badge {
 		flex-shrink: 0;
-		padding: 0.16rem 0.52rem;
+		padding: 0.18rem 0.56rem;
 		border-radius: 999px;
 		background: var(--surface-2);
 		color: var(--muted);
-		font-size: 0.7rem;
+		font-size: 0.75rem;
 		font-weight: var(--fw-semibold);
 		line-height: 1.25;
 		letter-spacing: 0.02em;
@@ -223,9 +223,9 @@
 
 	.album-title {
 		margin: 0;
-		font-size: 0.96rem;
+		font-size: 1.06rem;
 		font-weight: var(--fw-bold);
-		line-height: 1.3;
+		line-height: 1.32;
 		letter-spacing: -0.02em;
 		color: var(--white);
 		display: -webkit-box;
@@ -238,9 +238,9 @@
 
 	.album-artist {
 		margin: 0;
-		font-size: 0.8rem;
+		font-size: 0.88rem;
 		font-weight: var(--fw-medium);
-		line-height: 1.25;
+		line-height: 1.3;
 		color: var(--muted);
 		white-space: nowrap;
 		overflow: hidden;
@@ -250,13 +250,13 @@
 	.album-meta-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.22rem;
+		gap: 0.28rem;
 	}
 
 	.album-meta-row {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
+		gap: 0.44rem;
 	}
 
 	.album-meta-row.is-row-soldout {
@@ -269,17 +269,17 @@
 	}
 
 	.album-format {
-		padding: 0.1rem 0.44rem;
+		padding: 0.12rem 0.48rem;
 		border-radius: 999px;
 		background: var(--surface-2);
 		color: var(--white-3);
-		font-size: 0.7rem;
+		font-size: 0.76rem;
 		font-weight: var(--fw-medium);
 		line-height: 1.2;
 	}
 
 	.album-price {
-		font-size: 0.84rem;
+		font-size: 0.92rem;
 		font-weight: var(--fw-semibold);
 		color: var(--fg);
 		letter-spacing: -0.01em;

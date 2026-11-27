@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { formatAlbumPrice } from '#lib/common/catalog/albums';
-	import ProductDetailLayout from '../../_shared/design/ProductDetailLayout.svelte';
+	import ProductDetailInfoSection from '../../_shared/design/ProductDetailInfoSection.svelte';
+	import ProductDetailLayout, {
+		type DetailMetaItem
+	} from '../../_shared/design/ProductDetailLayout.svelte';
 	import ProductPurchasePanel from '../../_shared/design/ProductPurchasePanel.svelte';
 	import type { SpringDropdownOption } from '../../_shared/design/SpringDropdown.svelte';
 	import { resolveDetailGlowColor } from '../../_shared/logic/detailTheme';
@@ -23,6 +26,9 @@
 		genres: string[];
 		releasedAt: string | null;
 		coverUrl: string;
+		albumDescription: string;
+		editionDescription: string;
+		detailImageUrls: readonly string[];
 		accentColor: string;
 		tracks: AlbumTrackItem[];
 		editions: AlbumPhysicalEdition[];
@@ -38,6 +44,7 @@
 		inCart: boolean;
 		collectionSubmitting: boolean;
 		isCollected: boolean;
+		showFlipHint?: boolean;
 		waveActive?: boolean;
 		mobile: boolean;
 		backLabel?: string;
@@ -50,6 +57,7 @@
 		onGoToCart: () => void;
 		onToggleCollection: () => void;
 		onShareLink: () => void;
+		onDismissFlipHint?: () => void;
 	}
 
 	let {
@@ -62,6 +70,9 @@
 		genres,
 		releasedAt,
 		coverUrl,
+		albumDescription,
+		editionDescription,
+		detailImageUrls,
 		accentColor,
 		tracks,
 		editions,
@@ -76,6 +87,7 @@
 		inCart,
 		collectionSubmitting,
 		isCollected,
+		showFlipHint = false,
 		waveActive = true,
 		mobile,
 		backLabel = '목록으로',
@@ -87,7 +99,8 @@
 		onAddToCart,
 		onGoToCart,
 		onToggleCollection,
-		onShareLink
+		onShareLink,
+		onDismissFlipHint
 	}: Props = $props();
 
 	let extractedWaveColor = $state('');
@@ -129,9 +142,23 @@
 	const isCurrentSoldOut = $derived(
 		selectedOption ? selectedOption.soldOut : Boolean(selectedEdition?.soldOut)
 	);
+
+	const metaItems = $derived.by<DetailMetaItem[]>(() => {
+		const list: DetailMetaItem[] = [];
+		if (albumTypeLabel) {
+			list.push({ label: '앨범 유형', value: albumTypeLabel });
+		}
+		if (genres.length > 0) {
+			list.push({ label: '장르', value: genres.join(' · ') });
+		}
+		if (formattedDate) {
+			list.push({ label: '발매일', value: formattedDate });
+		}
+		return list;
+	});
 </script>
 
-<!-- 앨범 상세 뷰 (공용 ProductDetailLayout + ProductPurchasePanel + 3D 플립 커버 · 보유 음반 · 트랙리스트, 순수 렌더링) -->
+<!-- 앨범 상세 뷰 (공용 ProductDetailLayout + 공용 메타 표 + ProductPurchasePanel + 3D 플립 커버 · 보유 음반 · 트랙리스트, 순수 렌더링) -->
 <ProductDetailLayout
 	{mobile}
 	{backLabel}
@@ -142,6 +169,7 @@
 	title={albumTitle}
 	{artistId}
 	{artistName}
+	{metaItems}
 	onBack={onClose}
 	onShare={onShareLink}
 	{onGoToArtist}
@@ -153,22 +181,12 @@
 			{editions}
 			{selectedEdition}
 			{selectedOption}
+			{showFlipHint}
 			{waveActive}
 			{mobile}
+			{onDismissFlipHint}
 			bind:extractedWaveColor
 		/>
-	{/snippet}
-
-	{#snippet eyebrow()}
-		{#if albumTypeLabel}
-			<span class="eyebrow-pill">{albumTypeLabel}</span>
-		{/if}
-		{#each genres.slice(0, 3) as genre (genre)}
-			<span class="eyebrow-text">{genre}</span>
-		{/each}
-		{#if formattedDate}
-			<span class="eyebrow-text is-date">{formattedDate}</span>
-		{/if}
 	{/snippet}
 
 	{#snippet purchase()}
@@ -207,6 +225,13 @@
 	{/snippet}
 
 	{#snippet below()}
+		{#if albumDescription}
+			<section class="album-intro-section" aria-label="앨범 소개">
+				<h2 class="section-title">앨범 소개</h2>
+				<p class="album-intro-text">{albumDescription}</p>
+			</section>
+		{/if}
+
 		{#if tracks.length > 0}
 			<section class="tracklist-section" aria-label="수록곡">
 				<div class="section-head">
@@ -236,26 +261,33 @@
 				</ol>
 			</section>
 		{/if}
+
+		<ProductDetailInfoSection
+			heading={selectedEdition ? `${selectedEdition.format} 판본 정보` : '판본 정보'}
+			description={editionDescription}
+			{detailImageUrls}
+			itemName={albumTitle}
+		/>
 	{/snippet}
 </ProductDetailLayout>
 
 <style>
-	.eyebrow-pill {
-		padding: 0.16rem 0.58rem;
-		border-radius: 999px;
-		background: var(--surface-2);
-		color: var(--white-2);
-		font-size: 0.75rem;
-		font-weight: var(--fw-semibold);
+	.album-intro-section {
+		margin-top: 2.75rem;
+		padding-top: 2rem;
+		border-top: var(--thin-border);
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
 	}
 
-	.eyebrow-text {
-		font-size: 0.82rem;
-		color: var(--muted);
-	}
-
-	.eyebrow-text.is-date {
-		opacity: 0.85;
+	.album-intro-text {
+		margin: 0;
+		font-size: 0.94rem;
+		line-height: 1.72;
+		color: var(--fg);
+		word-break: keep-all;
+		white-space: pre-line;
 	}
 
 	/* ── 하단 수록곡 트랙리스트 ── */

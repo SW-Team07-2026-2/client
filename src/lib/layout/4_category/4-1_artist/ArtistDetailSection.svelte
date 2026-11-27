@@ -27,7 +27,6 @@
 	errorMessage={controller.errorMessage}
 	following={controller.following}
 	followLoading={controller.followLoading}
-	moreOpen={controller.moreOpen}
 	accentColor={controller.accentColor}
 	{waveActive}
 	{mobile}
@@ -35,6 +34,5 @@
 	{onClose}
 	onToggleFollow={controller.toggleFollow}
 	onShareLink={controller.shareLink}
-	onToggleMore={controller.toggleMore}
 	onAccentColorExtracted={controller.setAccentColor}
 />

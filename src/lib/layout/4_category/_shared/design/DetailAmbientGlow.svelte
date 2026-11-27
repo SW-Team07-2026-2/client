@@ -2,13 +2,13 @@
 	interface Props {
 		/** 배경을 은은하게 비출 색상 (미추출 시 빈 문자열/null이면 꺼진 상태에서 추출 후 서서히 피어오름) */
 		color?: string | null;
-		/** 상단 글로우 레이어 높이 (px, 기본 520) */
+		/** 상단 글로우 레이어 높이 (px, 기본 760) */
 		height?: number;
 		/** 주/보조 빛 강도 배율 (기본 1) */
 		intensity?: number;
 	}
 
-	let { color = '', height = 520, intensity = 1 }: Props = $props();
+	let { color = '', height = 760, intensity = 1 }: Props = $props();
 
 	const normalizedColor = $derived.by(() => {
 		const c = color?.trim() ?? '';
@@ -50,30 +50,32 @@
 
 	.detail-ambient-orb {
 		position: absolute;
-		border-radius: 50%;
+		/* closest-side 기준 가우시안 감쇠로 경계 잘림 없이 부드러운 블러 표현 */
 		background: radial-gradient(
-			ellipse 64% 64% at 50% 50%,
-			color-mix(in srgb, var(--detail-glow-color, transparent) 85%, transparent) 0%,
-			color-mix(in srgb, var(--detail-glow-color, transparent) 38%, transparent) 38%,
-			color-mix(in srgb, var(--detail-glow-color, transparent) 10%, transparent) 64%,
-			transparent 82%
+			closest-side at 50% 50%,
+			color-mix(in srgb, var(--detail-glow-color, transparent) 92%, transparent) 0%,
+			color-mix(in srgb, var(--detail-glow-color, transparent) 62%, transparent) 26%,
+			color-mix(in srgb, var(--detail-glow-color, transparent) 28%, transparent) 52%,
+			color-mix(in srgb, var(--detail-glow-color, transparent) 9%, transparent) 74%,
+			color-mix(in srgb, var(--detail-glow-color, transparent) 2%, transparent) 88%,
+			transparent 100%
 		);
 	}
 
 	.detail-ambient-orb.is-primary {
-		top: -240px;
-		left: -60px;
-		width: 740px;
-		height: 580px;
-		opacity: calc(0.26 * var(--detail-glow-intensity, 1));
+		top: calc(var(--detail-glow-height, 760px) * -0.32);
+		left: -14%;
+		width: max(1120px, 84%);
+		height: calc(var(--detail-glow-height, 760px) * 1.24);
+		opacity: calc(0.36 * var(--detail-glow-intensity, 1));
 	}
 
 	.detail-ambient-orb.is-secondary {
-		top: -190px;
-		right: -40px;
-		width: 620px;
-		height: 480px;
-		opacity: calc(0.16 * var(--detail-glow-intensity, 1));
+		top: calc(var(--detail-glow-height, 760px) * -0.22);
+		right: -12%;
+		width: max(960px, 74%);
+		height: calc(var(--detail-glow-height, 760px) * 1.14);
+		opacity: calc(0.26 * var(--detail-glow-intensity, 1));
 	}
 
 	@media (prefers-reduced-motion: reduce) {

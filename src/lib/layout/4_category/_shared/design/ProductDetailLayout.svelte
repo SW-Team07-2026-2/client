@@ -1,3 +1,18 @@
+<script module lang="ts">
+	export interface DetailMetaItem {
+		label: string;
+		value: string;
+		/** 값 옆에 은은하게 붙는 보조 텍스트 (예: 공연장 지역, 대기열 운영) */
+		sub?: string;
+		/** 값 아래 줄에 작게 표시하는 보조 설명 (예: 공연장 주소) */
+		note?: string;
+		/** 강조 톤 */
+		tone?: 'default' | 'accent' | 'muted';
+		/** 여러 줄 본문 텍스트 (줄바꿈 유지 및 행간 확장) */
+		multiline?: boolean;
+	}
+</script>
+
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { LoadingSpinner } from '#lib/dedicated/loading';
@@ -14,6 +29,12 @@
 		title: string;
 		artistId?: number | null;
 		artistName?: string;
+		/** 제목·아티스트 아래 공용 메타 정보 표 */
+		metaItems?: readonly DetailMetaItem[];
+		/** true면 액션(purchase) 슬롯을 메타 표 위(제목 바로 아래)에 배치 */
+		purchaseBeforeMeta?: boolean;
+		/** true면 좁은 화면(<=740px) 세로 전환 시 제목을 가로 중앙 정렬 */
+		centerTitleOnNarrow?: boolean;
 		/** 좌측 비주얼 슬롯 커스텀 너비 (미지정 시 기본 clamp(280px, 34cqi, 400px)) */
 		visualWidth?: string;
 		onBack: () => void;
@@ -21,13 +42,11 @@
 		onGoToArtist?: () => void;
 		/** 좌측 대표 이미지/미디어 영역 */
 		visual: Snippet;
-		/** 제목 상단 아이브로우 배지/메타 */
-		eyebrow?: Snippet;
 		/** 기본 단일 아티스트 링크 대신 커스텀 아티스트 영역(예: 공연 멀티 라인업 칩) */
 		artistSlot?: Snippet;
-		/** 우측 하단 구매/예매 패널 */
+		/** 우측 하단 구매/예매/팔로우 액션 패널 */
 		purchase?: Snippet;
-		/** 히어로 하단 확장 섹션 (예: 앨범 수록곡 트랙리스트, 공연 소개/유의사항) */
+		/** 히어로 하단 확장 섹션 (예: 아티스트 소개, 앨범 수록곡, 공연 소개/유의사항, 상세 정보) */
 		below?: Snippet;
 	}
 
@@ -41,21 +60,23 @@
 		title,
 		artistId = null,
 		artistName = '',
+		metaItems = [],
+		purchaseBeforeMeta = false,
+		centerTitleOnNarrow = false,
 		visualWidth,
 		onBack,
 		onShare,
 		onGoToArtist,
 		visual,
-		eyebrow,
 		artistSlot,
 		purchase,
 		below
 	}: Props = $props();
 </script>
 
-<!-- 상품 상세 공용 레이아웃 (앰비언트 글로우 · 상단 네비 · 로딩/에러 · 좌/우 2단 히어로 · 하단 확장 슬롯, 순수 렌더링) -->
+<!-- 상품 상세 공용 레이아웃 (앰비언트 글로우 · 상단 네비 · 로딩/에러 · 좌/우 2단 히어로 · 공용 메타 표 · 하단 확장 슬롯, 순수 렌더링) -->
 <div class="product-detail" class:is-mobile={mobile}>
-	<DetailAmbientGlow color={glowColor} height={mobile ? 380 : 540} />
+	<DetailAmbientGlow color={glowColor} height={mobile ? 560 : 780} />
 
 	<div class="detail-container">
 		<DetailTopNav {mobile} {backLabel} {onBack} {onShare} {shareLabel} />
@@ -77,13 +98,7 @@
 					{@render visual()}
 				</div>
 
-				<div class="product-hero-info">
-					{#if eyebrow}
-						<div class="product-eyebrow">
-							{@render eyebrow()}
-						</div>
-					{/if}
-
+				<div class="product-hero-info" class:is-center-title-narrow={centerTitleOnNarrow}>
 					<h1 class="product-hero-title">{title}</h1>
 
 					{#if artistSlot}
@@ -111,7 +126,34 @@
 						{/if}
 					{/if}
 
-					{#if purchase}
+					{#if purchaseBeforeMeta && purchase}
+						{@render purchase()}
+					{/if}
+
+					{#if metaItems.length > 0}
+						<dl class="detail-meta-list">
+							{#each metaItems as item (item.label)}
+								<div class="detail-meta-row">
+									<dt>{item.label}</dt>
+									<dd
+										class:is-accent={item.tone === 'accent'}
+										class:is-muted={item.tone === 'muted'}
+										class:is-multiline={item.multiline}
+									>
+										<span>{item.value}</span>
+										{#if item.sub}
+											<span class="detail-meta-sub">{item.sub}</span>
+										{/if}
+										{#if item.note}
+											<p class="detail-meta-note">{item.note}</p>
+										{/if}
+									</dd>
+								</div>
+							{/each}
+						</dl>
+					{/if}
+
+					{#if !purchaseBeforeMeta && purchase}
 						{@render purchase()}
 					{/if}
 				</div>
@@ -187,14 +229,6 @@
 		align-items: flex-start;
 	}
 
-	.product-eyebrow {
-		display: flex;
-		align-items: center;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-		margin-bottom: 0.6rem;
-	}
-
 	.product-hero-title {
 		margin: 0;
 		font-size: clamp(1.75rem, 3.1cqi, 2.6rem);
@@ -232,6 +266,66 @@
 		color: var(--muted);
 	}
 
+	/* ── 공용 메타 정보 표 ── */
+	.detail-meta-list {
+		width: 100%;
+		margin: 1.5rem 0 0;
+		padding: 1.25rem 0 0;
+		border-top: var(--thin-border);
+		display: flex;
+		flex-direction: column;
+		gap: 0.72rem;
+	}
+
+	.detail-meta-row {
+		display: grid;
+		grid-template-columns: 78px minmax(0, 1fr);
+		gap: 0.75rem;
+		font-size: 0.9rem;
+		line-height: 1.45;
+	}
+
+	.detail-meta-row dt {
+		color: var(--muted);
+		font-weight: var(--fw-medium);
+	}
+
+	.detail-meta-row dd {
+		margin: 0;
+		color: var(--fg);
+		font-weight: var(--fw-medium);
+		word-break: keep-all;
+	}
+
+	.detail-meta-row dd.is-accent {
+		color: var(--white);
+		font-weight: var(--fw-semibold);
+	}
+
+	.detail-meta-row dd.is-muted {
+		color: var(--muted);
+	}
+
+	.detail-meta-row dd.is-multiline {
+		line-height: 1.65;
+		white-space: pre-line;
+		font-weight: var(--fw-normal);
+	}
+
+	.detail-meta-sub {
+		margin-left: 0.35rem;
+		font-size: 0.82rem;
+		color: var(--muted);
+		font-weight: var(--fw-normal);
+	}
+
+	.detail-meta-note {
+		margin: 0.2rem 0 0;
+		font-size: 0.82rem;
+		color: var(--muted);
+		font-weight: var(--fw-normal);
+	}
+
 	@container product-detail (max-width: 740px) {
 		.product-hero {
 			flex-direction: column;
@@ -242,6 +336,11 @@
 		.product-hero-visual-slot {
 			width: min(100%, 300px);
 			margin: 0 auto;
+		}
+
+		.product-hero-info.is-center-title-narrow .product-hero-title {
+			width: 100%;
+			text-align: center;
 		}
 	}
 </style>

@@ -111,9 +111,20 @@ export class GoodsCategoryController {
 		return Boolean(this.addingCartMap[goodsId]);
 	};
 
+	private addedCartMap = $state<Record<number, boolean>>({});
+	private addedCartTimers = new Map<number, ReturnType<typeof setTimeout>>();
+	private static readonly ADDED_FEEDBACK_MS = 2000;
+	private static readonly MIN_LOADING_MS = 340;
+
+	isAddedToCart = (goodsId: number): boolean => {
+		return Boolean(this.addedCartMap[goodsId]);
+	};
+
 	/** 목록 카드에서 첫 번째 구매 가능 옵션으로 즉시 장바구니 담기 */
 	quickAddToCart = async (goods: CatalogGoods): Promise<void> => {
-		if (goods.badge === '품절' || this.addingCartMap[goods.id]) return;
+		if (goods.badge === '품절' || this.addingCartMap[goods.id] || this.addedCartMap[goods.id]) {
+			return;
+		}
 
 		if (!auth.isLoggedIn) {
 			toast.info('로그인 후 장바구니에 담을 수 있습니다.');
@@ -121,6 +132,8 @@ export class GoodsCategoryController {
 		}
 
 		this.addingCartMap = { ...this.addingCartMap, [goods.id]: true };
+		const startedAt = performance.now();
+		let succeeded = false;
 		try {
 			const dto = await api<QuickCartProductDto>(`/api/catalog/products/${goods.id}`);
 			const opts = Array.isArray(dto?.options) ? dto.options : [];
@@ -132,6 +145,12 @@ export class GoodsCategoryController {
 			}
 
 			await addOptionToCart(firstAvail.id, 1);
+			succeeded = true;
+
+			const elapsed = performance.now() - startedAt;
+			if (elapsed < GoodsCategoryController.MIN_LOADING_MS) {
+				await new Promise((r) => setTimeout(r, GoodsCategoryController.MIN_LOADING_MS - elapsed));
+			}
 		} catch (err) {
 			console.error('Quick add goods to cart failed:', err);
 			toast.error('장바구니에 담지 못했습니다. 잠시 후 다시 시도해 주세요.');
@@ -139,6 +158,19 @@ export class GoodsCategoryController {
 			const next = { ...this.addingCartMap };
 			delete next[goods.id];
 			this.addingCartMap = next;
+
+			if (succeeded) {
+				const prevTimer = this.addedCartTimers.get(goods.id);
+				if (prevTimer) clearTimeout(prevTimer);
+				this.addedCartMap = { ...this.addedCartMap, [goods.id]: true };
+				const timer = setTimeout(() => {
+					this.addedCartTimers.delete(goods.id);
+					const cleared = { ...this.addedCartMap };
+					delete cleared[goods.id];
+					this.addedCartMap = cleared;
+				}, GoodsCategoryController.ADDED_FEEDBACK_MS);
+				this.addedCartTimers.set(goods.id, timer);
+			}
 		}
 	};
 }

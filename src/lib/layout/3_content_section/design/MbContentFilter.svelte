@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { fade, scale } from 'svelte/transition';
-	import { cubicOut } from 'svelte/easing';
+	import { fade } from 'svelte/transition';
 	import type { ContentFilterState } from '#lib/common/type/filterOptions';
 	import FilterChipPart from '../part/filter_part/FilterChipPart.svelte';
 	import FilterTogglePart from '../part/filter_part/FilterTogglePart.svelte';
@@ -27,12 +26,10 @@
 		category,
 		title,
 		open,
-		isFollowMode,
 		hasActiveFilters,
 		filterState,
 		onChange,
-		onReset,
-		onClose
+		onReset
 	}: Props = $props();
 
 	function patch(partial: Partial<ContentFilterState>) {
@@ -40,41 +37,27 @@
 	}
 </script>
 
-<!-- 모바일 제어센터형 대형 필터 오버레이 (순수 렌더링) -->
+<!-- 모바일 풀폭 블러 필터 오버레이 (MbHeader 바로 아래 · 좌우하 여백/border/radius 없음 · 상단 우측 초기화 버튼, 순수 렌더링) -->
 {#if open}
 	<div
-		class="mb-filter-backdrop"
-		role="presentation"
-		onclick={() => onClose?.()}
-		transition:fade={{ duration: 200 }}
-	></div>
-
-	<div
-		class="mb-filter-center"
+		class="mb-filter-overlay"
 		role="dialog"
 		aria-modal="true"
 		aria-label="{title} 필터"
-		transition:scale={{ start: 0.94, duration: 240, easing: cubicOut }}
+		transition:fade={{ duration: 200 }}
 	>
-		<header class="mb-filter-header">
-			<h2 class="mb-filter-title">{title} 필터</h2>
-			<div class="mb-filter-actions">
-				{#if hasActiveFilters}
-					<button type="button" class="mb-filter-reset-btn" onclick={() => onReset?.()}>
-						초기화
-					</button>
-				{/if}
+		<!-- 상단 바: 좌측은 MbContentHeader의 X 필터 버튼이 그대로 노출되고, 우측 같은 높이에 초기화 버튼 배치 -->
+		<header class="mb-filter-top-bar">
+			{#if hasActiveFilters}
 				<button
 					type="button"
-					class="mb-filter-close-btn"
-					onclick={() => onClose?.()}
-					aria-label="필터 닫기"
+					class="mb-filter-reset-btn"
+					onclick={() => onReset?.()}
+					transition:fade={{ duration: 150 }}
 				>
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-					</svg>
+					초기화
 				</button>
-			</div>
+			{/if}
 		</header>
 
 		<div class="mb-filter-body">
@@ -112,10 +95,29 @@
 				/>
 				<FilterChipPart
 					title="예매 상태"
+					showAll={false}
 					items={CATEGORY_FILTER_OPTIONS.concertStatuses}
-					selected={filterState.statuses}
-					onchange={(statuses) => patch({ statuses })}
-				/>
+					selected={filterState.statuses.filter((s) => s !== 'CLOSED')}
+					onchange={(active) =>
+						patch({
+							statuses: filterState.statuses.includes('CLOSED')
+								? [...active, 'CLOSED']
+								: active
+						})}
+				>
+					{#snippet footer()}
+						<FilterTogglePart
+							embedded
+							title="종료된 공연 포함"
+							description="판매종료된 지난 공연도 함께 보기"
+							checked={filterState.statuses.includes('CLOSED')}
+							onchange={(includeClosed) => {
+								const active = filterState.statuses.filter((s) => s !== 'CLOSED');
+								patch({ statuses: includeClosed ? [...active, 'CLOSED'] : active });
+							}}
+						/>
+					{/snippet}
+				</FilterChipPart>
 				<FilterChipPart
 					title="공연 유형"
 					items={CATEGORY_FILTER_OPTIONS.concertTypes}
@@ -158,125 +160,83 @@
 				/>
 			{/if}
 
-			{#if isFollowMode}
-				<SortPart
-					items={CATEGORY_FILTER_OPTIONS.followSorts}
-					value={filterState.sort}
-					onchange={(sort) => patch({ sort })}
-				/>
-			{/if}
+			<SortPart
+				title="팔로우 정렬"
+				items={CATEGORY_FILTER_OPTIONS.followSorts}
+				value={filterState.sort}
+				onchange={(sort) => patch({ sort })}
+			/>
 		</div>
-
-		<footer class="mb-filter-footer">
-			<button type="button" class="mb-filter-apply-btn" onclick={() => onClose?.()}>
-				적용하기
-			</button>
-		</footer>
 	</div>
 {/if}
 
 <style>
-	.mb-filter-backdrop {
+	.mb-filter-overlay {
 		position: fixed;
-		inset: 0;
-		z-index: 64;
-		background: color-mix(in srgb, var(--bg) 72%, transparent);
-	}
-
-	.mb-filter-center {
-		position: fixed;
-		inset: calc(18px + env(safe-area-inset-top, 0px)) 14px
-			calc(18px + env(safe-area-inset-bottom, 0px)) 14px;
-		z-index: 65;
-		border-radius: 26px;
+		top: 60px;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 55;
 		background: var(--glass-bg);
 		-webkit-backdrop-filter: var(--glass-filter);
 		backdrop-filter: var(--glass-filter);
-		border: var(--thin-border);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
 		color: var(--fg);
 	}
 
-	.mb-filter-header {
+	/* MbContentHeader와 동일한 패딩·높이(42px)로 맞춰 초기화 버튼이 필터 X 버튼과 같은 줄에 정렬 */
+	.mb-filter-top-bar {
 		flex-shrink: 0;
-		padding: 1rem 1.15rem;
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		border-bottom: var(--thin-border);
-	}
-
-	.mb-filter-title {
-		margin: 0;
-		font-size: 1.02rem;
-		font-weight: 700;
-		color: var(--white);
-	}
-
-	.mb-filter-actions {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
+		justify-content: flex-end;
+		min-height: 42px;
+		padding: 0.55rem var(--content-padding-x-mobile) 0.7rem;
+		box-sizing: content-box;
 	}
 
 	.mb-filter-reset-btn {
-		padding: 0.35rem 0.7rem;
+		height: 36px;
+		padding: 0 0.85rem;
 		border-radius: 999px;
-		border: var(--thin-border);
+		border: none;
 		background: var(--surface);
 		color: var(--fg);
-		font-size: 0.8rem;
-		font-weight: 500;
-		cursor: pointer;
-	}
-
-	.mb-filter-close-btn {
-		width: 34px;
-		height: 34px;
-		padding: 0;
-		border: none;
-		border-radius: 999px;
-		background: transparent;
-		color: var(--white);
+		font: inherit;
+		font-size: 0.82rem;
+		font-weight: var(--fw-semibold);
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+		transition:
+			background-color 0.16s ease,
+			color 0.16s ease,
+			transform 0.14s ease;
 	}
 
-	.mb-filter-close-btn svg {
-		width: 20px;
-		height: 20px;
+	.mb-filter-reset-btn:active {
+		transform: scale(0.95);
+		background: var(--surface-2);
+		color: var(--white);
 	}
 
 	.mb-filter-body {
 		flex: 1;
 		min-height: 0;
+		width: 100%;
+		overflow-x: hidden;
 		overflow-y: auto;
-		padding: 1rem 1.1rem;
+		padding: 0.25rem var(--content-padding-x-mobile)
+			calc(1.5rem + env(safe-area-inset-bottom, 0px));
+		box-sizing: border-box;
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: 0.9rem;
 		overscroll-behavior: contain;
-	}
-
-	.mb-filter-footer {
-		flex-shrink: 0;
-		padding: 0.85rem 1.1rem;
-		border-top: var(--thin-border);
-	}
-
-	.mb-filter-apply-btn {
-		width: 100%;
-		height: 44px;
-		border: none;
-		border-radius: 999px;
-		background: var(--white);
-		color: var(--bg);
-		font-size: 0.92rem;
-		font-weight: 600;
-		cursor: pointer;
 	}
 </style>

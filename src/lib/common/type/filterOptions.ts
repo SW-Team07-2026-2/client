@@ -173,11 +173,17 @@ export const CONCERT_REGION_OPTIONS: readonly FilterOption[] = [
 	{ value: 'JEJU', label: '제주', isProvince: true, group: 'jeju' }
 ];
 
-/** 공연 진행 현황 필터 (판매전 / 판매중 / 판매종료) */
+/** 공연 진행 현황 전체 Enum 라벨 (판매전 / 판매중 / 판매종료) */
 export const CONCERT_STATUS_OPTIONS: readonly FilterOption[] = [
 	{ value: 'SCHEDULED', label: '판매전' },
 	{ value: 'ON_SALE', label: '판매중' },
 	{ value: 'CLOSED', label: '판매종료' }
+];
+
+/** 공연 필터 칩용 예매 가능 상태 옵션 (판매중 / 판매전 — 판매종료는 별도 포함 토글로 제어) */
+export const CONCERT_ACTIVE_STATUS_OPTIONS: readonly FilterOption[] = [
+	{ value: 'ON_SALE', label: '판매중' },
+	{ value: 'SCHEDULED', label: '판매전' }
 ];
 
 /** 공연 유형 필터 (단독 / 페스티벌) */

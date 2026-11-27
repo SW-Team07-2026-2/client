@@ -15,6 +15,14 @@
 		label?: string;
 		placeholder?: string;
 		disabled?: boolean;
+		/** 모바일 헤더용 42px 알약형 컴팩트 스타일 */
+		compact?: boolean;
+		/** 드롭다운 메뉴 정렬 ('stretch': 트리거 폭 맞춤, 'right': 우측 끝 정렬) */
+		align?: 'stretch' | 'right';
+		/** align='right'일 때 메뉴 너비 (예: '124px') */
+		menuWidth?: string;
+		/** true가 되면 열려 있던 드롭다운을 강제로 닫음 */
+		forceClose?: boolean;
 		onSelect?: (value: number | string) => void;
 	}
 
@@ -24,6 +32,10 @@
 		label = '옵션 선택',
 		placeholder = '선택해 주세요',
 		disabled = false,
+		compact = false,
+		align = 'stretch',
+		menuWidth,
+		forceClose = false,
 		onSelect
 	}: Props = $props();
 
@@ -423,6 +435,12 @@
 		};
 	});
 
+	$effect(() => {
+		if (forceClose && open) {
+			setOpen(false);
+		}
+	});
+
 	onDestroy(() => {
 		clearTimers();
 		if (rafId) cancelAnimationFrame(rafId);
@@ -430,7 +448,14 @@
 </script>
 
 <!-- 스프링 물리 드롭다운 (트리거 롤업 · 스트레치 하이라이트 · 체크 스트로크 드로우 · 순수 렌더링) -->
-<div bind:this={rootEl} class="spring-dd" class:is-open={open} class:is-disabled={disabled}>
+<div
+	bind:this={rootEl}
+	class="spring-dd"
+	class:is-open={open}
+	class:is-disabled={disabled}
+	class:is-compact={compact}
+	class:is-align-right={align === 'right'}
+>
 	<button
 		bind:this={trigEl}
 		type="button"
@@ -488,7 +513,13 @@
 		</svg>
 	</button>
 
-	<div bind:this={menuEl} class="dd-menu" role="listbox" aria-label={label}>
+	<div
+		bind:this={menuEl}
+		class="dd-menu"
+		style:width={align === 'right' && menuWidth ? menuWidth : undefined}
+		role="listbox"
+		aria-label={label}
+	>
 		<i bind:this={hlEl} class="dd-hl" aria-hidden="true"></i>
 		{#each options as opt, i (opt.value)}
 			{@const isSelected = i === selectedIndex}
@@ -550,6 +581,33 @@
 	.spring-dd.is-disabled {
 		opacity: 0.55;
 		pointer-events: none;
+	}
+
+	.spring-dd.is-compact {
+		height: 42px;
+	}
+
+	.spring-dd.is-compact .dd-trig {
+		gap: 5px;
+		padding: 0 11px 0 14px;
+		border-radius: 999px;
+		border: var(--thin-border);
+	}
+
+	.spring-dd.is-compact .dd-slot-label {
+		font-size: 0.82rem;
+	}
+
+	.spring-dd.is-compact .dd-chev {
+		width: 14px;
+		height: 14px;
+	}
+
+	.spring-dd.is-align-right .dd-menu {
+		left: auto;
+		right: 0;
+		min-width: 120px;
+		transform-origin: 85% 0;
 	}
 
 	.dd-trig {

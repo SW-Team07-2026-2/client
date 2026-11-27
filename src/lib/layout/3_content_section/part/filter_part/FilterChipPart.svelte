@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import CheckIcon from '#lib/common/design/icon/CheckIcon.svelte';
 	import FdCheckButton from '#lib/common/design/fluid/FdCheckButton.svelte';
 	import { FluidSetting } from '#lib/common/type/fluid';
@@ -72,6 +73,8 @@
 		showHeader?: boolean;
 		showCount?: boolean;
 		onchange?: (selected: string[]) => void;
+		/** 칩 목록 하단에 구분선과 함께 삽입할 보조 컨트롤 슬롯 */
+		footer?: Snippet;
 		class?: string;
 	}
 
@@ -85,6 +88,7 @@
 		showHeader = true,
 		showCount = false,
 		onchange,
+		footer,
 		class: klass = ''
 	}: Props = $props();
 
@@ -168,6 +172,12 @@
 			</FdCheckButton>
 		{/each}
 	</div>
+
+	{#if footer}
+		<div class="filter-chip-footer">
+			{@render footer()}
+		</div>
+	{/if}
 </FilterPartCard>
 
 <style>
@@ -194,6 +204,12 @@
 	.filter-chip-list.is-mobile .filter-chip-divider {
 		margin: 0 0.15rem;
 		height: 0.95rem;
+	}
+
+	.filter-chip-footer {
+		margin-top: 0.55rem;
+		padding-top: 0.55rem;
+		border-top: var(--thin-border);
 	}
 
 	:global(.fd-wrap .fd-body .fd-check-btn.content-filter-chip) {

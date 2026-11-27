@@ -46,23 +46,31 @@ export class AlbumDetailController {
 	genres = $state<string[]>([]);
 	releasedAt = $state<string | null>(null);
 	coverUrl = $state('');
+	albumDescription = $state('');
 	accentColor = $state<string>('');
 	tracks = $state<AlbumTrackItem[]>([]);
 
 	editions = $state<AlbumPhysicalEdition[]>([]);
 	selectedEditionId = $state<number | null>(null);
 	optionsByEdition = $state<Record<number, ProductOptionItem[]>>({});
+	descriptionByEdition = $state<Record<number, string>>({});
+	detailImagesByEdition = $state<Record<number, string[]>>({});
 	optionsLoading = $state(false);
 	selectedOptionId = $state<number | null>(null);
 	qty = $state(1);
 
 	cartSubmitting = $state(false);
 	collectionSubmitting = $state(false);
+	/** 모바일 최초 앨범 상세 진입 시 1회성 실물 전환 회전 아이콘 힌트 노출 여부 */
+	showFlipHint = $state(false);
 	/** optionId -> collectionId 매핑 (보유 음반 여부 및 삭제용) */
 	collectionByOption = $state<Record<number, number>>({});
 
 	private currentRouteId: number | null = null;
 	private loadToken = 0;
+	private flipHintEligible = false;
+	private flipHintTimer: ReturnType<typeof setTimeout> | null = null;
+	private static readonly FLIP_HINT_DURATION_MS = 2200;
 
 	get selectedEdition(): AlbumPhysicalEdition | null {
 		if (this.selectedEditionId === null) return this.editions[0] ?? null;
@@ -73,6 +81,18 @@ export class AlbumDetailController {
 		const ed = this.selectedEdition;
 		if (!ed) return [];
 		return this.optionsByEdition[ed.id] ?? [];
+	}
+
+	get currentEditionDescription(): string {
+		const ed = this.selectedEdition;
+		if (!ed) return '';
+		return this.descriptionByEdition[ed.id] ?? '';
+	}
+
+	get currentEditionDetailImages(): string[] {
+		const ed = this.selectedEdition;
+		if (!ed) return [];
+		return this.detailImagesByEdition[ed.id] ?? [];
 	}
 
 	get selectedOption(): ProductOptionItem | null {
@@ -134,11 +154,17 @@ export class AlbumDetailController {
 	load = (productId: number): void => {
 		if (this.currentRouteId === productId && this.albumTitle) return;
 		this.currentRouteId = productId;
+		this.clearFlipHintTimer();
+		this.showFlipHint = false;
+		this.flipHintEligible = albumDetailState.consumeFirstDetailVisit();
 		this.errorMessage = null;
 		this.qty = 1;
 		this.tracks = [];
+		this.albumDescription = '';
 		this.editions = [];
 		this.optionsByEdition = {};
+		this.descriptionByEdition = {};
+		this.detailImagesByEdition = {};
 		this.selectedEditionId = productId;
 		this.selectedOptionId = null;
 		this.accentColor = '';
@@ -296,6 +322,7 @@ export class AlbumDetailController {
 
 			const opts = Array.isArray(product.options) ? product.options : [];
 			this.optionsByEdition = { ...this.optionsByEdition, [product.id]: opts };
+			this.storeEditionMeta(product);
 			const firstAvail = opts.find((o) => !o.soldOut) ?? opts[0] ?? null;
 			this.selectedOptionId = firstAvail?.id ?? null;
 
@@ -346,6 +373,7 @@ export class AlbumDetailController {
 			this.artistId = dto.artistId ?? this.artistId;
 			this.artistName = dto.artistName?.trim() || this.artistName;
 			this.releasedAt = dto.releasedAt ?? this.releasedAt;
+			this.albumDescription = dto.description?.trim() ?? '';
 			this.genres = Array.isArray(dto.genres)
 				? dto.genres.map((g) => getGenreLabel(g)).filter(Boolean)
 				: [];
@@ -379,6 +407,7 @@ export class AlbumDetailController {
 			if (token !== this.loadToken || !product) return;
 			const opts = Array.isArray(product.options) ? product.options : [];
 			this.optionsByEdition = { ...this.optionsByEdition, [editionId]: opts };
+			this.storeEditionMeta(product);
 			if (this.selectedEditionId === editionId) {
 				const firstAvail = opts.find((o) => !o.soldOut) ?? opts[0] ?? null;
 				this.selectedOptionId = firstAvail?.id ?? null;
@@ -405,6 +434,44 @@ export class AlbumDetailController {
 			this.collectionByOption = map;
 		} catch {
 			// 보유 음반 목록 조회 실패 시 무시
+		}
+	}
+
+	private storeEditionMeta(product: ProductDetailDto): void {
+		const desc = product.description?.trim() ?? '';
+		const imgs = Array.isArray(product.detailImageUrls)
+			? product.detailImageUrls.map((u) => u?.trim()).filter((u): u is string => Boolean(u))
+			: [];
+		this.descriptionByEdition = { ...this.descriptionByEdition, [product.id]: desc };
+		this.detailImagesByEdition = { ...this.detailImagesByEdition, [product.id]: imgs };
+	}
+
+	/** 모바일 최초 진입 시 상세 전환이 완료되고 실물 에디션이 준비되면 1회만 힌트 노출 후 자동 숨김 */
+	syncFlipHint = (mobile: boolean, active: boolean): void => {
+		if (!this.flipHintEligible || !mobile || !active || this.editions.length === 0) return;
+		this.flipHintEligible = false;
+		this.showFlipHint = true;
+		this.clearFlipHintTimer();
+		this.flipHintTimer = setTimeout(() => {
+			this.showFlipHint = false;
+			this.flipHintTimer = null;
+		}, AlbumDetailController.FLIP_HINT_DURATION_MS);
+	};
+
+	dismissFlipHint = (): void => {
+		this.flipHintEligible = false;
+		this.showFlipHint = false;
+		this.clearFlipHintTimer();
+	};
+
+	destroy = (): void => {
+		this.clearFlipHintTimer();
+	};
+
+	private clearFlipHintTimer(): void {
+		if (this.flipHintTimer !== null) {
+			clearTimeout(this.flipHintTimer);
+			this.flipHintTimer = null;
 		}
 	}
 

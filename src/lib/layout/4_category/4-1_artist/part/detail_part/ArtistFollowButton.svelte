@@ -323,6 +323,8 @@
 	:global(.artist-bell-fd-wrap) {
 		display: inline-flex;
 		vertical-align: middle;
+		/* FdDiv inset(8px) 투명 여백을 상쇄해 좌·상단 정렬선을 제목/표와 일치시킴 */
+		margin: -8px;
 	}
 
 	:global(.artist-bell-fd-body) {

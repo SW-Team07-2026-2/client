@@ -188,7 +188,13 @@ export function buildCatalogQueryParams(opts: {
 		appendCommaParam(params, 'gender', fs?.artistGenders ?? []);
 		appendCommaParam(params, 'composition', fs?.artistTypes ?? []);
 	} else if (opts.category === 'concert') {
-		appendCommaParam(params, 'saleStatus', fs?.statuses ?? []);
+		const rawStatuses = fs?.statuses ?? [];
+		// 'CLOSED'만 선택(= '종료된 공연 포함' 토글 ON + 예매 상태 칩 미선택)이면 전체 상태 조회
+		const resolvedStatuses =
+			rawStatuses.length === 1 && rawStatuses[0] === 'CLOSED'
+				? ['ON_SALE', 'SCHEDULED', 'CLOSED']
+				: rawStatuses;
+		appendCommaParam(params, 'saleStatus', resolvedStatuses);
 		appendCommaParam(params, 'type', fs?.concertTypes ?? []);
 		appendCommaParam(params, 'region', fs?.regions ?? []);
 		appendCommaParam(params, 'genre', genres);

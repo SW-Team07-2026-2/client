@@ -12,8 +12,10 @@
 		editions: AlbumPhysicalEdition[];
 		selectedEdition: AlbumPhysicalEdition | null;
 		selectedOption: ProductOptionItem | null;
+		showFlipHint?: boolean;
 		waveActive?: boolean;
 		mobile: boolean;
+		onDismissFlipHint?: () => void;
 		/** FdImage에서 추출한 커버 대표 물결 색상 (상위 DetailAmbientGlow 연동용) */
 		extractedWaveColor?: string;
 	}
@@ -24,8 +26,10 @@
 		editions,
 		selectedEdition,
 		selectedOption,
+		showFlipHint = false,
 		waveActive = true,
 		mobile,
+		onDismissFlipHint,
 		extractedWaveColor = $bindable('')
 	}: Props = $props();
 
@@ -100,6 +104,7 @@
 
 	function handleHeroClick() {
 		if (!mobile || !canFlipMedia) return;
+		onDismissFlipHint?.();
 		heroFlipped = !heroFlipped;
 	}
 </script>
@@ -153,15 +158,21 @@
 					<div class="hero-cover-fallback" aria-hidden="true"></div>
 				{/if}
 
-				{#if mobile && canFlipMedia}
-					<span class="hero-flip-hint" aria-hidden="true">
+				{#if mobile && canFlipMedia && showFlipHint && !heroFlipped}
+					<span
+						class="hero-flip-hint"
+						aria-hidden="true"
+						in:fade={{ duration: 240 }}
+						out:fade={{ duration: 420 }}
+					>
 						<svg
-							width="14"
-							height="14"
+							class="hero-flip-hint-icon"
+							width="68"
+							height="68"
 							viewBox="0 0 24 24"
 							fill="none"
 							stroke="currentColor"
-							stroke-width="2"
+							stroke-width="1.5"
 							stroke-linecap="round"
 							stroke-linejoin="round"
 						>
@@ -170,7 +181,6 @@
 							<path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
 							<path d="M16 16h5v5" />
 						</svg>
-						<span>실물 보기</span>
 					</span>
 				{/if}
 			</div>
@@ -341,22 +351,27 @@
 
 	.hero-flip-hint {
 		position: absolute;
-		right: 0.75rem;
-		bottom: 0.75rem;
+		inset: 0;
 		z-index: 3;
-		padding: 0.3rem 0.65rem;
-		border-radius: 999px;
-		background: color-mix(in srgb, var(--bg) 72%, transparent);
-		border: var(--thin-border);
-		color: var(--white-2);
-		font-size: 0.74rem;
-		font-weight: var(--fw-semibold);
-		display: inline-flex;
-		align-items: center;
-		gap: 0.32rem;
-		-webkit-backdrop-filter: blur(8px);
-		backdrop-filter: blur(8px);
+		display: grid;
+		place-items: center;
 		pointer-events: none;
+	}
+
+	.hero-flip-hint-icon {
+		color: var(--white);
+		opacity: 0.62;
+		filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.48));
+		animation: flip-hint-spin 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+	}
+
+	@keyframes flip-hint-spin {
+		0% {
+			transform: rotate(0deg);
+		}
+		100% {
+			transform: rotate(-360deg);
+		}
 	}
 
 	.hero-cover-fallback {
@@ -370,6 +385,10 @@
 		.hero-flip-card,
 		.hero-back-media {
 			transition: none;
+		}
+
+		.hero-flip-hint-icon {
+			animation: none;
 		}
 	}
 </style>

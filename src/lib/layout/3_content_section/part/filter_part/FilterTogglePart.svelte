@@ -9,6 +9,8 @@
 		description?: string;
 		checked?: boolean;
 		paused?: boolean;
+		/** true면 외곽 FilterPartCard 없이 다른 필터 파트 내부에 인라인으로 삽입 */
+		embedded?: boolean;
 		onchange?: (checked: boolean) => void;
 		class?: string;
 	}
@@ -18,6 +20,7 @@
 		description = '',
 		checked = $bindable(false),
 		paused = false,
+		embedded = false,
 		onchange,
 		class: klass = ''
 	}: Props = $props();
@@ -88,7 +91,7 @@
 	}
 </script>
 
-<FilterPartCard class="toggle-part {klass}" showHeader={false}>
+{#snippet toggleRow()}
 	<div
 		role="switch"
 		tabindex="0"
@@ -97,6 +100,7 @@
 		class="filter-toggle-row"
 		class:is-checked={checked}
 		class:is-mobile={mobile}
+		class:is-embedded={embedded}
 		onclick={handleToggle}
 		onkeydown={handleKeyDown}
 	>
@@ -118,7 +122,15 @@
 			</FdDiv>
 		</span>
 	</div>
-</FilterPartCard>
+{/snippet}
+
+{#if embedded}
+	{@render toggleRow()}
+{:else}
+	<FilterPartCard class="toggle-part {klass}" showHeader={false}>
+		{@render toggleRow()}
+	</FilterPartCard>
+{/if}
 
 <style>
 	:global(.filter-part-card.toggle-part .part-body) {

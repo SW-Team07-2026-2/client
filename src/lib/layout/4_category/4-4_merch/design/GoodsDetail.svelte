@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { formatGoodsPrice } from '#lib/common/catalog/goods';
 	import FdImage from '#lib/common/design/fluid/FdImage.svelte';
-	import ProductDetailLayout from '../../_shared/design/ProductDetailLayout.svelte';
+	import ProductDetailInfoSection from '../../_shared/design/ProductDetailInfoSection.svelte';
+	import ProductDetailLayout, {
+		type DetailMetaItem
+	} from '../../_shared/design/ProductDetailLayout.svelte';
 	import ProductPurchasePanel from '../../_shared/design/ProductPurchasePanel.svelte';
 	import type { SpringDropdownOption } from '../../_shared/design/SpringDropdown.svelte';
 	import {
@@ -18,7 +21,8 @@
 		artistId: number | null;
 		artistName: string;
 		imageUrl: string;
-		purchaseUrl: string | null;
+		description: string;
+		detailImageUrls: readonly string[];
 		accentColor: string;
 		options: GoodsOptionItem[];
 		selectedOption: GoodsOptionItem | null;
@@ -48,7 +52,8 @@
 		artistId,
 		artistName,
 		imageUrl,
-		purchaseUrl,
+		description,
+		detailImageUrls,
 		accentColor,
 		options,
 		selectedOption,
@@ -100,9 +105,22 @@
 			soldOut: opt.soldOut
 		}))
 	);
+
+	const metaItems = $derived.by<DetailMetaItem[]>(() => {
+		const list: DetailMetaItem[] = [];
+		if (categoryLabel) {
+			list.push({ label: '카테고리', value: categoryLabel });
+		}
+		list.push({
+			label: '판매 상태',
+			value: isAllSoldOut ? '품절' : '판매중',
+			tone: isAllSoldOut ? 'muted' : 'accent'
+		});
+		return list;
+	});
 </script>
 
-<!-- 굿즈 상세 뷰 (공용 ProductDetailLayout + ProductPurchasePanel + 4:5 FdImage 히어로, 순수 렌더링) -->
+<!-- 굿즈 상세 뷰 (공용 ProductDetailLayout + 공용 메타 표 + ProductPurchasePanel + 4:5 FdImage 히어로, 순수 렌더링) -->
 <ProductDetailLayout
 	{mobile}
 	{backLabel}
@@ -113,6 +131,7 @@
 	title={name}
 	{artistId}
 	{artistName}
+	{metaItems}
 	onBack={onClose}
 	onShare={onShareLink}
 	{onGoToArtist}
@@ -146,15 +165,6 @@
 		</div>
 	{/snippet}
 
-	{#snippet eyebrow()}
-		{#if categoryLabel}
-			<span class="eyebrow-pill">{categoryLabel}</span>
-		{/if}
-		{#if isAllSoldOut}
-			<span class="eyebrow-pill is-soldout">품절</span>
-		{/if}
-	{/snippet}
-
 	{#snippet purchase()}
 		<ProductPurchasePanel
 			optionLabel="옵션"
@@ -171,36 +181,16 @@
 			{inCart}
 			{onAddToCart}
 			{onGoToCart}
-		>
-			{#snippet leadingAction()}
-				{#if purchaseUrl}
-					<a
-						class="official-store-btn"
-						href={purchaseUrl}
-						target="_blank"
-						rel="noopener noreferrer"
-						aria-label="공식 스토어 열기"
-						title="공식 스토어"
-					>
-						<svg
-							width="17"
-							height="17"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							aria-hidden="true"
-						>
-							<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-							<polyline points="15 3 21 3 21 9" />
-							<line x1="10" y1="14" x2="21" y2="3" />
-						</svg>
-					</a>
-				{/if}
-			{/snippet}
-		</ProductPurchasePanel>
+		/>
+	{/snippet}
+
+	{#snippet below()}
+		<ProductDetailInfoSection
+			heading="상세 정보"
+			{description}
+			{detailImageUrls}
+			itemName={name}
+		/>
 	{/snippet}
 </ProductDetailLayout>
 
@@ -247,40 +237,5 @@
 		letter-spacing: 0.04em;
 		-webkit-backdrop-filter: blur(8px);
 		backdrop-filter: blur(8px);
-	}
-
-	.eyebrow-pill {
-		padding: 0.16rem 0.6rem;
-		border-radius: 999px;
-		background: var(--surface-2);
-		color: var(--white-2);
-		font-size: 0.75rem;
-		font-weight: var(--fw-semibold);
-	}
-
-	.eyebrow-pill.is-soldout {
-		background: var(--surface);
-		color: var(--muted);
-	}
-
-	.official-store-btn {
-		width: 46px;
-		height: 46px;
-		border-radius: 14px;
-		background: var(--surface);
-		color: var(--fg);
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		text-decoration: none;
-		transition:
-			background-color 0.16s ease,
-			color 0.16s ease;
-	}
-
-	.official-store-btn:hover {
-		background: var(--surface-2);
-		color: var(--white);
 	}
 </style>

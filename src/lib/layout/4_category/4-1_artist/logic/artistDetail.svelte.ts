@@ -12,7 +12,7 @@ import { artistDetailState } from './artistDetailState.svelte';
 /**
  * 4-1_artist 상세 페이지 전용 컨트롤러
  * - 캐시된 아티스트 즉시 복원 + GET /api/catalog/artists/{id} 상세 조회
- * - 팔로우 상태 조회/토글(M4·M5·M7), 링크 공유, 상세 보기 패널 토글 관리
+ * - 팔로우 상태 조회/토글(M4·M5·M7), 링크 공유 관리
  */
 export class ArtistDetailController {
 	artist = $state<CatalogArtist | null>(null);
@@ -20,7 +20,6 @@ export class ArtistDetailController {
 	errorMessage = $state<string | null>(null);
 	following = $state(false);
 	followLoading = $state(false);
-	moreOpen = $state(false);
 	accentColor = $state<string>('');
 
 	private currentId: number | null = null;
@@ -30,7 +29,6 @@ export class ArtistDetailController {
 	load = (artistId: number): void => {
 		if (this.currentId === artistId && this.artist) return;
 		this.currentId = artistId;
-		this.moreOpen = false;
 		this.errorMessage = null;
 
 		const cached = artistDetailState.getCachedArtist(artistId);
@@ -49,10 +47,6 @@ export class ArtistDetailController {
 		if (auth.isLoggedIn) {
 			void this.fetchFollowStatus(artistId, token);
 		}
-	};
-
-	toggleMore = (): void => {
-		this.moreOpen = !this.moreOpen;
 	};
 
 	setAccentColor = (color: string): void => {

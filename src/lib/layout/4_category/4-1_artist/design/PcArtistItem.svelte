@@ -37,7 +37,9 @@
 	let enterRaf = 0;
 	let unmountTimer: ReturnType<typeof setTimeout> | undefined;
 
-	const isActive = $derived(interactive && (focused || cardHovered || imageHovered));
+	const isActive = $derived(
+		interactive && (focused || cardHovered || imageHovered || followLoading)
+	);
 
 	$effect(() => {
 		if (!interactive) {
@@ -80,15 +82,28 @@
 		const base = {
 			radius: 999,
 			inset: 8,
-			bulge: 4,
-			reach: 26,
+			bulge: followLoading ? 0 : 4,
+			reach: followLoading ? 0 : 26,
 			waveLength: 56,
 			borderWidth: 0,
 			color: 'var(--white-2)',
 			hoverColor: 'var(--white)',
 			pressColor: 'var(--white-3)',
-			textColor: 'var(--bg)'
+			textColor: 'var(--bg)',
+			clickReactive: !followLoading
 		};
+		if (followLoading) {
+			return new FluidSetting({
+				...base,
+				layers: 2,
+				layerGap: 6.5,
+				waveAmp: 5.2,
+				waveLength: 36,
+				spin: 4.5,
+				pauseWhenIdle: false,
+				waveColor: extractedWaveColor
+			});
+		}
 		if (following) {
 			return new FluidSetting({
 				...base,
@@ -173,7 +188,7 @@
 		<span
 			class="follow-indicator-dot"
 			class:is-visible={following}
-			title={following ? '팔로우 중' : undefined}
+			title={following ? '팔로잉' : undefined}
 			aria-hidden={!following}
 		></span>
 
@@ -192,7 +207,12 @@
 		/>
 
 		{#if buttonMounted}
-			<div class="follow-center-slot" class:is-visible={buttonVisible} aria-hidden={!buttonVisible}>
+			<div
+				class="follow-center-slot"
+				class:is-visible={buttonVisible}
+				class:is-loading={followLoading}
+				aria-hidden={!buttonVisible}
+			>
 				<FdButton
 					class="pc-artist-follow-btn"
 					setting={followBtnSetting}
@@ -200,19 +220,14 @@
 					aria-busy={followLoading || undefined}
 					tabindex={buttonVisible ? 0 : -1}
 					aria-pressed={following}
+					aria-label={followLoading ? '팔로우 상태 변경 중' : following ? '팔로잉' : '팔로우'}
 					onclick={handleFollowClick}
 					onkeydown={(e) => {
 						if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
 					}}
 				>
-					<span class="follow-label">
-						<span>팔로우</span><span
-							class="follow-suffix-shell"
-							class:is-active={following}
-							aria-hidden={!following}
-						>
-							<span class="follow-suffix-inner">&nbsp;중</span>
-						</span>
+					<span class="follow-label" class:is-hidden={followLoading}>
+						{following ? '팔로잉' : '팔로우'}
 					</span>
 				</FdButton>
 			</div>
@@ -316,7 +331,7 @@
 		font: inherit;
 		line-height: 1;
 		cursor: pointer;
-		color: var(--fg);
+		color: var(--white-2);
 		transition:
 			transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
 			color 0.25s ease;
@@ -331,7 +346,7 @@
 	.artist-name {
 		display: block;
 		font-size: 1.02rem;
-		font-weight: var(--fw-medium);
+		font-weight: var(--fw-bold);
 		letter-spacing: -0.02em;
 		line-height: 1.35;
 		text-align: center;
@@ -340,7 +355,7 @@
 
 	.follow-center-slot {
 		position: absolute;
-		top: 50%;
+		top: 78%;
 		left: 50%;
 		z-index: 4;
 		opacity: 0;
@@ -348,7 +363,7 @@
 		pointer-events: none;
 		transition:
 			opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-			transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+			transform 0.34s cubic-bezier(0.22, 1.15, 0.36, 1);
 	}
 
 	.follow-center-slot.is-visible {
@@ -357,8 +372,17 @@
 		pointer-events: auto;
 	}
 
+	/* 팔로우 요청 로딩 중에는 버튼을 작게 축소해 깊고 빠른 회전 물결로 로딩 상태 표현 */
+	.follow-center-slot.is-visible.is-loading {
+		transform: translate(-50%, -50%) scale(0.68);
+	}
+
+	.follow-center-slot.is-loading :global(.pc-artist-follow-btn) {
+		cursor: default;
+	}
+
 	:global(.pc-artist-follow-btn) {
-		padding: 0.42rem 0.92rem !important;
+		padding: 0.42rem 0.96rem !important;
 		font-size: 0.82rem !important;
 		font-weight: var(--fw-bold) !important;
 		letter-spacing: -0.01em;
@@ -369,35 +393,18 @@
 		display: inline-flex;
 		align-items: center;
 		white-space: nowrap;
+		transition: opacity 0.16s ease;
 	}
 
-	.follow-suffix-shell {
-		display: inline-grid;
-		grid-template-columns: 0fr;
+	.follow-label.is-hidden {
 		opacity: 0;
-		transform: translateX(-3px);
-		transition:
-			grid-template-columns 0.26s cubic-bezier(0.22, 1, 0.36, 1),
-			opacity 0.2s ease,
-			transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
-	}
-
-	.follow-suffix-shell.is-active {
-		grid-template-columns: 1fr;
-		opacity: 1;
-		transform: translateX(0);
-	}
-
-	.follow-suffix-inner {
-		min-width: 0;
-		overflow: hidden;
-		white-space: pre;
 	}
 
 	@media (prefers-reduced-motion: reduce) {
 		.follow-indicator-dot,
 		.follow-indicator-dot.is-visible,
-		.follow-suffix-shell {
+		.follow-center-slot,
+		.follow-label {
 			transition: none;
 		}
 	}

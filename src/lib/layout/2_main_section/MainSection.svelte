@@ -385,6 +385,11 @@
 		pointer-events: none;
 	}
 
+	/* 모바일 필터 오픈 시 하단 네비게이션(z:50)을 덮는 필터 오버레이(z:55)보다 필터 X 버튼이 위에 유지되도록 승격 */
+	.main-pinned-control.is-mobile-fixed:has(:global(.mb-content-header.is-filter-open)) {
+		z-index: 56;
+	}
+
 	.main-section-stage.is-sliding .main-pinned-control {
 		will-change: transform;
 	}

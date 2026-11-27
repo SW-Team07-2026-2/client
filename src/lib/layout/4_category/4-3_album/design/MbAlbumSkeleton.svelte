@@ -43,10 +43,10 @@
 	}
 
 	.skeleton-thumb {
-		width: 92px;
-		height: 92px;
+		width: 138px;
+		height: 138px;
 		flex-shrink: 0;
-		border-radius: 10px;
+		border-radius: 12px;
 	}
 
 	.skeleton-body {
@@ -67,37 +67,37 @@
 
 	.skeleton-title {
 		width: 68%;
-		height: 0.96rem;
+		height: 1.06rem;
 		border-radius: 999px;
 	}
 
 	.skeleton-artist {
 		width: 38%;
-		height: 0.78rem;
+		height: 0.86rem;
 		border-radius: 999px;
 	}
 
 	.skeleton-meta-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.24rem;
+		gap: 0.28rem;
 	}
 
 	.skeleton-meta-row {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
+		gap: 0.44rem;
 	}
 
 	.skeleton-badge {
-		width: 2.1rem;
-		height: 1.1rem;
+		width: 2.3rem;
+		height: 1.2rem;
 		border-radius: 999px;
 	}
 
 	.skeleton-price {
-		width: 4.2rem;
-		height: 0.84rem;
+		width: 4.5rem;
+		height: 0.92rem;
 		border-radius: 999px;
 	}
 </style>

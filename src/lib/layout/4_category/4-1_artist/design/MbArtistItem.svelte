@@ -409,13 +409,13 @@
 		font: inherit;
 		line-height: 1;
 		cursor: pointer;
-		color: var(--fg);
+		color: var(--white-2);
 	}
 
 	.artist-name {
 		display: block;
 		font-size: 0.94rem;
-		font-weight: var(--fw-medium);
+		font-weight: var(--fw-bold);
 		letter-spacing: -0.02em;
 		line-height: 1.35;
 		text-align: center;

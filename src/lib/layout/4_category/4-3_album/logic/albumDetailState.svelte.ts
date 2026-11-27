@@ -42,6 +42,17 @@ class AlbumDetailStateStore {
 	private cache = new Map<number, CatalogAlbum>();
 	private albumMetaCache = $state<Record<number, AlbumMetaCacheEntry>>({});
 	private inFlightAlbumIds = new Set<number>();
+	private visitedAlbumDetail = false;
+
+	/**
+	 * 페이지 새로고침 전 세션 동안 앨범 상세 페이지 최초 진입 여부 1회 소비.
+	 * 한 번이라도 앨범 상세에 들어간 뒤에는 이후 다른 앨범 상세 진입 시 항상 false 반환.
+	 */
+	consumeFirstDetailVisit(): boolean {
+		if (this.visitedAlbumDetail) return false;
+		this.visitedAlbumDetail = true;
+		return true;
+	}
 
 	cacheAlbum(album: CatalogAlbum): void {
 		const prev = this.cache.get(album.id);

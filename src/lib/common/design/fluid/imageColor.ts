@@ -164,8 +164,8 @@ export function extractImageAverageColor(
 }
 
 export const DETAIL_GLOW_COLOR_OPTIONS: ImageAverageColorOptions = {
-	whiteMix: 0.35,
-	saturationBoost: 1.45
+	whiteMix: 0.12,
+	saturationBoost: 1.85
 };
 
 /**

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { detailOverlay } from '#lib/common/logic';
 	import { AlbumDetailController } from './logic/albumDetail.svelte';
 	import AlbumDetail from './design/AlbumDetail.svelte';
@@ -18,6 +19,14 @@
 	$effect(() => {
 		controller.load(id);
 	});
+
+	$effect(() => {
+		controller.syncFlipHint(mobile, waveActive);
+	});
+
+	onDestroy(() => {
+		controller.destroy();
+	});
 </script>
 
 <!-- 4-3_album 상세 진입점(Shell): AlbumDetailController와 AlbumDetail 뷰 조립 -->
@@ -31,6 +40,9 @@
 	genres={controller.genres}
 	releasedAt={controller.releasedAt}
 	coverUrl={controller.coverUrl}
+	albumDescription={controller.albumDescription}
+	editionDescription={controller.currentEditionDescription}
+	detailImageUrls={controller.currentEditionDetailImages}
 	accentColor={controller.accentColor}
 	tracks={controller.tracks}
 	editions={controller.editions}
@@ -46,6 +58,7 @@
 	inCart={controller.isCurrentOptionInCart}
 	collectionSubmitting={controller.collectionSubmitting}
 	isCollected={controller.isCurrentOptionCollected}
+	showFlipHint={controller.showFlipHint}
 	{waveActive}
 	{mobile}
 	{backLabel}
@@ -58,4 +71,5 @@
 	onGoToCart={controller.goToCart}
 	onToggleCollection={controller.toggleCollection}
 	onShareLink={controller.shareLink}
+	onDismissFlipHint={controller.dismissFlipHint}
 />
