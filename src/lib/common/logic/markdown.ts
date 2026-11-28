@@ -1,5 +1,233 @@
+const LATEX_SYMBOLS: Record<string, string> = {
+	times: '×',
+	cdot: '·',
+	div: '÷',
+	pm: '±',
+	mp: '∓',
+	le: '≤',
+	leq: '≤',
+	ge: '≥',
+	geq: '≥',
+	ne: '≠',
+	neq: '≠',
+	approx: '≈',
+	equiv: '≡',
+	sim: '∼',
+	propto: '∝',
+	infty: '∞',
+	to: '→',
+	rightarrow: '→',
+	leftarrow: '←',
+	leftrightarrow: '↔',
+	Rightarrow: '⇒',
+	Leftarrow: '⇐',
+	Leftrightarrow: '⇔',
+	mapsto: '↦',
+	sum: '∑',
+	prod: '∏',
+	int: '∫',
+	partial: '∂',
+	nabla: '∇',
+	in: '∈',
+	notin: '∉',
+	subset: '⊂',
+	subseteq: '⊆',
+	supset: '⊃',
+	supseteq: '⊇',
+	cup: '∪',
+	cap: '∩',
+	emptyset: '∅',
+	forall: '∀',
+	exists: '∃',
+	neg: '¬',
+	land: '∧',
+	lor: '∨',
+	therefore: '∴',
+	because: '∵',
+	dots: '…',
+	ldots: '…',
+	cdots: '⋯',
+	circ: '∘',
+	deg: '°',
+	angle: '∠',
+	perp: '⊥',
+	parallel: '∥',
+	alpha: 'α',
+	beta: 'β',
+	gamma: 'γ',
+	delta: 'δ',
+	epsilon: 'ε',
+	varepsilon: 'ε',
+	zeta: 'ζ',
+	eta: 'η',
+	theta: 'θ',
+	iota: 'ι',
+	kappa: 'κ',
+	lambda: 'λ',
+	mu: 'μ',
+	nu: 'ν',
+	xi: 'ξ',
+	pi: 'π',
+	rho: 'ρ',
+	sigma: 'σ',
+	tau: 'τ',
+	upsilon: 'υ',
+	phi: 'φ',
+	varphi: 'φ',
+	chi: 'χ',
+	psi: 'ψ',
+	omega: 'ω',
+	Gamma: 'Γ',
+	Delta: 'Δ',
+	Theta: 'Θ',
+	Lambda: 'Λ',
+	Xi: 'Ξ',
+	Pi: 'Π',
+	Sigma: 'Σ',
+	Phi: 'Φ',
+	Psi: 'Ψ',
+	Omega: 'Ω',
+	quad: ' ',
+	qquad: '  '
+};
+
+function escapeMathText(str: string): string {
+	return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function readBracedGroup(src: string, start: number): [string, number] | null {
+	let i = start;
+	while (i < src.length && src[i] === ' ') i++;
+	if (src[i] !== '{') return null;
+	let depth = 0;
+	const contentStart = i + 1;
+	for (; i < src.length; i++) {
+		if (src[i] === '\\') {
+			i++;
+			continue;
+		}
+		if (src[i] === '{') depth++;
+		else if (src[i] === '}') {
+			depth--;
+			if (depth === 0) {
+				return [src.slice(contentStart, i), i + 1];
+			}
+		}
+	}
+	return null;
+}
+
+/** LaTeX 수식 표현을 안전한 HTML 마크업으로 변환 */
+function renderLatexMath(raw: string): string {
+	let src = raw.trim();
+	if (!src) return '';
+
+	// \left / \right 크기 수식어 제거
+	src = src.replace(/\\(?:left|right|big|Big|bigg|Bigg)\s*(?=[()[\]{}|.])/g, '');
+	src = src.replace(/\\[,;:!]/g, ' ');
+	src = src.replace(/\\([%$#&_{}])/g, '$1');
+
+	// \frac{a}{b}, \sqrt{x}, \text{...}, \mathrm{...}, \mathbf{...} 재귀 변환
+	let out = '';
+	let i = 0;
+	while (i < src.length) {
+		if (src[i] === '\\') {
+			const cmdMatch = src.slice(i + 1).match(/^([a-zA-Z]+)/);
+			if (cmdMatch) {
+				const cmd = cmdMatch[1];
+				const afterCmd = i + 1 + cmd.length;
+
+				if (cmd === 'frac' || cmd === 'dfrac' || cmd === 'tfrac') {
+					const num = readBracedGroup(src, afterCmd);
+					const den = num ? readBracedGroup(src, num[1]) : null;
+					if (num && den) {
+						out += `<span class="md-frac"><span class="md-frac-num">${renderLatexMath(num[0])}</span><span class="md-frac-den">${renderLatexMath(den[0])}</span></span>`;
+						i = den[1];
+						continue;
+					}
+				} else if (cmd === 'sqrt') {
+					const arg = readBracedGroup(src, afterCmd);
+					if (arg) {
+						out += `<span class="md-sqrt">√<span class="md-sqrt-inner">${renderLatexMath(arg[0])}</span></span>`;
+						i = arg[1];
+						continue;
+					}
+				} else if (cmd === 'text' || cmd === 'mathrm' || cmd === 'operatorname') {
+					const arg = readBracedGroup(src, afterCmd);
+					if (arg) {
+						out += `<span class="md-math-text">${escapeMathText(arg[0])}</span>`;
+						i = arg[1];
+						continue;
+					}
+				} else if (cmd === 'mathbf' || cmd === 'textbf' || cmd === 'boldsymbol') {
+					const arg = readBracedGroup(src, afterCmd);
+					if (arg) {
+						out += `<strong class="md-math-bold">${renderLatexMath(arg[0])}</strong>`;
+						i = arg[1];
+						continue;
+					}
+				} else if (cmd in LATEX_SYMBOLS) {
+					out += `<span class="md-math-op">${LATEX_SYMBOLS[cmd]}</span>`;
+					i = afterCmd;
+					continue;
+				}
+			}
+			// 알 수 없는 이스케이프는 문자 그대로 출력
+			out += escapeMathText(src[i + 1] ?? '');
+			i += 2;
+			continue;
+		}
+
+		// 위첨자(^) / 아래첨자(_)
+		if (src[i] === '^' || src[i] === '_') {
+			const tag = src[i] === '^' ? 'sup' : 'sub';
+			const group = readBracedGroup(src, i + 1);
+			if (group) {
+				out += `<${tag}>${renderLatexMath(group[0])}</${tag}>`;
+				i = group[1];
+				continue;
+			}
+			const nextChar = src[i + 1];
+			if (nextChar) {
+				out += `<${tag}>${escapeMathText(nextChar)}</${tag}>`;
+				i += 2;
+				continue;
+			}
+		}
+
+		// 단독 그룹 { ... } 언래핑
+		if (src[i] === '{') {
+			const group = readBracedGroup(src, i);
+			if (group) {
+				out += renderLatexMath(group[0]);
+				i = group[1];
+				continue;
+			}
+		}
+
+		const ch = src[i];
+		if (/[a-zA-Z]/.test(ch)) {
+			// 연속 영문 변수명(예: sin, log)은 정자, 단일 변수는 이탤릭
+			const wordMatch = src.slice(i).match(/^[a-zA-Z]+/);
+			const word = wordMatch ? wordMatch[0] : ch;
+			if (word.length === 1) {
+				out += `<var class="md-math-var">${word}</var>`;
+			} else {
+				out += `<span class="md-math-text">${word}</span>`;
+			}
+			i += word.length;
+			continue;
+		}
+
+		out += escapeMathText(ch);
+		i++;
+	}
+
+	return out;
+}
+
 /**
- * 안전하고 강력한 인라인/블록 마크다운 파서 (GFM 완벽 지원)
+ * 안전하고 강력한 인라인/블록 마크다운 파서 (GFM + LaTeX 수식 지원)
  */
 export function renderMarkdown(content: string): string {
 	if (!content) return '';
@@ -23,6 +251,30 @@ export function renderMarkdown(content: string): string {
 		inlineCodes.push(`<code class="md-inline-code">${safeCode}</code>`);
 		return `@@INLINECODE:${idx}@@`;
 	});
+
+	// 2.5. LaTeX 수식 블록($$...$$, \[...\]) 및 인라인($...$, \(...\)) 임시 보호·렌더링
+	const mathBlocks: string[] = [];
+	const mathInlines: string[] = [];
+
+	html = html.replace(/\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]/g, (_, d1, d2) => {
+		const expr = (d1 ?? d2 ?? '').trim();
+		const idx = mathBlocks.length;
+		mathBlocks.push(`<div class="md-math-block">${renderLatexMath(expr)}</div>\n\n`);
+		return `@@MATHBLOCK:${idx}@@`;
+	});
+
+	// 인라인 수식: \(...\) 또는 $...$ (앞뒤 공백 없이 수식 내용 포함, 금액 표기 '$100' 등은 오인식 방지)
+	html = html.replace(
+		/\\\(([^\n]+?)\\\)|(?<!\\)\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\d)/g,
+		(match, p1, p2) => {
+			const expr = (p1 ?? p2 ?? '').trim();
+			// 단순 숫자/쉼표/소수점만 있는 경우(예: $10 ~ $20 사이 구간)는 수식으로 오인하지 않음
+			if (!p1 && /^[\d,.\s]+$/.test(expr)) return match;
+			const idx = mathInlines.length;
+			mathInlines.push(`<span class="md-math-inline">${renderLatexMath(expr)}</span>`);
+			return `@@MATHINLINE:${idx}@@`;
+		}
+	);
 
 	// 3. HTML 특수문자 기본 이스케이프 (&, <만 이스케이프하여 > 인용구 지원)
 	html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -156,6 +408,7 @@ export function renderMarkdown(content: string): string {
 				trimmed.startsWith('<h') ||
 				trimmed.startsWith('<pre') ||
 				trimmed.startsWith('@@CODEBLOCK:') ||
+				trimmed.startsWith('@@MATHBLOCK:') ||
 				trimmed.startsWith('<ul') ||
 				trimmed.startsWith('<ol') ||
 				trimmed.startsWith('<blockquote') ||
@@ -169,9 +422,15 @@ export function renderMarkdown(content: string): string {
 		.filter(Boolean)
 		.join('');
 
-	// 13. 보호해 둔 코드 블록 및 인라인 코드 복원
+	// 13. 보호해 둔 코드 블록, 인라인 코드, LaTeX 수식 복원
 	codeBlocks.forEach((cb, idx) => {
 		finalHtml = finalHtml.replace(`@@CODEBLOCK:${idx}@@`, cb);
+	});
+	mathBlocks.forEach((mb, idx) => {
+		finalHtml = finalHtml.replace(`@@MATHBLOCK:${idx}@@`, mb);
+	});
+	mathInlines.forEach((mi, idx) => {
+		finalHtml = finalHtml.replace(`@@MATHINLINE:${idx}@@`, mi);
 	});
 	inlineCodes.forEach((ic, idx) => {
 		finalHtml = finalHtml.replace(`@@INLINECODE:${idx}@@`, ic);

@@ -54,11 +54,21 @@ export interface StreamChatOptions {
 	attachments?: ChatUploadAttachment[];
 	apiUrl?: string;
 	signal?: AbortSignal;
-	onStatus?: (statusMessage: string, statusType?: 'thinking' | 'tool_calling', tool?: string) => void;
+	onStatus?: (
+		statusMessage: string,
+		statusType?: 'thinking' | 'tool_calling',
+		tool?: string,
+		detail?: string | string[]
+	) => void;
 	onDelta?: (content: string) => void;
 	onAction?: (action: ChatActionPayload) => void;
 	onDone?: (payload?: any) => void;
-	onError?: (errorMessage: string, errorCode?: string, status?: number) => void;
+	onError?: (
+		errorMessage: string,
+		errorCode?: string,
+		status?: number,
+		isStreamError?: boolean
+	) => void;
 }
 
 export const DEFAULT_CHAT_API_URL = AI_API_URL;
@@ -377,6 +387,9 @@ export async function streamAIChat({
 		const reader = response.body.getReader();
 		const decoder = new TextDecoder('utf-8');
 		let buffer = '';
+		let currentEventType = 'message';
+		let hasErrored = false;
+		let hasDone = false;
 
 		while (true) {
 			const { done, value } = await reader.read();
@@ -385,8 +398,6 @@ export async function streamAIChat({
 			buffer += decoder.decode(value, { stream: true });
 			const lines = buffer.split('\n');
 			buffer = lines.pop() || ''; // 아직 완성되지 않은 마지막 줄은 버퍼에 보관
-
-			let currentEventType = 'message';
 
 			for (let i = 0; i < lines.length; i++) {
 				const line = lines[i].trim();
@@ -400,13 +411,21 @@ export async function streamAIChat({
 						const payload = JSON.parse(rawData);
 
 						switch (currentEventType) {
-							case 'status':
+							case 'status': {
+								const rawDetail =
+									payload.detail ??
+									payload.details ??
+									payload.summary ??
+									payload.result ??
+									payload.thought;
 								onStatus?.(
 									payload.message || '답변을 생각하고 있어요...',
 									payload.status,
-									payload.tool
+									payload.tool,
+									rawDetail
 								);
 								break;
+							}
 
 							case 'text_delta': {
 								const chunk = payload.content ?? payload.text ?? payload.delta;
@@ -422,14 +441,26 @@ export async function streamAIChat({
 								break;
 
 							case 'done':
+								if (payload?.status === 'timeout' || payload?.status === 'limit_exceeded') {
+									console.warn('[INDIG AI] 응답 조기 종료:', payload);
+								}
+								hasDone = true;
 								onDone?.(payload);
 								break;
 
 							case 'error':
+								hasErrored = true;
+								console.error('[INDIG AI] Gemini/서버 에러:', {
+									code: payload.code,
+									status: payload.status,
+									error: payload.error || payload.message,
+									detail: payload.detail
+								});
 								onError?.(
 									payload.error || payload.message || '답변 생성 중 문제가 발생했습니다.',
 									payload.code,
-									typeof payload.status === 'number' ? payload.status : undefined
+									typeof payload.status === 'number' ? payload.status : undefined,
+									true
 								);
 								break;
 
@@ -453,7 +484,9 @@ export async function streamAIChat({
 			}
 		}
 
-		onDone?.();
+		if (!hasErrored && !hasDone) {
+			onDone?.();
+		}
 	} catch (err: any) {
 		if (err.name === 'AbortError') {
 			console.log('[INDIG AI] 사용자에 의해 스트리밍이 중단되었습니다.');

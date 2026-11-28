@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import FdDiv from '#lib/common/design/fluid/FdDiv.svelte';
 	import SearchIcon from '#lib/common/design/icon/SearchIcon.svelte';
+	import { createLetterLimitMotion } from '#lib/common/logic/letterLimitMotion';
 	import { FluidSetting } from '#lib/common/type/fluid';
 	import { SEARCH_QUERY_MAX_LENGTH } from '../logic/contentSection.svelte';
 	import MbFeedOptionButton from '../part/header_part/MbFeedOptionButton.svelte';
@@ -36,6 +38,49 @@
 	const hasActiveFilters = $derived(activeFilterCount > 0);
 	const isHeaderHidden = $derived(hidden && !filterOpen);
 	let searchIconRef = $state<ReturnType<typeof SearchIcon> | undefined>(undefined);
+	let searchInputEl = $state<HTMLInputElement | undefined>(undefined);
+	let searchMirrorEl = $state<HTMLDivElement | undefined>(undefined);
+	let searchPileEl = $state<HTMLDivElement | undefined>(undefined);
+
+	const letterMotion = createLetterLimitMotion({
+		getInput: () => searchInputEl,
+		getMirror: () => searchMirrorEl,
+		getFillCircle: () => undefined,
+		getMeterSvg: () => undefined,
+		getCountEl: () => undefined,
+		getSendWrap: () => undefined,
+		getPileEl: () => searchPileEl
+	});
+
+	function portalToBody(node: HTMLElement) {
+		document.body.appendChild(node);
+		return {
+			destroy() {
+				node.remove();
+			}
+		};
+	}
+
+	onDestroy(() => {
+		letterMotion.destroy();
+	});
+
+	function handleSearchInput(e: Event & { currentTarget: HTMLInputElement }) {
+		const field = e.currentTarget;
+		let v = field.value;
+		if (v.length > SEARCH_QUERY_MAX_LENGTH) {
+			const caret = field.selectionStart ?? SEARCH_QUERY_MAX_LENGTH;
+			const extra = v.slice(SEARCH_QUERY_MAX_LENGTH);
+			v = v.slice(0, SEARCH_QUERY_MAX_LENGTH);
+			field.value = v;
+			if (document.activeElement === field) {
+				const pos = Math.min(caret, SEARCH_QUERY_MAX_LENGTH);
+				field.setSelectionRange(pos, pos);
+			}
+			letterMotion.drop(extra, v);
+		}
+		onSearchChange?.(v);
+	}
 
 	const filterBtnSetting = $derived(
 		new FluidSetting({
@@ -70,6 +115,8 @@
 </script>
 
 <!-- 모바일 콘텐츠 헤더: 필터 버튼(FdDiv 물결 + X 모핑) · 검색창 · 피드 옵션 버튼 (순수 렌더링) -->
+<div bind:this={searchPileEl} use:portalToBody class="mb-search-ll-pile" aria-hidden="true"></div>
+
 <div
 	class="mb-content-header"
 	class:is-hidden={isHeaderHidden}
@@ -147,15 +194,18 @@
 		<span class="mb-search-icon" aria-hidden="true">
 			<SearchIcon bind:this={searchIconRef} size={17} strokeWidth={2} />
 		</span>
-		<input
-			type="search"
-			class="mb-search-input"
-			value={searchQuery}
-			maxlength={SEARCH_QUERY_MAX_LENGTH}
-			placeholder={searchPlaceholder}
-			aria-label={searchPlaceholder}
-			oninput={(e) => onSearchChange?.(e.currentTarget.value)}
-		/>
+		<div class="mb-search-input-wrap">
+			<input
+				bind:this={searchInputEl}
+				type="search"
+				class="mb-search-input"
+				value={searchQuery}
+				placeholder={searchPlaceholder}
+				aria-label={searchPlaceholder}
+				oninput={handleSearchInput}
+			/>
+			<div bind:this={searchMirrorEl} class="mb-search-mirror" aria-hidden="true"></div>
+		</div>
 		{#if searchQuery.length > 0}
 			<button
 				type="button"
@@ -336,10 +386,42 @@
 		flex-shrink: 0;
 	}
 
-	.mb-search-input {
+	.mb-search-ll-pile {
+		position: fixed;
+		inset: 0;
+		overflow: hidden;
+		pointer-events: none;
+		z-index: 250;
+	}
+
+	.mb-search-ll-pile :global(.ll-falling-char) {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 20px;
+		height: 24px;
+		margin: -12px 0 0 -10px;
+		text-align: center;
+		font-size: 0.9rem;
+		font-weight: var(--fw-medium);
+		line-height: 24px;
+		color: var(--danger);
+		will-change: transform, opacity;
+	}
+
+	.mb-search-input-wrap {
+		position: relative;
 		flex: 1 1 0%;
 		min-width: 0;
+		height: 100%;
+		display: flex;
+		align-items: center;
+	}
+
+	.mb-search-input {
 		width: 100%;
+		height: 100%;
+		min-width: 0;
 		border: none;
 		outline: none;
 		background: transparent;
@@ -347,6 +429,33 @@
 		font: inherit;
 		font-size: 0.9rem;
 		padding: 0;
+		-webkit-appearance: none;
+		appearance: none;
+	}
+
+	.mb-search-input::-webkit-search-decoration,
+	.mb-search-input::-webkit-search-cancel-button,
+	.mb-search-input::-webkit-search-results-button,
+	.mb-search-input::-webkit-search-results-decoration {
+		-webkit-appearance: none;
+		appearance: none;
+		display: none;
+	}
+
+	.mb-search-mirror {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		display: flex;
+		align-items: center;
+		font: inherit;
+		font-size: 0.9rem;
+		white-space: pre;
+		overflow: hidden;
+		visibility: hidden;
+		pointer-events: none;
 	}
 
 	.mb-search-input::placeholder {

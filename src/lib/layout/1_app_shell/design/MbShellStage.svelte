@@ -57,6 +57,8 @@
 	let isTransitioning = $state(false);
 	let isViewportLocked = $state(untrack(() => activePane !== 'center'));
 	let lockedScrollY = $state(0);
+	let vvTop = $state(0);
+	let vvHeight = $state<number | null>(null);
 
 	// 단일 액터 현재 정착 좌표 (px)
 	// 우측 액터는 뷰포트 폭 변화에도 화면 밖으로 밀리지 않도록 우측 끝 기준 거리(rightEdgePx)를 함께 추적
@@ -145,7 +147,11 @@
 		} else if (settledPane === 'left') {
 			const lt = measureAnchorRect('left-to');
 			const rf = measureAnchorRect('right-from');
-			if (lt) leftBox = lt;
+			if (lt && lt.left >= -8 && lt.left < vw) {
+				leftBox = lt;
+			} else {
+				leftBox = { left: 16, top: 13, width: 34, height: 34 };
+			}
 			if (rf) {
 				setRightBox(rf, vw);
 			} else {
@@ -157,6 +163,8 @@
 			const lf = measureAnchorRect('left-from');
 			if (rt && rt.left >= 0 && rt.left + rt.width <= vw + 8) {
 				setRightBox(rt, vw);
+			} else {
+				setRightBox({ left: Math.max(0, vw - 50), top: 13, width: 34, height: 34 }, vw);
 			}
 			if (lf) {
 				leftBox = lf;
@@ -173,6 +181,16 @@
 		const dy = to.top + to.height / 2 - (from.top + from.height / 2);
 		const sx = from.width > 0 ? to.width / from.width : 1;
 		const sy = from.height > 0 ? to.height / from.height : 1;
+
+		// 제자리에 고정되는 액터는 불필요한 WAAPI 레이어를 만들지 않고 그대로 유지
+		if (
+			Math.abs(dx) < 0.5 &&
+			Math.abs(dy) < 0.5 &&
+			Math.abs(sx - 1) < 0.005 &&
+			Math.abs(sy - 1) < 0.005
+		) {
+			return null;
+		}
 
 		return el.animate(
 			[
@@ -220,6 +238,10 @@
 
 		// 1) 트랙은 아직 fromPane 위치에 둔 채 뷰포트 잠금 -> 출발/도착 앵커를 정확히 측정
 		settledPane = fromPane;
+		if (toPane === 'center') {
+			// 복귀 슬라이드 시작 시점에 상단/콘텐츠 헤더를 미리 노출해 전환 완료 후 갑자기 튀어나오는 현상 방지
+			showMobileHeader();
+		}
 		if (fromPane === 'center' && !isViewportLocked) {
 			lockedScrollY = Math.max(0, window.scrollY);
 			isViewportLocked = true;
@@ -249,7 +271,10 @@
 			left: box.left + deltaShiftPx
 		});
 
-		const leftEnd: ActorBox =
+		const isOnScreenLeft = (box: ActorBox) => box.left >= -8 && box.left < vw;
+		const isOnScreenRight = (box: ActorBox) => box.left >= 0 && box.left + box.width <= vw + 8;
+
+		const leftEndCandidate =
 			toPane === 'left'
 				? lt
 					? shiftBox(lt)
@@ -258,7 +283,14 @@
 					? shiftBox(lf)
 					: shiftBox(leftStart);
 
-		const rightEnd: ActorBox =
+		const leftEnd: ActorBox =
+			toPane === 'left' || toPane === 'center'
+				? isOnScreenLeft(leftEndCandidate)
+					? leftEndCandidate
+					: { ...leftStart, left: 16 }
+				: leftEndCandidate;
+
+		const rightEndCandidate =
 			toPane === 'right'
 				? rt
 					? shiftBox(rt)
@@ -266,6 +298,13 @@
 				: rf
 					? shiftBox(rf)
 					: shiftBox(rightStart);
+
+		const rightEnd: ActorBox =
+			toPane === 'right' || toPane === 'center'
+				? isOnScreenRight(rightEndCandidate)
+					? rightEndCandidate
+					: { ...rightStart, left: Math.max(0, vw - rightStart.width - 16) }
+				: rightEndCandidate;
 
 		// 출발 좌표로 정확히 스냅 후 애니메이션 시작
 		leftBox = leftStart;
@@ -334,6 +373,16 @@
 						}
 					});
 				});
+			} else {
+				void tick().then(() => {
+					if (seq !== runSeq) return;
+					syncSettledActorBoxes();
+					requestAnimationFrame(() => {
+						if (seq === runSeq && !isTransitioning) {
+							syncSettledActorBoxes();
+						}
+					});
+				});
 			}
 		};
 
@@ -368,23 +417,45 @@
 		});
 	});
 
+	function syncVisualViewport() {
+		if (typeof window === 'undefined') return;
+		const vv = window.visualViewport;
+		if (!vv) {
+			vvTop = 0;
+			vvHeight = null;
+			return;
+		}
+		vvTop = Math.max(0, Math.round(vv.offsetTop));
+		vvHeight = Math.round(vv.height);
+	}
+
 	onMount(() => {
+		syncVisualViewport();
 		syncSettledActorBoxes();
 		const rafId = requestAnimationFrame(() => {
+			syncVisualViewport();
 			if (!isTransitioning) syncSettledActorBoxes();
 		});
-		const handleResize = () => {
-			if (!isTransitioning) syncSettledActorBoxes();
+		const handleViewportChange = () => {
+			syncVisualViewport();
+			if (!isTransitioning) {
+				syncSettledActorBoxes();
+				requestAnimationFrame(() => {
+					if (!isTransitioning) syncSettledActorBoxes();
+				});
+			}
 		};
-		window.addEventListener('resize', handleResize);
-		window.visualViewport?.addEventListener('resize', handleResize);
-		const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(handleResize) : null;
+		window.addEventListener('resize', handleViewportChange);
+		window.visualViewport?.addEventListener('resize', handleViewportChange);
+		window.visualViewport?.addEventListener('scroll', handleViewportChange);
+		const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(handleViewportChange) : null;
 		if (stageEl && ro) ro.observe(stageEl);
 		return () => {
 			cancelAnimationFrame(rafId);
 			ro?.disconnect();
-			window.removeEventListener('resize', handleResize);
-			window.visualViewport?.removeEventListener('resize', handleResize);
+			window.removeEventListener('resize', handleViewportChange);
+			window.visualViewport?.removeEventListener('resize', handleViewportChange);
+			window.visualViewport?.removeEventListener('scroll', handleViewportChange);
 		};
 	});
 
@@ -405,7 +476,14 @@
 </script>
 
 <!-- 모바일 3-패널 수평 슬라이드 무대 + 단일 공유 액터 레이어 (순수 모션 담당) -->
-<div bind:this={stageEl} class="mb-shell-stage" class:is-locked={isViewportLocked}>
+<div
+	bind:this={stageEl}
+	class="mb-shell-stage"
+	class:is-locked={isViewportLocked}
+	style:top={isViewportLocked ? `${vvTop}px` : undefined}
+	style:height={isViewportLocked && vvHeight !== null ? `${vvHeight}px` : undefined}
+	style:bottom={isViewportLocked && vvHeight !== null ? 'auto' : undefined}
+>
 	<div
 		bind:this={trackEl}
 		class="mb-shell-track"
@@ -416,7 +494,8 @@
 		<!-- 좌측 패널 (-100vw) -->
 		<div
 			class="mb-shell-side-pane is-left"
-			class:is-visible={isViewportLocked && (activePane === 'left' || isTransitioning)}
+			class:is-visible={isViewportLocked &&
+				(activePane === 'left' || settledPane === 'left' || isTransitioning)}
 			aria-hidden={activePane !== 'left' || undefined}
 			inert={activePane !== 'left' || undefined}
 		>
@@ -437,6 +516,9 @@
 			<div
 				class="mb-shell-center-scroll"
 				class:is-locked={isViewportLocked}
+				style:--mb-scroll-lock-y={isViewportLocked && lockedScrollY > 0
+					? `${lockedScrollY}px`
+					: undefined}
 				style:transform={isViewportLocked && lockedScrollY > 0
 					? `translate3d(0, ${-lockedScrollY}px, 0)`
 					: undefined}
@@ -450,43 +532,46 @@
 		<!-- 우측 패널 (+100vw) -->
 		<div
 			class="mb-shell-side-pane is-right"
-			class:is-visible={isViewportLocked && (activePane === 'right' || isTransitioning)}
+			class:is-visible={isViewportLocked &&
+				(activePane === 'right' || settledPane === 'right' || isTransitioning)}
 			aria-hidden={activePane !== 'right' || undefined}
 			inert={activePane !== 'right' || undefined}
 		>
 			{@render right()}
 		</div>
 	</div>
+</div>
 
-	<!-- 단일 공유 액터: 좌측(Bot) — 리마운트 없이 실제 1개 인스턴스가 슬롯 간 이동 -->
-	<div
-		bind:this={leftActorEl}
-		class="mb-shell-actor"
-		class:is-ready={actorsMeasured}
-		class:is-header-hidden={hideActorsWithCenterHeader}
-		class:is-offscreen={!isTransitioning && settledPane === 'right'}
-		style:left="{leftBox.left}px"
-		style:top="{leftBox.top}px"
-		style:width="{leftBox.width}px"
-		style:height="{leftBox.height}px"
-	>
-		{@render leftActor({ pane: activePane })}
-	</div>
+<!-- 단일 공유 액터: 좌측(Bot) — stage의 overflow:hidden/트랙 GPU 레이어와 완전히 분리된 최상위 고정 레이어 -->
+<div
+	bind:this={leftActorEl}
+	class="mb-shell-actor"
+	class:is-ready={actorsMeasured}
+	class:is-transitioning={isTransitioning}
+	class:is-header-hidden={hideActorsWithCenterHeader}
+	class:is-offscreen={!isTransitioning && settledPane === 'right'}
+	style:left="{leftBox.left}px"
+	style:top="{leftBox.top}px"
+	style:width="{leftBox.width}px"
+	style:height="{leftBox.height}px"
+>
+	{@render leftActor({ pane: activePane })}
+</div>
 
-	<!-- 단일 공유 액터: 우측(BellIcon) — 리마운트 없이 실제 1개 인스턴스가 슬롯 간 이동 (우측 끝 기준 배치로 폭 변화에도 유실 방지) -->
-	<div
-		bind:this={rightActorEl}
-		class="mb-shell-actor"
-		class:is-ready={actorsMeasured}
-		class:is-header-hidden={hideActorsWithCenterHeader}
-		class:is-offscreen={!isTransitioning && settledPane === 'left'}
-		style:right="{rightEdgePx}px"
-		style:top="{rightBox.top}px"
-		style:width="{rightBox.width}px"
-		style:height="{rightBox.height}px"
-	>
-		{@render rightActor({ pane: activePane })}
-	</div>
+<!-- 단일 공유 액터: 우측(BellIcon) — stage의 overflow:hidden/트랙 GPU 레이어와 완전히 분리된 최상위 고정 레이어 -->
+<div
+	bind:this={rightActorEl}
+	class="mb-shell-actor"
+	class:is-ready={actorsMeasured}
+	class:is-transitioning={isTransitioning}
+	class:is-header-hidden={hideActorsWithCenterHeader}
+	class:is-offscreen={!isTransitioning && settledPane === 'left'}
+	style:right="{rightEdgePx}px"
+	style:top="{rightBox.top}px"
+	style:width="{rightBox.width}px"
+	style:height="{rightBox.height}px"
+>
+	{@render rightActor({ pane: activePane })}
 </div>
 
 <style>
@@ -501,18 +586,21 @@
 		position: fixed;
 		inset: 0;
 		height: 100dvh;
+		min-height: 0;
 		overflow: hidden;
-		z-index: 40;
+		z-index: 60;
 	}
 
 	.mb-shell-track {
 		position: relative;
+		z-index: 1;
 		width: 100%;
 		min-height: 100dvh;
 	}
 
 	.mb-shell-track.is-locked {
 		height: 100%;
+		min-height: 0;
 		will-change: transform;
 	}
 
@@ -525,7 +613,8 @@
 	.mb-shell-center-pane.is-locked {
 		position: relative;
 		width: 100%;
-		height: 100dvh;
+		height: 100%;
+		min-height: 0;
 		overflow: hidden;
 		transform: translate3d(0, 0, 0);
 	}
@@ -558,7 +647,7 @@
 		position: absolute;
 		top: 0;
 		width: 100%;
-		height: 100dvh;
+		height: 100%;
 		background: var(--bg);
 		color: var(--fg);
 		overflow: hidden;
@@ -583,7 +672,7 @@
 
 	.mb-shell-actor {
 		position: fixed;
-		z-index: 75;
+		z-index: 80;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -596,6 +685,10 @@
 
 	.mb-shell-actor.is-ready {
 		opacity: 1;
+	}
+
+	.mb-shell-actor.is-transitioning {
+		transition: none;
 	}
 
 	.mb-shell-actor.is-header-hidden {

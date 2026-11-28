@@ -17,8 +17,10 @@ export const PAY_CHECKOUT_DRAFT_STORAGE_KEY = 'indig_pay_checkout_draft_v1';
 /** 장바구니 옵션당 최대 수량 */
 export const CART_MAX_QTY_PER_OPTION = 10;
 
-/** 배송지 입력 필드 최대 글자 수 제한 */
-export const SHIPPING_RECIPIENT_MAX_LENGTH = 30;
+/** 배송지 입력 필드 최대 글자 수 제한 (백엔드 ShippingAddressInput DTO 기준) */
+export const SHIPPING_LABEL_MAX_LENGTH = 20;
+export const SHIPPING_RECIPIENT_MAX_LENGTH = 20;
 export const SHIPPING_PHONE_MAX_DIGITS = 11;
 export const SHIPPING_PHONE_MAX_LENGTH = 13;
 export const SHIPPING_ADDRESS_DETAIL_MAX_LENGTH = 100;
+export const SHIPPING_ADDRESS_MAX_COUNT = 10;

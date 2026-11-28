@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { ChevronRightIcon } from '#lib/common/design/icon';
+
 	interface Props {
 		botName: string;
 		onClose?: () => void;
@@ -16,9 +18,7 @@
 	</div>
 
 	<button type="button" class="chat-close-btn" onclick={onClose} aria-label="대화창 닫기">
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-		</svg>
+		<ChevronRightIcon size={22} />
 	</button>
 </header>
 
@@ -76,10 +76,5 @@
 
 	.chat-close-btn:active {
 		transform: scale(0.92);
-	}
-
-	.chat-close-btn svg {
-		width: 22px;
-		height: 22px;
 	}
 </style>

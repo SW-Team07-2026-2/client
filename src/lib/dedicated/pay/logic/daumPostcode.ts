@@ -1,4 +1,7 @@
+import { mount, unmount } from 'svelte';
 import { pushState } from '$app/navigation';
+import { ArrowLeftIcon, ChevronLeftIcon } from '#lib/common/design/icon';
+import { isMobile } from '#lib/common/logic/isMobile.svelte';
 import { DAUM_POSTCODE_SDK_URL } from '#lib/config/pay';
 
 export interface DaumPostcodeResult {
@@ -209,13 +212,11 @@ export async function openDaumPostcode(): Promise<DaumPostcodeResult | null> {
 				'opacity 260ms cubic-bezier(0.22, 1, 0.36, 1), transform 300ms cubic-bezier(0.22, 1, 0.36, 1)'
 		});
 
-		/* 화면 좌측 상단 심플 아이콘 전용 이전 화살표 버튼 (DetailTopNav 스타일) */
+		/* 화면 좌측 상단 심플 아이콘 전용 이전 화살표 버튼 (PC: ArrowLeftIcon, 모바일: ChevronLeftIcon) */
 		const backBtn = document.createElement('button');
 		backBtn.type = 'button';
 		backBtn.setAttribute('aria-label', '이전');
 		backBtn.title = '이전';
-		backBtn.innerHTML =
-			'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block"><g style="transition:transform 260ms cubic-bezier(0.22, 1, 0.36, 1)"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></g></svg>';
 		Object.assign(backBtn.style, {
 			position: 'absolute',
 			top: 'max(1rem, env(safe-area-inset-top, 0px))',
@@ -237,14 +238,20 @@ export async function openDaumPostcode(): Promise<DaumPostcodeResult | null> {
 				'opacity 260ms cubic-bezier(0.22, 1, 0.36, 1), transform 280ms cubic-bezier(0.22, 1, 0.36, 1), color 180ms ease'
 		});
 
-		const backArrowGroup = backBtn.querySelector('g');
+		const mobileMode = isMobile.current;
+		const backIcon = mount(mobileMode ? ChevronLeftIcon : ArrowLeftIcon, {
+			target: backBtn,
+			props: {
+				size: mobileMode ? 24 : 22,
+				animateOnHover: true
+			}
+		});
+
 		backBtn.addEventListener('pointerenter', () => {
 			backBtn.style.color = 'var(--white)';
-			if (backArrowGroup) backArrowGroup.style.transform = 'translateX(-4px)';
 		});
 		backBtn.addEventListener('pointerleave', () => {
 			backBtn.style.color = 'var(--muted)';
-			if (backArrowGroup) backArrowGroup.style.transform = 'translateX(0)';
 		});
 
 		/* 크로스-오리진 iframe 자체 스크롤바(화이트 테마) 대신 부모 뷰포트에서 다크 스크롤바 렌더링 */
@@ -342,6 +349,7 @@ export async function openDaumPostcode(): Promise<DaumPostcodeResult | null> {
 			backBtn.style.transform = 'translate3d(-6px, 0, 0)';
 
 			setTimeout(() => {
+				void unmount(backIcon);
 				overlay.remove();
 			}, 240);
 

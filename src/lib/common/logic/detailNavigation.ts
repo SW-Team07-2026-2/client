@@ -1,5 +1,6 @@
 import { goto } from '$app/navigation';
 import type { CatalogCategoryKey } from '#lib/common/catalog/catalogFeed';
+import { MYPAGE_ROUTE_PATH, parseMyPageSubRoute } from '#lib/config/routes';
 import { isMobile } from './isMobile.svelte';
 import { detailOverlay, parseCatalogDetailRoute } from './detailOverlayState.svelte';
 
@@ -87,6 +88,11 @@ export function resolveMobilePopstateRedirect(
 	if (fromDetail) {
 		const targetListPath = `/${fromDetail.category}`;
 		return normalizedTo === targetListPath ? null : targetListPath;
+	}
+
+	// 1-2) 마이페이지 하위 섹션(`/mypage/*`) -> 마이페이지 허브(`/mypage`)로 복귀
+	if (parseMyPageSubRoute(normalizedFrom)) {
+		return normalizedTo === MYPAGE_ROUTE_PATH ? null : MYPAGE_ROUTE_PATH;
 	}
 
 	// 2) 아티스트 외 목록/메인 탭 -> 아티스트 목록(`/artist`)으로 복귀

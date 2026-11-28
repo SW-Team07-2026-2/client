@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
+	import { createLetterLimitMotion } from '#lib/common/logic/letterLimitMotion';
 	import { FluidSetting } from '#lib/common/type/fluid';
 	import FdDiv from '#lib/common/design/fluid/FdDiv.svelte';
 	import SearchIcon from '#lib/common/design/icon/SearchIcon.svelte';
@@ -106,8 +107,33 @@
 	let measureEl: HTMLSpanElement | undefined = $state(undefined);
 	let measurePrefixEl: HTMLSpanElement | undefined = $state(undefined);
 	let inputEl: HTMLInputElement | undefined = $state(undefined);
+	let mirrorEl: HTMLDivElement | undefined = $state(undefined);
+	let pileEl: HTMLDivElement | undefined = $state(undefined);
 	let closedIconRef: ReturnType<typeof SearchIcon> | undefined = $state(undefined);
 	let openIconRef: ReturnType<typeof SearchIcon> | undefined = $state(undefined);
+
+	const letterMotion = createLetterLimitMotion({
+		getInput: () => inputEl,
+		getMirror: () => mirrorEl,
+		getFillCircle: () => undefined,
+		getMeterSvg: () => undefined,
+		getCountEl: () => undefined,
+		getSendWrap: () => undefined,
+		getPileEl: () => pileEl
+	});
+
+	function portalToBody(node: HTMLElement) {
+		document.body.appendChild(node);
+		return {
+			destroy() {
+				node.remove();
+			}
+		};
+	}
+
+	onDestroy(() => {
+		letterMotion.destroy();
+	});
 
 	let mac = $state(false);
 	let hovered = $state(false);
@@ -430,10 +456,10 @@
 			clickReactive: false,
 			pressDeform: { x: 0, y: 0 },
 			pauseWhenIdle: !open && !hovered,
-			color: 'var(--surface-3)',
-			hoverColor: open ? 'var(--surface-3)' : 'var(--surface-4)',
-			pressColor: 'var(--line)',
-			waveColor: 'var(--surface-4)',
+			color: 'var(--surface-dim)',
+			hoverColor: open ? 'var(--surface-dim)' : 'var(--surface-1)',
+			pressColor: 'var(--surface-2)',
+			waveColor: 'var(--surface-1)',
 			borderWidth: 0
 		})
 	);
@@ -535,8 +561,21 @@
 	});
 
 	function handleInput(e: Event & { currentTarget: HTMLInputElement }) {
-		value = e.currentTarget.value;
-		oninput?.(value);
+		const field = e.currentTarget;
+		let v = field.value;
+		if (maxlength && maxlength > 0 && v.length > maxlength) {
+			const caret = field.selectionStart ?? maxlength;
+			const extra = v.slice(maxlength);
+			v = v.slice(0, maxlength);
+			field.value = v;
+			if (document.activeElement === field) {
+				const pos = Math.min(caret, maxlength);
+				field.setSelectionRange(pos, pos);
+			}
+			letterMotion.drop(extra, v);
+		}
+		value = v;
+		oninput?.(v);
 	}
 
 	function handleInputKeyDown(e: KeyboardEvent & { currentTarget: HTMLInputElement }) {
@@ -569,6 +608,8 @@
 		inputEl?.focus({ preventScroll: true });
 	}
 </script>
+
+<div bind:this={pileEl} use:portalToBody class="cmd-ll-pile" aria-hidden="true"></div>
 
 <div bind:this={rootEl} class="cmd-search-root {klass}" style:transform="scale({currentScale})">
 	<!-- 닫힘 상태 버튼 너비 측정용 숨김 엘리먼트 -->
@@ -629,7 +670,6 @@
 							bind:this={inputEl}
 							type="text"
 							{value}
-							{maxlength}
 							placeholder={animatePlaceholder ? undefined : placeholder}
 							aria-placeholder={animatePlaceholder && placeholder ? placeholder : undefined}
 							aria-label={ariaLabel || placeholder}
@@ -638,6 +678,7 @@
 							onkeydown={handleInputKeyDown}
 							onblur={handleInputBlur}
 						/>
+						<div bind:this={mirrorEl} class="cmd-input-mirror" aria-hidden="true"></div>
 
 						{#if animatePlaceholder && isEmpty && placeholder}
 							<div class="cmd-placeholder-layer" aria-hidden="true">
@@ -725,6 +766,46 @@
 </div>
 
 <style>
+	.cmd-ll-pile {
+		position: fixed;
+		inset: 0;
+		overflow: hidden;
+		pointer-events: none;
+		z-index: 250;
+	}
+
+	.cmd-ll-pile :global(.ll-falling-char) {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 20px;
+		height: 24px;
+		margin: -12px 0 0 -10px;
+		text-align: center;
+		font-size: 0.875rem;
+		font-weight: 500;
+		line-height: 24px;
+		color: var(--danger);
+		will-change: transform, opacity;
+	}
+
+	.cmd-input-mirror {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		display: flex;
+		align-items: center;
+		font-family: inherit;
+		font-size: 0.875rem;
+		font-weight: 500;
+		white-space: pre;
+		overflow: hidden;
+		visibility: hidden;
+		pointer-events: none;
+	}
+
 	.cmd-search-root {
 		position: relative;
 		display: inline-flex;

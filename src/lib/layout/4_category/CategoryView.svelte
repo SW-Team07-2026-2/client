@@ -4,7 +4,7 @@
 	import ConcertSection from './4-2_concert/ConcertSection.svelte';
 	import AlbumSection from './4-3_album/AlbumSection.svelte';
 	import GoodsSection from './4-4_merch/GoodsSection.svelte';
-	import MyPageCategory from './4-5_mypage/MyPageCategory.svelte';
+	import MyPageSection from './4-5_mypage/MyPageSection.svelte';
 
 	interface Props {
 		section: MainSectionDescriptor;
@@ -24,5 +24,5 @@
 {:else if section.key === 'goods'}
 	<GoodsSection {section} {active} />
 {:else}
-	<MyPageCategory {section} {active} />
+	<MyPageSection {section} {active} />
 {/if}

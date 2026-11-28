@@ -240,7 +240,7 @@
 		max-width: 460px;
 		padding: 2.25rem 1.75rem;
 		border-radius: 24px;
-		background: var(--surface);
+		background: var(--surface-dim);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -273,7 +273,7 @@
 	.wave-face {
 		width: 100%;
 		padding: 2.25rem 1.75rem;
-		background: var(--surface);
+		background: var(--surface-dim);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -417,7 +417,7 @@
 		height: 46px;
 		border: none;
 		border-radius: 14px;
-		background: var(--surface-2);
+		background: var(--surface-1);
 		color: var(--white-2);
 		font: inherit;
 		font-size: 0.9rem;
@@ -427,6 +427,6 @@
 	}
 
 	.secondary-btn:hover {
-		background: var(--surface-3, var(--surface-2));
+		background: var(--surface-2);
 	}
 </style>

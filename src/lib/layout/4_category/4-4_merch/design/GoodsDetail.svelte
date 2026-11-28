@@ -6,7 +6,7 @@
 		type DetailMetaItem
 	} from '../../_shared/design/ProductDetailLayout.svelte';
 	import ProductPurchasePanel from '../../_shared/design/ProductPurchasePanel.svelte';
-	import type { SpringDropdownOption } from '../../_shared/design/SpringDropdown.svelte';
+	import type { SpringDropdownOption } from '#lib/common/design/SpringDropdown.svelte';
 	import {
 		createWaveRectSetting,
 		resolveDetailGlowColor
@@ -117,6 +117,26 @@
 			value: isAllSoldOut ? '품절' : '판매중',
 			tone: isAllSoldOut ? 'muted' : 'accent'
 		});
+		if (selectedOption) {
+			const isOptSoldOut = selectedOption.soldOut || selectedOption.qty <= 0;
+			list.push({
+				label: '재고',
+				value: isOptSoldOut ? '품절' : `${selectedOption.qty.toLocaleString('ko-KR')}개`,
+				tone: isOptSoldOut ? 'muted' : selectedOption.qty <= 5 ? 'accent' : undefined,
+				slidingNumber: {
+					value: isOptSoldOut ? null : selectedOption.qty,
+					suffix: '개',
+					soldOut: isOptSoldOut
+				}
+			});
+		} else if (isAllSoldOut) {
+			list.push({
+				label: '재고',
+				value: '품절',
+				tone: 'muted',
+				slidingNumber: { value: null, suffix: '개', soldOut: true }
+			});
+		}
 		return list;
 	});
 </script>

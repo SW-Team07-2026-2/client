@@ -378,7 +378,7 @@
 
 	.main-pinned-control.is-mobile-fixed {
 		position: fixed;
-		top: 60px;
+		top: calc(60px + var(--mb-scroll-lock-y, 0px));
 		left: 0;
 		right: 0;
 		z-index: 45;

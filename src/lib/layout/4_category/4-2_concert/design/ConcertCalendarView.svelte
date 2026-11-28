@@ -3,6 +3,7 @@
 		resolveConcertPosterUrl,
 		type CatalogConcert
 	} from '#lib/common/catalog/concerts';
+	import { ChevronLeftIcon, ChevronRightIcon } from '#lib/common/design/icon';
 	import { LoadingSpinner } from '#lib/dedicated/loading';
 	import type {
 		ConcertCalendarDay,
@@ -95,19 +96,7 @@
 			aria-label="이전 달"
 			onclick={() => onStepMonth(-1)}
 		>
-			<svg
-				width="18"
-				height="18"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				aria-hidden="true"
-			>
-				<path d="m15 18-6-6 6-6" />
-			</svg>
+			<ChevronLeftIcon size={18} />
 		</button>
 
 		<h2 class="cal-month-title">{monthLabel}</h2>
@@ -118,19 +107,7 @@
 			aria-label="다음 달"
 			onclick={() => onStepMonth(1)}
 		>
-			<svg
-				width="18"
-				height="18"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				aria-hidden="true"
-			>
-				<path d="m9 18 6-6-6-6" />
-			</svg>
+			<ChevronRightIcon size={18} />
 		</button>
 	</div>
 

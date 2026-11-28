@@ -130,14 +130,15 @@
 		flex-shrink: 0;
 	}
 
+	/* FdBgmPlayer · FdProfileButton 양쪽 FdDiv inset 투명 여백을 보정해 시각적 간격을 약 14px로 맞춤 */
 	.bgm-slot {
-		margin-right: -5px;
+		margin-right: -4px;
 	}
 
 	.header-right {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 0;
 		flex-shrink: 0;
 	}
 </style>

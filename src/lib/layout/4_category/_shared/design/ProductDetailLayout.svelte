@@ -10,13 +10,24 @@
 		tone?: 'default' | 'accent' | 'muted';
 		/** 여러 줄 본문 텍스트 (줄바꿈 유지 및 행간 확장) */
 		multiline?: boolean;
+		/** 숫자 롤링 전환 표시 (예: 재고 수량) */
+		slidingNumber?: {
+			value: number | null;
+			suffix?: string;
+			soldOut?: boolean;
+			soldOutText?: string;
+		};
 	}
 </script>
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { cubicOut } from 'svelte/easing';
+	import { fly } from 'svelte/transition';
 	import DetailAmbientGlow from './DetailAmbientGlow.svelte';
 	import DetailTopNav from '#lib/common/design/DetailTopNav.svelte';
+	import SlidingNumber from '#lib/common/design/SlidingNumber.svelte';
+	import { ChevronRightIcon } from '#lib/common/design/icon';
 	import ProductDetailSkeleton from './ProductDetailSkeleton.svelte';
 
 	interface Props {
@@ -112,19 +123,7 @@
 						{#if artistId !== null && onGoToArtist}
 							<button type="button" class="artist-link-btn" onclick={onGoToArtist}>
 								<span>{artistName}</span>
-								<svg
-									width="15"
-									height="15"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									aria-hidden="true"
-								>
-									<path d="m9 18 6-6-6-6" />
-								</svg>
+								<ChevronRightIcon size={15} />
 							</button>
 						{:else}
 							<p class="artist-plain-name">{artistName}</p>
@@ -145,7 +144,33 @@
 										class:is-muted={item.tone === 'muted'}
 										class:is-multiline={item.multiline}
 									>
-										<span>{item.value}</span>
+										{#if item.slidingNumber}
+											<span class="detail-meta-sliding" aria-live="polite">
+												{#if item.slidingNumber.soldOut}
+													<span
+														class="detail-meta-sliding-slot"
+														in:fly={{ y: 10, duration: 220, easing: cubicOut }}
+														out:fly={{ y: -10, duration: 140, easing: cubicOut }}
+													>
+														{item.slidingNumber.soldOutText ?? '품절'}
+													</span>
+												{:else if item.slidingNumber.value !== null && Number.isFinite(item.slidingNumber.value)}
+													<span
+														class="detail-meta-sliding-slot"
+														in:fly={{ y: 10, duration: 220, easing: cubicOut }}
+														out:fly={{ y: -10, duration: 140, easing: cubicOut }}
+													>
+														<SlidingNumber
+															value={item.slidingNumber.value}
+															suffix={item.slidingNumber.suffix ?? ''}
+															inheritSuffixStyle={true}
+														/>
+													</span>
+												{/if}
+											</span>
+										{:else}
+											<span>{item.value}</span>
+										{/if}
 										{#if item.sub}
 											<span class="detail-meta-sub">{item.sub}</span>
 										{/if}
@@ -329,6 +354,21 @@
 		font-size: 0.82rem;
 		color: var(--muted);
 		font-weight: var(--fw-normal);
+	}
+
+	.detail-meta-sliding {
+		position: relative;
+		display: inline-grid;
+		align-items: center;
+		justify-items: start;
+		overflow: hidden;
+		vertical-align: middle;
+	}
+
+	.detail-meta-sliding-slot {
+		grid-area: 1 / 1;
+		display: inline-flex;
+		align-items: baseline;
 	}
 
 	@container product-detail (max-width: 740px) {

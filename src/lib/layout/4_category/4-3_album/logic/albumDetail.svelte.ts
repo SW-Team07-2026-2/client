@@ -271,6 +271,7 @@ export class AlbumDetailController {
 				const next = { ...this.collectionByOption };
 				delete next[opt.id];
 				this.collectionByOption = next;
+				albumDetailState.notifyCollectionChanged();
 			} else {
 				const created = await api<CollectionItemDto>('/api/members/collections', {
 					method: 'POST',
@@ -285,6 +286,7 @@ export class AlbumDetailController {
 						[opt.id]: created.id
 					};
 				}
+				albumDetailState.notifyCollectionChanged();
 			}
 		} catch (err) {
 			console.error('Collection toggle failed:', err);

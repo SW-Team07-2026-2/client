@@ -4,7 +4,7 @@
 	import { detailSlideMotion } from '../logic/detailTransition';
 
 	interface Props {
-		itemId: number;
+		itemId: number | null;
 		phase: DetailPhase;
 		active: boolean;
 		sliding: boolean;
@@ -14,7 +14,7 @@
 		onExpandFinish: () => void;
 		onCloseFinish: () => void;
 		onClose: () => void;
-		children: Snippet<[{ id: number; close: () => void; mobile: boolean }]>;
+		children: Snippet<[{ id: number | null; close: () => void; mobile: boolean }]>;
 	}
 
 	let {

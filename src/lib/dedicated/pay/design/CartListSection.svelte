@@ -312,7 +312,7 @@
 		padding: 0 1.25rem;
 		border: none;
 		border-radius: 12px;
-		background: var(--surface);
+		background: var(--surface-dim);
 		color: var(--white-2);
 		font: inherit;
 		font-size: 0.88rem;
@@ -322,7 +322,7 @@
 	}
 
 	.empty-browse-btn:hover {
-		background: var(--surface-2);
+		background: var(--surface-1);
 	}
 
 	.cart-items {
@@ -360,7 +360,7 @@
 		border: none;
 		border-radius: 14px;
 		overflow: hidden;
-		background: var(--surface);
+		background: var(--surface-dim);
 		flex-shrink: 0;
 		cursor: pointer;
 	}
@@ -403,7 +403,7 @@
 	.type-pill {
 		padding: 0.12rem 0.48rem;
 		border-radius: 999px;
-		background: var(--surface);
+		background: var(--surface-dim);
 		color: var(--muted);
 		font-size: 0.72rem;
 		font-weight: var(--fw-semibold);

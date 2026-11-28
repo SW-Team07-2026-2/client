@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { getMainSectionContext } from '../2_main_section/logic/context';
 	import type { MainSectionDescriptor } from '../2_main_section/logic/sectionRegistry';
 	import { CategoryDetailView, CategoryView } from '../4_category';
@@ -34,6 +34,15 @@
 
 	const isSliding = $derived(mainSectionCtx?.isSlidingOrSwiping() ?? false);
 	const isDetailSettledOpen = $derived(detailCtrl?.phase === 'open');
+	// 상세 틀(Shell)만 유휴 시간에 미리 DOM 생성해두고, 실제 데이터는 아이템 클릭(id 주입) 시점에만 조회
+	let detailShellReady = $state(false);
+
+	onMount(() => {
+		const timer = setTimeout(() => {
+			detailShellReady = true;
+		}, 250);
+		return () => clearTimeout(timer);
+	});
 
 	$effect.pre(() => {
 		detailCtrl?.sync(active, detailId, false, isSliding);
@@ -81,9 +90,9 @@
 		</main>
 	</div>
 
-	{#if detailCtrl && filterableKey && detailCtrl.isVisible && detailCtrl.renderId !== null}
+	{#if detailCtrl && filterableKey && (detailShellReady || (detailCtrl.isVisible && detailCtrl.renderId !== null))}
 		<PcDetailFrame
-			itemId={detailCtrl.renderId}
+			itemId={detailCtrl.isVisible ? detailCtrl.renderId : null}
 			phase={detailCtrl.phase}
 			onExpandFinish={detailCtrl.finishExpand}
 			onCloseFinish={detailCtrl.finishClose}

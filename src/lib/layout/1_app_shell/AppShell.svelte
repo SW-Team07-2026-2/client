@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { onMount, type Snippet } from 'svelte';
+	import { onMount, untrack, type Snippet } from 'svelte';
 	import { afterNavigate, beforeNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import BellIcon from '#lib/common/design/icon/BellIcon.svelte';
 	import { isMobile } from '#lib/common/logic';
+	import { AlertPanel } from '#lib/dedicated/alert';
 	import { getRootSplashContext } from '#lib/dedicated/loading';
 	import {
 		AppShellController,
@@ -11,7 +12,6 @@
 		type MobileShellPane
 	} from './logic/appShell.svelte';
 	import { Bot, ChatBot, type BotState } from './part/chat_bot';
-	import { NotificationPanel } from './part/notification';
 	import PcHeader from './design/PcHeader.svelte';
 	import MbHeader from './design/MbHeader.svelte';
 	import MbNavigationBar from './design/MbNavigationBar.svelte';
@@ -53,9 +53,14 @@
 		!mobileHeaderAlwaysVisible && ctrl.isMobileHeaderHidden
 	);
 
-	// SvelteKit shallow routing state와 모바일 3-패널 동기화 (뒤로가기 닫힘)
+	// SvelteKit shallow routing state 및 직접 /alert 진입과 모바일 3-패널 동기화
 	$effect(() => {
-		ctrl.syncOverlayFromHistoryState(page.state.mobileOverlay);
+		const overlayState = page.state.mobileOverlay;
+		const isMb = mobile;
+		const path = page.url.pathname;
+		untrack(() => {
+			ctrl.syncOverlayFromHistoryState(overlayState, isMb, path);
+		});
 	});
 
 	$effect(() => {
@@ -85,13 +90,18 @@
 	});
 
 	function handleMobileBotActorClick(pane: MobileShellPane) {
+		const isBusyThinking = botState === 'thinking' || botState === 'talking';
 		if (pane === 'center') {
-			mobileBotRef?.wink?.('right');
-			mobileChatRef?.triggerReaction?.();
+			if (!isBusyThinking) {
+				mobileBotRef?.wink?.('right');
+				mobileChatRef?.triggerReaction?.();
+			}
 			ctrl.openMobileOverlay('chatbot');
 		} else if (pane === 'left') {
-			mobileBotRef?.wink?.('left');
-			mobileChatRef?.triggerReaction?.();
+			if (!isBusyThinking) {
+				mobileBotRef?.wink?.('left');
+				mobileChatRef?.triggerReaction?.();
+			}
 		}
 	}
 
@@ -148,7 +158,10 @@
 			{/snippet}
 
 			{#snippet right()}
-				<NotificationPanel onClose={ctrl.closeMobileOverlay} />
+				<AlertPanel
+					open={ctrl.activeMobilePane === 'right'}
+					onClose={ctrl.closeMobileOverlay}
+				/>
 			{/snippet}
 
 			{#snippet leftActor({ pane })}

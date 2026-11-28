@@ -8,7 +8,9 @@
 	import SlidingPrice from '#lib/common/design/SlidingPrice.svelte';
 	import SpringNumberStepper from '#lib/common/design/SpringNumberStepper.svelte';
 	import GoToCartButton from './GoToCartButton.svelte';
-	import SpringDropdown, { type SpringDropdownOption } from './SpringDropdown.svelte';
+	import SpringDropdown, {
+		type SpringDropdownOption
+	} from '#lib/common/design/SpringDropdown.svelte';
 
 	interface Props {
 		/** 선택적 1차 드롭다운 (예: 앨범의 '음반 형태') — 항목이 2개 이상일 때만 표시 */

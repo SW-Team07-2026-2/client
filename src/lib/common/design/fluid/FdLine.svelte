@@ -16,6 +16,8 @@
 		thickness?: number;
 		/** 앞쪽(본체) 물결의 기본 높이 (px). 미지정 시 FluidSetting의 waveAmp · layerGap 기반으로 자동 계산 */
 		baseHeight?: number;
+		/** 표시 비율 (0 ~ 1, 기본값 1). 캔버스 재할당 없이 양끝 수렴 형태를 유지하며 길이를 조절 */
+		progress?: number;
 		/** 외부 래퍼 클래스 */
 		class?: string;
 		/** 외부 래퍼 인라인 스타일 */
@@ -28,6 +30,7 @@
 		direction = 'up',
 		thickness = 1,
 		baseHeight,
+		progress = 1,
 		class: klass = '',
 		style,
 		...rest
@@ -53,10 +56,16 @@
 
 	let syncControl: (() => void) | undefined;
 	let relayout: (() => void) | undefined;
+	let redraw: (() => void) | undefined;
 
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		return untrack(() => initEngine());
+	});
+
+	$effect(() => {
+		void progress;
+		redraw?.();
 	});
 
 	$effect(() => {
@@ -238,7 +247,9 @@
 			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 			ctx.clearRect(0, 0, cw, ch);
 
-			if (span < 2) return;
+			const clampedProgress = Math.max(0, Math.min(1, progress));
+			const curSpan = span * clampedProgress;
+			if (curSpan < 2) return;
 
 			const curReach = isVertical ? cw : ch;
 			const eff = reducedMotion ? (active ? 1 : 0) : intensity;
@@ -249,13 +260,13 @@
 					ctx.save();
 					ctx.fillStyle = fillColor;
 					if (direction === 'up') {
-						ctx.fillRect(0, curReach - thickness, span, thickness);
+						ctx.fillRect(0, curReach - thickness, curSpan, thickness);
 					} else if (direction === 'down') {
-						ctx.fillRect(0, 0, span, thickness);
+						ctx.fillRect(0, 0, curSpan, thickness);
 					} else if (direction === 'left') {
-						ctx.fillRect(curReach - thickness, 0, thickness, span);
+						ctx.fillRect(curReach - thickness, 0, thickness, curSpan);
 					} else {
-						ctx.fillRect(0, 0, thickness, span);
+						ctx.fillRect(0, 0, thickness, curSpan);
 					}
 					ctx.restore();
 				}
@@ -264,7 +275,7 @@
 
 			const L = cfg.layerCount;
 			for (let layerIdx = L; layerIdx >= 0; layerIdx--) {
-				drawWaveLayer(layerIdx, L, eff, span, curReach);
+				drawWaveLayer(layerIdx, L, eff, curSpan, curReach);
 			}
 		}
 
@@ -289,7 +300,7 @@
 
 			if (!reducedMotion && intensity > 0.002) {
 				phase += dt * cfg.spin * 1.15;
-				if (phase > TAU * 1000) phase %= TAU;
+				if (Math.abs(phase) > TAU * 1000) phase %= TAU;
 			}
 
 			render();
@@ -319,6 +330,9 @@
 			layout();
 			render();
 		};
+		redraw = () => {
+			if (!rafId) render();
+		};
 		syncControl = () => {
 			readColors();
 			ensureRunning();
@@ -337,6 +351,7 @@
 			stopLoop();
 			ro.disconnect();
 			relayout = undefined;
+			redraw = undefined;
 			syncControl = undefined;
 		};
 	}

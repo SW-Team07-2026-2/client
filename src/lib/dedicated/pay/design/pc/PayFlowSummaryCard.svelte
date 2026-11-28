@@ -133,7 +133,7 @@
 	.summary-card {
 		padding: 1.5rem;
 		border-radius: 20px;
-		background: var(--surface);
+		background: var(--surface-dim);
 		display: flex;
 		flex-direction: column;
 		gap: 1.15rem;

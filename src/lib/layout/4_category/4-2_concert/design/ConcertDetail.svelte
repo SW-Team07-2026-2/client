@@ -1,10 +1,14 @@
 <script lang="ts">
 	import { Accordion, AccordionItem } from '#lib/common/design/accordion';
+	import { ChevronRightIcon } from '#lib/common/design/icon';
 	import MarkdownViewer from '#lib/common/design/MarkdownViewer.svelte';
 	import FdButton from '#lib/common/design/fluid/FdButton.svelte';
 	import FdImage from '#lib/common/design/fluid/FdImage.svelte';
 	import { createPrimaryCtaSetting } from '#lib/common/design/fluid/ctaPreset';
 	import SlidingPrice from '#lib/common/design/SlidingPrice.svelte';
+	import SpringDropdown, {
+		type SpringDropdownOption
+	} from '#lib/common/design/SpringDropdown.svelte';
 	import ProductDetailLayout, {
 		type DetailMetaItem
 	} from '../../_shared/design/ProductDetailLayout.svelte';
@@ -14,6 +18,7 @@
 	} from '../../_shared/logic/detailTheme';
 	import type {
 		ConcertLineupArtist,
+		ConcertSessionOption,
 		ConcertVenueDetail
 	} from '../logic/concertDetail.svelte';
 	import ConcertDetailSkeleton from './ConcertDetailSkeleton.svelte';
@@ -33,6 +38,8 @@
 		price: number | null;
 		queueEnabled: boolean;
 		maxSeatsPerUser: number | null;
+		sessions?: readonly ConcertSessionOption[];
+		selectedSessionId?: number | null;
 		ctaLabel: string;
 		artists: readonly ConcertLineupArtist[];
 		venue: ConcertVenueDetail | null;
@@ -47,6 +54,7 @@
 		backLabel?: string;
 		onClose: () => void;
 		onGoToArtist: (artistId: number) => void;
+		onSelectSession?: (sessionId: number) => void;
 		onStartBooking: () => void;
 		onShareLink: () => void;
 	}
@@ -66,6 +74,8 @@
 		price,
 		queueEnabled,
 		maxSeatsPerUser,
+		sessions = [],
+		selectedSessionId = null,
 		ctaLabel,
 		artists,
 		venue,
@@ -80,6 +90,7 @@
 		backLabel = '목록으로',
 		onClose,
 		onGoToArtist,
+		onSelectSession,
 		onStartBooking,
 		onShareLink
 	}: Props = $props();
@@ -96,6 +107,15 @@
 		createWaveRectSetting(heroMediaWidth, 4 / 3, HERO_RADIUS, HERO_WAVES_PER_EDGE)
 	);
 	const ctaSetting = $derived(createPrimaryCtaSetting(ctaBtnWidth, !isOnSale));
+	const sessionOptions = $derived<SpringDropdownOption[]>(
+		sessions.map((sess, idx) => ({
+			value: sess.id,
+			label: `${idx + 1}회차 · ${sess.startsAtText}`,
+			subLabel: sess.isClosed ? '마감' : '예매 가능',
+			soldOut: sess.isClosed,
+			disabled: sess.isClosed
+		}))
+	);
 
 	const metaItems = $derived.by<DetailMetaItem[]>(() => {
 		const list: DetailMetaItem[] = [];
@@ -126,9 +146,11 @@
 				note: venue.address || undefined
 			});
 		}
-		if (bookingOpenAtText) {
-			list.push({ label: '예매 오픈', value: bookingOpenAtText });
-		}
+		list.push({
+			label: '예매 오픈',
+			value: bookingOpenAtText || '미정',
+			tone: bookingOpenAtText && bookingOpenAtText !== '미정' ? 'default' : 'muted'
+		});
 		if (maxSeatsPerUser !== null) {
 			list.push({
 				label: '예매 제한',
@@ -195,19 +217,7 @@
 						onclick={() => onGoToArtist(artist.id)}
 					>
 						<span>{artist.name}</span>
-						<svg
-							width="13"
-							height="13"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							aria-hidden="true"
-						>
-							<path d="m9 18 6-6-6-6" />
-						</svg>
+						<ChevronRightIcon size={13} />
 					</button>
 				{/each}
 			</div>
@@ -216,11 +226,23 @@
 
 	{#snippet purchase()}
 		<div class="booking-bar">
+			{#if sessions.length > 1}
+				<div class="booking-session-wrap">
+					<SpringDropdown
+						options={sessionOptions}
+						value={selectedSessionId}
+						label="공연 회차 선택"
+						placeholder="회차 선택"
+						onSelect={(val) => onSelectSession?.(Number(val))}
+					/>
+				</div>
+			{/if}
+
 			<div class="booking-cta-wrap" bind:clientWidth={ctaBtnWidth}>
 				<FdButton
 					setting={ctaSetting}
 					fullWidth
-					disabled={!isOnSale}
+					disabled={!isOnSale || (sessions.length > 1 && selectedSessionId === null)}
 					class="concert-booking-fd-btn"
 					onclick={onStartBooking}
 				>
@@ -343,7 +365,12 @@
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 0.85rem;
+		gap: 0.75rem;
+	}
+
+	.booking-session-wrap {
+		flex: 1.25 1 220px;
+		min-width: 190px;
 	}
 
 	.booking-cta-wrap {

@@ -1,3 +1,4 @@
+import { goto } from '$app/navigation';
 import { api, auth } from '#lib/auth/auth.svelte';
 import {
 	type CatalogConcert,
@@ -34,6 +35,20 @@ export interface ConcertLineupArtist {
 	genre: string;
 }
 
+export interface ConcertSessionOption {
+	id: number;
+	startsAt: string;
+	startsAtText: string;
+	saleStatus: string;
+	isClosed: boolean;
+}
+
+interface ConcertSessionDto {
+	id: number;
+	startsAt?: string | null;
+	saleStatus?: string | null;
+}
+
 interface ConcertDetailDto {
 	id: number;
 	title: string;
@@ -41,7 +56,9 @@ interface ConcertDetailDto {
 	genre?: string | null;
 	artists?: ConcertArtistSummaryDto[] | null;
 	startsAt?: string | null;
+	lastStartsAt?: string | null;
 	endsAt?: string | null;
+	sessions?: ConcertSessionDto[] | null;
 	price?: number | null;
 	saleStatus?: string | null;
 	bookingOpenAt?: string | null;
@@ -102,10 +119,12 @@ export class ConcertDetailController {
 	saleStatusLabel = $state('');
 	startsAtText = $state('');
 	endsAtText = $state('');
-	bookingOpenAtText = $state('');
+	bookingOpenAtText = $state('미정');
 	price = $state<number | null>(null);
 	queueEnabled = $state(false);
 	maxSeatsPerUser = $state<number | null>(null);
+	sessions = $state<ConcertSessionOption[]>([]);
+	selectedSessionId = $state<number | null>(null);
 
 	artists = $state<ConcertLineupArtist[]>([]);
 	venue = $state<ConcertVenueDetail | null>(null);
@@ -152,9 +171,11 @@ export class ConcertDetailController {
 		this.terms = '';
 		this.imageUrls = [];
 		this.endsAtText = '';
-		this.bookingOpenAtText = '';
+		this.bookingOpenAtText = '미정';
 		this.maxSeatsPerUser = null;
 		this.queueEnabled = false;
+		this.sessions = [];
+		this.selectedSessionId = null;
 		this.accentColor = '';
 
 		const cached: CatalogConcert | null = concertDetailState.getCachedConcert(concertId);
@@ -202,13 +223,25 @@ export class ConcertDetailController {
 		navigateDetailToDetail(`/artist/${artistId}`);
 	};
 
+	selectSession = (sessionId: number): void => {
+		const target = this.sessions.find((s) => s.id === sessionId);
+		if (!target || target.isClosed) return;
+		this.selectedSessionId = sessionId;
+	};
+
 	startBooking = (): void => {
-		if (!this.isOnSale) return;
+		if (!this.isOnSale || this.currentId === null) return;
 		if (!auth.isLoggedIn) {
 			toast.info('로그인 후 공연을 예매할 수 있습니다.');
 			return;
 		}
-		toast.info('좌석 선택 · 예매 플로우는 곧 연결됩니다.');
+		if (this.sessions.length > 1 && this.selectedSessionId === null) {
+			toast.info('예매할 회차를 먼저 선택해 주세요.');
+			return;
+		}
+		const qs =
+			this.selectedSessionId !== null ? `?sessionId=${this.selectedSessionId}` : '';
+		void goto(`/booking/${this.currentId}${qs}`, { reset: false });
 	};
 
 	shareLink = async (): Promise<void> => {
@@ -239,12 +272,31 @@ export class ConcertDetailController {
 			this.saleStatusLabel = rawStatus ? (STATUS_LABELS[rawStatus] ?? rawStatus) : '';
 
 			this.startsAtText = formatDateTime(dto.startsAt) || this.startsAtText;
-			this.endsAtText = formatDateTime(dto.endsAt);
-			this.bookingOpenAtText = formatDateTime(dto.bookingOpenAt);
+			this.endsAtText = formatDateTime(dto.lastStartsAt ?? dto.endsAt);
+			if (this.endsAtText && this.endsAtText === this.startsAtText) {
+				this.endsAtText = '';
+			}
+			this.bookingOpenAtText = formatDateTime(dto.bookingOpenAt) || '미정';
 			this.price = typeof dto.price === 'number' ? dto.price : this.price;
 			this.queueEnabled = Boolean(dto.queueEnabled);
 			this.maxSeatsPerUser =
 				typeof dto.maxSeatsPerUser === 'number' ? dto.maxSeatsPerUser : null;
+
+			const rawSessions = Array.isArray(dto.sessions) ? dto.sessions : [];
+			this.sessions = rawSessions
+				.filter((s) => typeof s?.id === 'number')
+				.map((s) => {
+					const st = s.saleStatus?.trim().toUpperCase() ?? '';
+					return {
+						id: s.id,
+						startsAt: s.startsAt ?? '',
+						startsAtText: formatDateTime(s.startsAt) || `회차 #${s.id}`,
+						saleStatus: st,
+						isClosed: st === 'CLOSED'
+					};
+				});
+			const firstAvailable = this.sessions.find((s) => !s.isClosed) ?? null;
+			this.selectedSessionId = firstAvailable?.id ?? null;
 
 			this.artists = Array.isArray(dto.artists)
 				? dto.artists

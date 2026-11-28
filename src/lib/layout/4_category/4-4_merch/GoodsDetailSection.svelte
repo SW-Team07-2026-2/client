@@ -4,7 +4,7 @@
 	import GoodsDetail from './design/GoodsDetail.svelte';
 
 	interface Props {
-		id: number;
+		id: number | null;
 		mobile: boolean;
 		backLabel?: string;
 		onClose: () => void;
@@ -16,7 +16,9 @@
 	const waveActive = $derived(detailOverlay.getSlot('goods').phase === 'open');
 
 	$effect(() => {
-		controller.load(id);
+		if (id !== null && id > 0) {
+			controller.load(id);
+		}
 	});
 </script>
 

@@ -46,6 +46,10 @@
 		class: className = ''
 	}: Props = $props();
 
+	// 물결·글로우·부유 모션이 사각형 경계에 잘리지 않도록 레이아웃 크기(size) 바깥으로 확보하는 캔버스 여유 블리드(px)
+	const CANVAS_BLEED = 32;
+	const canvasSize = $derived(size + CANVAS_BLEED * 2);
+
 	let containerEl: HTMLDivElement | null = $state(null);
 	let canvas: HTMLCanvasElement | null = $state(null);
 
@@ -88,6 +92,9 @@
 	let mouthOpen = 0; // talking 상태 시 입 열림 정도
 	let headTilt = 0; // 머리 기울기 (라디안)
 	let targetHeadTilt = 0;
+	let floatPhase = 0; // 부유 애니메이션 연속 위상 (상태 전환 시 얼굴 위치 점프 방지)
+	let currentFloatAmp = 4.5;
+	let happyProgress = 0; // 0(기본 눈) -> 1(자연스럽게 감기며 웃는 눈) 연속 보간값
 
 	/** 부드러운 눈 깜빡임 시작 */
 	function startBlink(doubleBlink = false, left = true, right = true) {
@@ -134,10 +141,11 @@
 		let isVisible = true;
 		let startTime = performance.now();
 
-		// 고해상도 DPI 보정
+		// 고해상도 DPI 보정 (레이아웃/얼굴 크기는 size 유지, 캔버스만 CANVAS_BLEED만큼 확장)
 		const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-		canvas.width = size * dpr;
-		canvas.height = size * dpr;
+		const renderSize = size + CANVAS_BLEED * 2;
+		canvas.width = renderSize * dpr;
+		canvas.height = renderSize * dpr;
 		ctx.scale(dpr, dpr);
 
 		// 마우스 움직임 추적
@@ -264,17 +272,18 @@
 			context.fill();
 		}
 
-		// 웃는 눈 (^ 모양) 그리기
+		// 웃는 눈 (^ 모양) 그리기 (archRatio: 0 = 감긴 일자선, 1 = 완전히 웃는 ^ 모양)
 		function drawHappyEye(
 			context: CanvasRenderingContext2D,
 			x: number,
 			y: number,
 			w: number,
 			h: number,
-			strokeW: number
+			strokeW: number,
+			archRatio: number = 1
 		) {
 			const hw = w * 0.5;
-			const hh = h * 0.5;
+			const hh = h * 0.5 * archRatio;
 			context.beginPath();
 			context.moveTo(x - hw, y + hh);
 			context.lineTo(x, y - hh);
@@ -307,21 +316,34 @@
 
 			const elapsed = (currentTime - startTime) / 1000;
 
-			// 상태별 목표값 조정
+			// 상태별 목표값 조정 (happy는 얼굴 위치·각도·시선 그대로 유지하고 표정만 전환)
 			if (botState === 'thinking') {
 				targetHeadTilt = Math.sin(elapsed * 1.8) * 0.08 - 0.09; // 갸우뚱
 				targetLookX = Math.cos(elapsed * 1.2) * (size * 0.05);
 				targetLookY = -size * 0.07; // 위쪽을 쳐다봄
 			} else if (botState === 'happy') {
-				targetHeadTilt = Math.sin(elapsed * 4) * 0.04;
-				targetLookX = 0;
-				targetLookY = 0;
+				targetHeadTilt = 0;
 			} else if (botState === 'sleepy') {
 				targetHeadTilt = 0.06;
 				targetLookX = 0;
 				targetLookY = size * 0.04; // 아래로 처짐
 			} else {
 				targetHeadTilt = 0;
+			}
+
+			// 웃는 표정 연속 보간 (0 -> 1 감기며 웃기, 1 -> 0 자연스럽게 떠지기)
+			const targetHappy = botState === 'happy' ? 1 : 0;
+			if (targetHappy === 1 && blinkInfo.active) {
+				blinkInfo.active = false;
+				eyeScaleYLeft = 1;
+				eyeScaleYRight = 1;
+				eyeScaleXLeft = 1;
+				eyeScaleXRight = 1;
+			}
+			const happyRate = targetHappy > happyProgress ? 13 : 11;
+			happyProgress += (targetHappy - happyProgress) * (1 - Math.exp(-happyRate * dt));
+			if (Math.abs(targetHappy - happyProgress) < 0.002) {
+				happyProgress = targetHappy;
 			}
 
 			// Lerp 부드러운 감속 추적
@@ -385,17 +407,19 @@
 				mouthOpen += (0 - mouthOpen) * 0.2;
 			}
 
-			// 부유 애니메이션 (Floating / Bobbing)
-			const floatSpeed = botState === 'sleepy' ? 1.2 : botState === 'happy' ? 3.5 : 2.0;
-			const floatAmp = botState === 'sleepy' ? 2 : botState === 'happy' ? 6 : 4.5;
-			const floatY = Math.sin(elapsed * floatSpeed) * floatAmp;
+			// 부유 애니메이션 (연속 위상 적분 + happy 시 기존 속도/진폭 유지로 얼굴 위치 점프 방지)
+			const floatSpeed = botState === 'sleepy' ? 1.2 : 2.0;
+			const targetFloatAmp = botState === 'sleepy' ? 2 : 4.5;
+			floatPhase += dt * floatSpeed;
+			currentFloatAmp += (targetFloatAmp - currentFloatAmp) * (1 - Math.exp(-8 * dt));
+			const floatY = Math.sin(floatPhase) * currentFloatAmp;
 
 			// 캔버스 초기화 (완전 투명)
-			ctx.clearRect(0, 0, size, size);
+			ctx.clearRect(0, 0, renderSize, renderSize);
 
-			const cx = size / 2;
-			// 안테나가 없으므로 캔버스 정중앙에 완벽하게 정렬
-			const cy = size / 2 + floatY;
+			const cx = renderSize / 2;
+			// 안테나가 없으므로 확장된 캔버스 정중앙에 완벽하게 정렬
+			const cy = renderSize / 2 + floatY;
 
 			ctx.save();
 			// 전체 봇 중심 이동 및 회전
@@ -558,18 +582,36 @@
 			ctx.strokeStyle = color;
 			ctx.shadowColor = 'transparent';
 
-			if (botState === 'happy') {
-				// 웃는 눈 (^ ^) - 두 눈이 서로 만나지 않도록 간격과 너비 조정
+			if (botState === 'sleepy') {
+				// 졸린 눈 (- -)
+				drawCapsule(ctx, -eyeSpacing, 0, eyeW * 1.1, eyeH, 0.12);
+				drawCapsule(ctx, eyeSpacing, 0, eyeW * 1.1, eyeH, 0.12);
+			} else if (happyProgress > 0.002) {
+				// 1단계(0 -> 0.45): 눈이 자연스럽게 감김 / 2단계(0.45 -> 1): 감긴 눈이 부드럽게 ^ 모양으로 올라감
 				const happySpacing = eyeSpacing * 1.15;
 				const happyW = R * 0.32;
 				const happyH = R * 0.24;
 				const strokeW = Math.max(R * 0.115, 2.5);
-				drawHappyEye(ctx, -happySpacing, -1, happyW, happyH, strokeW);
-				drawHappyEye(ctx, happySpacing, -1, happyW, happyH, strokeW);
-			} else if (botState === 'sleepy') {
-				// 졸린 눈 (- -)
-				drawCapsule(ctx, -eyeSpacing, 0, eyeW * 1.1, eyeH, 0.12);
-				drawCapsule(ctx, eyeSpacing, 0, eyeW * 1.1, eyeH, 0.12);
+				const closePhaseEnd = 0.45;
+
+				if (happyProgress < closePhaseEnd) {
+					const rawT = happyProgress / closePhaseEnd;
+					const t = rawT * rawT * (3 - 2 * rawT); // smoothstep
+					const curSpacing = eyeSpacing + (happySpacing - eyeSpacing) * t;
+					const curY = -1 * t;
+					const curW = eyeW + (happyW + strokeW - eyeW) * t;
+					const curH = eyeH + (strokeW - eyeH) * t;
+					const curR = Math.min(curW / 2, curH / 2);
+					roundRect(ctx, -curSpacing - curW / 2, curY - curH / 2, curW, curH, curR);
+					ctx.fill();
+					roundRect(ctx, curSpacing - curW / 2, curY - curH / 2, curW, curH, curR);
+					ctx.fill();
+				} else {
+					const rawT = (happyProgress - closePhaseEnd) / (1 - closePhaseEnd);
+					const archT = 1 - Math.pow(1 - rawT, 3); // easeOutCubic
+					drawHappyEye(ctx, -happySpacing, -1, happyW, happyH, strokeW, archT);
+					drawHappyEye(ctx, happySpacing, -1, happyW, happyH, strokeW, archT);
+				}
 			} else {
 				// 평상시 / 생각 중 / 말할 때 (빛 포인트 없는 깔끔한 솔리드 블랙 캡슐 + 유기적 탄성 보간)
 				drawCapsule(ctx, -eyeSpacing, 0, eyeW, eyeH, eyeScaleYLeft, eyeScaleXLeft);
@@ -611,7 +653,11 @@
 	class="bot-container {className}"
 	style="width: {size}px; height: {size}px;"
 >
-	<canvas bind:this={canvas} class="bot-canvas" style="width: {size}px; height: {size}px;"></canvas>
+	<canvas
+		bind:this={canvas}
+		class="bot-canvas"
+		style="width: {canvasSize}px; height: {canvasSize}px;"
+	></canvas>
 </div>
 
 <style>
@@ -620,12 +666,18 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
+		overflow: visible;
 		user-select: none;
 		touch-action: none;
 	}
 
 	.bot-canvas {
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		transform: translate(-50%, -50%);
 		display: block;
 		background: transparent;
+		pointer-events: none;
 	}
 </style>

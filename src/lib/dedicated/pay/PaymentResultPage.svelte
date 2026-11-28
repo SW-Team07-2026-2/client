@@ -21,7 +21,10 @@
 			orderId: params.get('orderId'),
 			amount: params.get('amount'),
 			code: params.get('code'),
-			message: params.get('message')
+			message: params.get('message'),
+			flow: params.get('flow'),
+			bookingId: params.get('bookingId'),
+			concertId: params.get('concertId')
 		});
 	});
 </script>

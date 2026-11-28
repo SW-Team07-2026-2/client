@@ -1,7 +1,18 @@
 <script lang="ts">
+	import { onDestroy, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import FdDiv from '#lib/common/design/fluid/FdDiv.svelte';
+	import {
+		BellIcon,
+		DotGridMenuIcon,
+		LogOutIcon,
+		ShoppingBagIcon,
+		UserRoundIcon
+	} from '#lib/common/design/icon';
+	import { ALERT_ROUTE_PATH, CART_ROUTE_PATH } from '#lib/config/routes';
 	import { FluidSetting } from '#lib/common/type/fluid';
+	import { prefersReducedMotion } from '#lib/common/type/spring';
 	import { auth } from '#lib/auth';
 
 	interface Props {
@@ -44,29 +55,41 @@
 	let isPinned = $state(false);
 
 	let rootEl: HTMLDivElement | undefined = $state();
+	let cardEl: HTMLDivElement | undefined = $state();
 	let triggerEl: HTMLButtonElement | undefined = $state();
 	let measureEl: HTMLSpanElement | undefined = $state();
 	let menuEl: HTMLDivElement | undefined = $state();
+	let hlEl: HTMLElement | undefined = $state();
+	let alertBellRef = $state<{ ring?: () => void } | undefined>(undefined);
+	let itemEls: Array<HTMLElement | undefined> = $state([]);
 
 	let collapsedWidth = $state(0);
-	let menuHeight = $state(78);
+	let menuHeight = $state(146);
+	let hoveredMenuIdx = $state(-1);
 
 	const expanded = $derived(isHovered || isPinned);
+	const isOnMyPage = $derived.by(() => {
+		const target = href.replace(/\/+$/, '') || '/';
+		const current = page.url.pathname.replace(/\/+$/, '') || '/';
+		return current === target || current.startsWith(`${target}/`);
+	});
 
 	const DEFAULT_PROFILE_SETTING: Partial<FluidSetting> = {
 		radius: 19,
-		bulge: 6,
-		reach: 32,
+		bulge: 4,
+		reach: 20,
+		inset: 8,
 		staticFrontWave: true,
 		pressDeform: { x: 0, y: 0 },
-		color: '#070709',
-		hoverColor: '#070709',
-		pressColor: '#0c0c10',
-		waveColor: '#2a2a30',
+		color: 'var(--surface-dim)',
+		hoverColor: 'var(--surface)',
+		pressColor: 'var(--surface-2)',
+		waveColor: 'var(--line-wave)',
 		borderWidth: 1,
-		borderColor: '#2a2a30',
-		hoverBorderColor: '#2a2a30',
-		textColor: '#f4f4f5'
+		borderColor: 'var(--line)',
+		hoverBorderColor: 'var(--line)',
+		pressBorderColor: 'var(--line)',
+		textColor: 'var(--fg)'
 	};
 
 	const resolvedSetting = $derived.by(() => {
@@ -86,6 +109,7 @@
 	$effect(() => {
 		void auth.user?.nickname;
 		void showNickname;
+		void isOnMyPage;
 		if (!measureEl) return;
 
 		const updateSize = () => {
@@ -140,11 +164,229 @@
 			: expandedMinWidth
 	);
 
-	const cardWidthStyle = $derived(
-		collapsedWidth > 0 ? `${expanded ? expandedWidth : collapsedWidth}px` : 'auto'
-	);
+	// ── Dynamic Menu 스프링 물리 엔진 (가로 W: 320/26, 세로 H: 240/22, 항목 스태거: 260/22) ──
+	interface SpringVal {
+		x: number;
+		v: number;
+		t: number;
+		k: number;
+		c: number;
+	}
 
-	const cardHeight = $derived(expanded ? height + menuHeight : height);
+	const makeSpring = (x: number, k: number, c: number): SpringVal => ({ x, v: 0, t: x, k, c });
+	const tuneSpring = (s: SpringVal, k: number, c: number) => {
+		s.k = k;
+		s.c = prefersReducedMotion() ? 2 * Math.sqrt(k) : c;
+	};
+	const clampVal = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+	const stepSpring = (s: SpringVal, dt: number, reduced: boolean) => {
+		const c = reduced ? 2 * Math.sqrt(s.k) : s.c;
+		const a = -s.k * (s.x - s.t) - c * s.v;
+		s.v += a * dt;
+		s.x += s.v * dt;
+	};
+	const isSettled = (s: SpringVal, eps = 0.05) =>
+		Math.abs(s.x - s.t) <= eps && Math.abs(s.v) <= eps * 12;
+
+	const W = makeSpring(0, 320, 26);
+	const H = makeSpring(untrack(() => height), 240, 22);
+	const itemSprings: SpringVal[] = [
+		makeSpring(0, 260, 22),
+		makeSpring(0, 260, 22),
+		makeSpring(0, 260, 22),
+		makeSpring(0, 260, 22)
+	];
+	// SpringDropdown과 동일한 스트레치 호버 하이라이트 스프링 (선행 엣지 620/36, 후행 엣지 200/20)
+	const HT = makeSpring(0, 620, 36);
+	const HB = makeSpring(32, 620, 36);
+	const HO = makeSpring(0, 400, 32);
+
+	let springInitialized = false;
+	let springRafId = 0;
+	let springLastTs = 0;
+	const itemTimers = new Set<ReturnType<typeof setTimeout>>();
+
+	function clearItemTimers() {
+		for (const id of itemTimers) clearTimeout(id);
+		itemTimers.clear();
+	}
+
+	function hoverMenuItem(idx: number) {
+		if (!expanded || idx === hoveredMenuIdx) return;
+		const el = itemEls[idx];
+		if (!el) return;
+		const top = el.offsetTop;
+		const bottom = top + el.offsetHeight;
+		if (hoveredMenuIdx < 0 || prefersReducedMotion()) {
+			HT.x = HT.t = top;
+			HB.x = HB.t = bottom;
+			HT.v = HB.v = 0;
+		} else {
+			const down = idx > hoveredMenuIdx;
+			tuneSpring(down ? HB : HT, 620, 36);
+			tuneSpring(down ? HT : HB, 200, 20);
+			HT.t = top;
+			HB.t = bottom;
+		}
+		hoveredMenuIdx = idx;
+		HO.t = 1;
+		wakeSprings();
+	}
+
+	function clearMenuHover() {
+		if (hoveredMenuIdx === -1 && HO.t === 0) return;
+		hoveredMenuIdx = -1;
+		HO.t = 0;
+		wakeSprings();
+	}
+
+	function renderSprings() {
+		if (cardEl && W.x > 0) {
+			cardEl.style.width = `${Math.max(1, W.x).toFixed(2)}px`;
+			cardEl.style.height = `${Math.max(height, H.x).toFixed(2)}px`;
+		}
+		if (hlEl) {
+			hlEl.style.opacity = clampVal(HO.x, 0, 1).toFixed(3);
+			const ht = Math.min(HT.x, HB.x - 16);
+			const hb = Math.max(HB.x, ht + 16);
+			hlEl.style.height = `${(hb - ht).toFixed(2)}px`;
+			hlEl.style.transform = `translate3d(0, ${ht.toFixed(2)}px, 0)`;
+		}
+		for (let i = 0; i < itemSprings.length; i++) {
+			const el = itemEls[i];
+			if (!el) continue;
+			const s = itemSprings[i].x;
+			el.style.opacity = clampVal(s, 0, 1).toFixed(3);
+			el.style.transform = `translate3d(0, ${((1 - s) * 14).toFixed(2)}px, 0)`;
+		}
+	}
+
+	function tickSprings(now: number) {
+		springRafId = 0;
+		const dt = springLastTs ? Math.min((now - springLastTs) / 1000, 1 / 30) : 1 / 60;
+		springLastTs = now;
+
+		const reduced = prefersReducedMotion();
+		const sub = 4;
+		const subDt = dt / sub;
+		for (let step = 0; step < sub; step++) {
+			stepSpring(W, subDt, reduced);
+			stepSpring(H, subDt, reduced);
+			stepSpring(HT, subDt, reduced);
+			stepSpring(HB, subDt, reduced);
+			stepSpring(HO, subDt, reduced);
+			for (let i = 0; i < itemSprings.length; i++) {
+				stepSpring(itemSprings[i], subDt, reduced);
+			}
+		}
+
+		renderSprings();
+
+		const moving =
+			!isSettled(W, 0.08) ||
+			!isSettled(H, 0.08) ||
+			!isSettled(HT, 0.08) ||
+			!isSettled(HB, 0.08) ||
+			!isSettled(HO, 0.004) ||
+			itemSprings.some((s) => !isSettled(s, 0.004));
+
+		if (moving) {
+			springRafId = requestAnimationFrame(tickSprings);
+		} else {
+			W.x = W.t;
+			W.v = 0;
+			H.x = H.t;
+			H.v = 0;
+			HT.x = HT.t;
+			HT.v = 0;
+			HB.x = HB.t;
+			HB.v = 0;
+			HO.x = HO.t;
+			HO.v = 0;
+			for (const s of itemSprings) {
+				s.x = s.t;
+				s.v = 0;
+			}
+			renderSprings();
+			springLastTs = 0;
+		}
+	}
+
+	function wakeSprings() {
+		if (typeof window === 'undefined' || springRafId) return;
+		springLastTs = performance.now();
+		springRafId = requestAnimationFrame(tickSprings);
+	}
+
+	// 접힌 폭 / 메뉴 높이 / 확장 상태 변화 시 Dynamic Menu 스프링 목표 동기화
+	$effect(() => {
+		const cw = collapsedWidth;
+		const ew = expandedWidth;
+		const mh = menuHeight;
+		const isOpen = expanded;
+		const baseH = height;
+		const onMyPage = isOnMyPage;
+
+		untrack(() => {
+			if (cw <= 0) return;
+
+			const nextW = isOpen ? ew : cw;
+			const nextH = isOpen ? baseH + mh : baseH;
+			const visibleIndices = onMyPage ? [1, 2, 3] : [0, 1, 2, 3];
+
+			if (onMyPage && hoveredMenuIdx === 0) {
+				hoveredMenuIdx = -1;
+				HO.t = 0;
+			}
+
+			if (!springInitialized || prefersReducedMotion()) {
+				springInitialized = true;
+				clearItemTimers();
+				W.x = W.t = nextW;
+				W.v = 0;
+				H.x = H.t = nextH;
+				H.v = 0;
+				for (const s of itemSprings) {
+					s.x = s.t = isOpen ? 1 : 0;
+					s.v = 0;
+				}
+				renderSprings();
+				return;
+			}
+
+			W.t = nextW;
+			H.t = nextH;
+
+			if (!isOpen) {
+				hoveredMenuIdx = -1;
+				HO.t = 0;
+			}
+
+			clearItemTimers();
+			if (onMyPage) {
+				itemSprings[0].x = itemSprings[0].t = 0;
+				itemSprings[0].v = 0;
+			}
+			const n = visibleIndices.length;
+			for (let order = 0; order < n; order++) {
+				const idx = visibleIndices[order];
+				const delayMs = isOpen ? 70 + order * 50 : (n - 1 - order) * 30;
+				const id = setTimeout(() => {
+					itemTimers.delete(id);
+					itemSprings[idx].t = expanded ? 1 : 0;
+					wakeSprings();
+				}, delayMs);
+				itemTimers.add(id);
+			}
+
+			wakeSprings();
+		});
+	});
+
+	onDestroy(() => {
+		clearItemTimers();
+		if (springRafId) cancelAnimationFrame(springRafId);
+	});
 
 	function handlePointerEnter(e: PointerEvent) {
 		if (e.pointerType === 'mouse') {
@@ -198,8 +440,6 @@
 	class="fd-profile-anchor {klass}"
 	style:height="{height + inset * 2}px"
 	{style}
-	onpointerenter={handlePointerEnter}
-	onpointerleave={handlePointerLeave}
 	onfocusout={handleFocusOut}
 >
 	<FdDiv
@@ -208,10 +448,13 @@
 		bodyClass="fd-profile-body"
 	>
 		<div
+			bind:this={cardEl}
+			role="group"
 			class="profile-card"
 			class:is-expanded={expanded}
-			style:width={cardWidthStyle}
-			style:height="{cardHeight}px"
+			style:height="{height}px"
+			onpointerenter={handlePointerEnter}
+			onpointerleave={handlePointerLeave}
 		>
 			<!-- 상단 프로필 트리거 (접힌 상태 디자인 100% 유지) -->
 			<button
@@ -224,65 +467,118 @@
 				aria-haspopup="menu"
 				onclick={handleTriggerClick}
 			>
-				<span bind:this={measureEl} class="profile-btn-inner">
+				<span
+					bind:this={measureEl}
+					class="profile-btn-inner"
+					style:padding-left="{Math.max(8, height / 2 - 7)}px"
+				>
+					<DotGridMenuIcon size={14} {expanded} class="profile-dot-icon" />
 					{#if showNickname}
-						<span class="profile-nickname">{auth.user?.nickname || '로그인'}</span>
+						<span class="profile-nickname">
+							{auth.user?.nickname ? `${auth.user.nickname}님` : '로그인'}
+						</span>
 					{/if}
 				</span>
 			</button>
 
-			<!-- 하단 확장 액션 메뉴 (마이페이지 / 로그아웃) -->
+			<!-- 하단 확장 액션 메뉴 (마이페이지 / 장바구니 / 로그아웃) -->
 			<div bind:this={menuEl} class="profile-menu" role="menu" aria-hidden={!expanded}>
 				<div class="menu-divider"></div>
 
-				<a
-					{href}
-					role="menuitem"
-					class="menu-action-btn mypage-btn"
-					tabindex={expanded ? 0 : -1}
-					data-sveltekit-noscroll
-					onclick={handleMyPageClick}
-				>
-					<svg
-						class="menu-action-icon"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.8"
+				<div class="profile-menu-list" role="none" onpointerleave={clearMenuHover}>
+					<i
+						bind:this={hlEl}
+						class="menu-hl"
+						class:is-danger={hoveredMenuIdx === 3}
 						aria-hidden="true"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"
-						/>
-					</svg>
-					<span>마이페이지</span>
-				</a>
+					></i>
 
-				<button
-					type="button"
-					role="menuitem"
-					class="menu-action-btn logout-btn"
-					tabindex={expanded ? 0 : -1}
-					onclick={handleLogoutClick}
-				>
-					<svg
-						class="menu-action-icon"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.8"
-						aria-hidden="true"
+					{#if !isOnMyPage}
+						<a
+							bind:this={itemEls[0]}
+							{href}
+							role="menuitem"
+							class="menu-action-btn mypage-btn"
+							tabindex={expanded ? 0 : -1}
+							data-sveltekit-noscroll
+							onpointerenter={() => hoverMenuItem(0)}
+							onfocus={() => hoverMenuItem(0)}
+							onclick={handleMyPageClick}
+						>
+							<UserRoundIcon
+								size={15}
+								strokeWidth={1.8}
+								hovered={hoveredMenuIdx === 0}
+								class="menu-action-icon"
+							/>
+							<span>마이페이지</span>
+						</a>
+					{/if}
+
+					<a
+						bind:this={itemEls[1]}
+						href={CART_ROUTE_PATH}
+						role="menuitem"
+						class="menu-action-btn cart-btn"
+						tabindex={expanded ? 0 : -1}
+						data-sveltekit-reset="false"
+						onpointerenter={() => hoverMenuItem(1)}
+						onfocus={() => hoverMenuItem(1)}
+						onclick={handleMyPageClick}
 					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"
+						<ShoppingBagIcon
+							size={15}
+							animating={hoveredMenuIdx === 1}
+							class="menu-action-icon"
 						/>
-					</svg>
-					<span>로그아웃</span>
-				</button>
+						<span>장바구니</span>
+					</a>
+
+					<a
+						bind:this={itemEls[2]}
+						href={ALERT_ROUTE_PATH}
+						role="menuitem"
+						class="menu-action-btn alert-btn"
+						tabindex={expanded ? 0 : -1}
+						data-sveltekit-reset="false"
+						onpointerenter={() => {
+							hoverMenuItem(2);
+							alertBellRef?.ring?.();
+						}}
+						onfocus={() => {
+							hoverMenuItem(2);
+							alertBellRef?.ring?.();
+						}}
+						onclick={handleMyPageClick}
+					>
+						<BellIcon
+							bind:this={alertBellRef}
+							size={15}
+							strokeWidth={1.8}
+							class="menu-action-icon"
+						/>
+						<span>알림함</span>
+					</a>
+
+					<button
+						bind:this={itemEls[3]}
+						type="button"
+						role="menuitem"
+						class="menu-action-btn logout-btn"
+						tabindex={expanded ? 0 : -1}
+						onpointerenter={() => hoverMenuItem(3)}
+						onfocus={() => hoverMenuItem(3)}
+						onclick={handleLogoutClick}
+					>
+						<LogOutIcon
+							size={15}
+							strokeWidth={1.8}
+							hovered={hoveredMenuIdx === 3}
+							class="menu-action-icon"
+						/>
+						<span>로그아웃</span>
+					</button>
+				</div>
 			</div>
 		</div>
 	</FdDiv>
@@ -314,9 +610,6 @@
 		align-items: stretch;
 		overflow: hidden;
 		box-sizing: border-box;
-		transition:
-			width 0.34s cubic-bezier(0.22, 1, 0.36, 1),
-			height 0.34s cubic-bezier(0.22, 1, 0.36, 1);
 		will-change: width, height;
 	}
 
@@ -347,8 +640,9 @@
 	.profile-btn-inner {
 		display: inline-flex;
 		align-items: center;
-		justify-content: center;
-		padding: 0 1rem;
+		justify-content: flex-start;
+		gap: 0.5rem;
+		padding: 0 1rem 0 0.75rem;
 		width: max-content;
 		box-sizing: border-box;
 	}
@@ -359,7 +653,7 @@
 		color: var(--lq-text, #f4f4f5);
 		line-height: 1;
 		white-space: nowrap;
-		max-width: 132px;
+		max-width: 240px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		transition: color 0.18s ease;
@@ -370,38 +664,60 @@
 		color: #ffffff;
 	}
 
-	/* ── 확장 메뉴 영역 (초기 투명도 0 -> 확장 시 부드럽게 페이드인) ── */
+	/* ── 확장 메뉴 영역 (개별 항목은 Dynamic Menu 스프링 스태거로 구동) ── */
 	.profile-menu {
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
 		padding: 0 0.35rem 0.4rem;
 		box-sizing: border-box;
-		opacity: 0;
-		transform: translateY(-6px);
 		pointer-events: none;
-		transition:
-			opacity 0.15s ease 0s,
-			transform 0.2s ease 0s;
 	}
 
 	.profile-card.is-expanded .profile-menu {
-		opacity: 1;
-		transform: translateY(0);
 		pointer-events: auto;
-		transition:
-			opacity 0.26s ease 0.06s,
-			transform 0.3s cubic-bezier(0.22, 1, 0.36, 1) 0.05s;
 	}
 
 	.menu-divider {
 		height: 1px;
 		margin: 1px 0.35rem 3px;
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--white) 10%, transparent);
 		flex-shrink: 0;
+		opacity: 0;
+		transition: opacity 0.18s ease;
+	}
+
+	.profile-card.is-expanded .menu-divider {
+		opacity: 1;
+	}
+
+	.profile-menu-list {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.menu-hl {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 0;
+		border-radius: 12px;
+		background: color-mix(in srgb, var(--white) 9%, transparent);
+		opacity: 0;
+		pointer-events: none;
+		will-change: transform, height, opacity;
+		transition: background-color 0.18s ease;
+	}
+
+	.menu-hl.is-danger {
+		background: rgba(244, 63, 94, 0.14);
 	}
 
 	.menu-action-btn {
+		position: relative;
+		z-index: 1;
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -411,7 +727,7 @@
 		border: none;
 		border-radius: 12px;
 		background: transparent;
-		color: #d4d4d8;
+		color: var(--fg);
 		font-family: inherit;
 		font-size: 0.8125rem;
 		font-weight: 500;
@@ -420,50 +736,22 @@
 		cursor: pointer;
 		box-sizing: border-box;
 		opacity: 0;
-		transform: translateY(-4px);
-		transition:
-			background-color 0.18s ease,
-			color 0.18s ease,
-			opacity 0.14s ease 0s,
-			transform 0.18s ease 0s;
-	}
-
-	.profile-card.is-expanded .menu-action-btn.mypage-btn {
-		opacity: 1;
-		transform: translateY(0);
-		transition:
-			background-color 0.18s ease,
-			color 0.18s ease,
-			opacity 0.24s ease 0.07s,
-			transform 0.28s cubic-bezier(0.22, 1, 0.36, 1) 0.07s;
-	}
-
-	.profile-card.is-expanded .menu-action-btn.logout-btn {
-		opacity: 1;
-		transform: translateY(0);
-		transition:
-			background-color 0.18s ease,
-			color 0.18s ease,
-			opacity 0.24s ease 0.11s,
-			transform 0.28s cubic-bezier(0.22, 1, 0.36, 1) 0.11s;
+		will-change: transform, opacity;
+		transition: color 0.18s ease;
 	}
 
 	.menu-action-btn:hover,
 	.menu-action-btn:focus-visible {
-		background: rgba(255, 255, 255, 0.08);
-		color: #ffffff;
+		color: var(--white);
 		outline: none;
 	}
 
 	.menu-action-btn.logout-btn:hover,
 	.menu-action-btn.logout-btn:focus-visible {
-		background: rgba(244, 63, 94, 0.14);
 		color: #fda4af;
 	}
 
-	.menu-action-icon {
-		width: 15px;
-		height: 15px;
+	.menu-action-btn :global(.menu-action-icon) {
 		flex-shrink: 0;
 		opacity: 0.85;
 	}

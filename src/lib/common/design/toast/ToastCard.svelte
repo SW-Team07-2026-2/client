@@ -83,10 +83,43 @@
 		color: statusWaveColor,
 		waveColor: statusWaveColor,
 		layers: 2,
-		layerGap: 3.5,
-		waveAmp: 3.2,
-		waveLength: 52,
-		spin: 2.4
+		layerGap: 4,
+		waveAmp: 4.2,
+		waveLength: 48,
+		spin: -3.4
+	});
+
+	// FdLine progress(1 -> 0)를 캔버스 재할당 없이 부드럽게 구동해 끝단 수렴 곡선을 유지
+	let barProgress = $state(1);
+	let lastUpdateKey = $state(-1);
+
+	$effect(() => {
+		const key = item.updateKey;
+		if (key !== lastUpdateKey) {
+			lastUpdateKey = key;
+			barProgress = 1;
+		}
+	});
+
+	$effect(() => {
+		if (!showProgress || paused || item.duration <= 0 || item.state === 'exiting') return;
+		let rafId = 0;
+		let lastTs = performance.now();
+		const duration = item.duration;
+
+		const step = (now: number) => {
+			const dt = Math.max(0, Math.min(100, now - lastTs));
+			lastTs = now;
+			barProgress = Math.max(0, barProgress - dt / duration);
+			if (barProgress > 0) {
+				rafId = requestAnimationFrame(step);
+			}
+		};
+
+		rafId = requestAnimationFrame(step);
+		return () => {
+			if (rafId) cancelAnimationFrame(rafId);
+		};
 	});
 
 	// 허용되지 않은 방향 드래그 시 최대 48px까지 부드럽게 저항하는 러버밴드
@@ -375,24 +408,18 @@
 	</div>
 
 	{#if showProgress}
-		{#key item.updateKey}
-			<div class="aui-toast-progress" data-animate-ui-toast-progress aria-hidden="true">
-				<div
-					class="aui-toast-progress-bar"
-					data-animate-ui-toast-progress-bar
-					class:is-paused={paused}
-					style:animation-duration="{item.duration}ms"
-				>
-					<FdLine
-						active={true}
-						direction="up"
-						thickness={2}
-						baseHeight={4}
-						setting={progressLineSetting}
-					/>
-				</div>
+		<div class="aui-toast-progress" data-animate-ui-toast-progress aria-hidden="true">
+			<div class="aui-toast-progress-bar" data-animate-ui-toast-progress-bar>
+				<FdLine
+					active={true}
+					direction="up"
+					thickness={2.5}
+					baseHeight={5}
+					progress={barProgress}
+					setting={progressLineSetting}
+				/>
 			</div>
-		{/key}
+		</div>
 	{/if}
 </div>
 
@@ -600,12 +627,7 @@
 	.aui-toast-progress-bar {
 		width: 100%;
 		height: 100%;
-		opacity: 0.85;
-		animation: aui-progress-shrink linear forwards;
-	}
-
-	.aui-toast-progress-bar.is-paused {
-		animation-play-state: paused;
+		opacity: 0.9;
 	}
 
 	@keyframes aui-draw-stroke {
@@ -655,15 +677,6 @@
 	@keyframes aui-spin {
 		to {
 			transform: rotate(360deg);
-		}
-	}
-
-	@keyframes aui-progress-shrink {
-		from {
-			width: 100%;
-		}
-		to {
-			width: 0%;
 		}
 	}
 

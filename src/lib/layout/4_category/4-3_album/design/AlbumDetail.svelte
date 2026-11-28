@@ -5,7 +5,7 @@
 		type DetailMetaItem
 	} from '../../_shared/design/ProductDetailLayout.svelte';
 	import ProductPurchasePanel from '../../_shared/design/ProductPurchasePanel.svelte';
-	import type { SpringDropdownOption } from '../../_shared/design/SpringDropdown.svelte';
+	import type { SpringDropdownOption } from '#lib/common/design/SpringDropdown.svelte';
 	import { resolveDetailGlowColor } from '../../_shared/logic/detailTheme';
 	import type {
 		AlbumPhysicalEdition,
@@ -144,6 +144,24 @@
 		selectedOption ? selectedOption.soldOut : Boolean(selectedEdition?.soldOut)
 	);
 
+	// 음반 형태 전환 중 옵션 로딩 순간에도 재고 행과 SlidingNumber 인스턴스를 유지해 롤링 전환 보장
+	let lastKnownStock = $state<{ qty: number | null; soldOut: boolean }>({
+		qty: null,
+		soldOut: false
+	});
+
+	$effect.pre(() => {
+		if (selectedOption) {
+			const isOptSoldOut = selectedOption.soldOut || selectedOption.qty <= 0;
+			lastKnownStock = {
+				qty: isOptSoldOut ? null : selectedOption.qty,
+				soldOut: isOptSoldOut
+			};
+		} else if (!optionsLoading && selectedEdition?.soldOut) {
+			lastKnownStock = { qty: null, soldOut: true };
+		}
+	});
+
 	const metaItems = $derived.by<DetailMetaItem[]>(() => {
 		const list: DetailMetaItem[] = [];
 		if (albumTypeLabel) {
@@ -154,6 +172,35 @@
 		}
 		if (formattedDate) {
 			list.push({ label: '발매일', value: formattedDate });
+		}
+		if (editions.length > 0) {
+			const stockQty = selectedOption
+				? selectedOption.soldOut || selectedOption.qty <= 0
+					? null
+					: selectedOption.qty
+				: optionsLoading
+					? lastKnownStock.qty
+					: selectedEdition?.soldOut
+						? null
+						: lastKnownStock.qty;
+			const stockSoldOut = selectedOption
+				? selectedOption.soldOut || selectedOption.qty <= 0
+				: optionsLoading
+					? lastKnownStock.soldOut
+					: Boolean(selectedEdition?.soldOut || lastKnownStock.soldOut);
+
+			if (stockSoldOut || stockQty !== null) {
+				list.push({
+					label: '재고',
+					value: stockSoldOut ? '품절' : `${(stockQty ?? 0).toLocaleString('ko-KR')}개`,
+					tone: stockSoldOut ? 'muted' : stockQty !== null && stockQty <= 5 ? 'accent' : undefined,
+					slidingNumber: {
+						value: stockSoldOut ? null : stockQty,
+						suffix: '개',
+						soldOut: stockSoldOut
+					}
+				});
+			}
 		}
 		return list;
 	});

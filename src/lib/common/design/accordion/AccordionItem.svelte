@@ -9,11 +9,15 @@
 		title: string;
 		/** 비활성화 여부 */
 		disabled?: boolean;
+		/** 펼침/접힘 상태 변경 콜백 (지연 로딩 등에 활용) */
+		onToggle?: (nextExpanded: boolean) => void;
+		/** 제목 옆/아래 커스텀 헤더 슬롯 (미지정 시 title 문자열 렌더링) */
+		header?: Snippet;
 		/** 펼쳐졌을 때 표시할 본문 */
 		children: Snippet;
 	}
 
-	let { value, title, disabled = false, children }: Props = $props();
+	let { value, title, disabled = false, onToggle, header, children }: Props = $props();
 
 	const ctx = getAccordionContext();
 	let localOpen = $state(false);
@@ -22,11 +26,13 @@
 
 	function handleToggle() {
 		if (disabled) return;
+		const nextExpanded = !expanded;
 		if (ctx) {
 			ctx.toggle(value);
 		} else {
-			localOpen = !localOpen;
+			localOpen = nextExpanded;
 		}
+		onToggle?.(nextExpanded);
 	}
 </script>
 
@@ -40,7 +46,11 @@
 			{disabled}
 			onclick={handleToggle}
 		>
-			<span class="accordion-title">{title}</span>
+			{#if header}
+				<span class="accordion-title">{@render header()}</span>
+			{:else}
+				<span class="accordion-title">{title}</span>
+			{/if}
 			<svg
 				class="accordion-chevron"
 				width="17"

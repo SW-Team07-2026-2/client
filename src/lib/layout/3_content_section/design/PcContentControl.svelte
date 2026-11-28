@@ -358,7 +358,7 @@
 	.control-left {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
+		gap: 0;
 		min-width: 0;
 		flex: 1 1 auto;
 	}
@@ -374,6 +374,15 @@
 	.filter-toggle-slot {
 		display: inline-flex;
 		align-items: center;
+	}
+
+	/* FdDiv inset(12px) 투명 여백을 보정해 좌측 정렬을 콘텐츠 그리드·우측 여백과 일치시키고 검색·필터 간격을 10px로 맞춤 */
+	.search-slot {
+		margin-left: -12px;
+	}
+
+	.filter-toggle-slot {
+		margin-left: -14px;
 	}
 
 	:global(.fd-wrap.filter-pill-wrap .fd-body.filter-pill-body) {
@@ -520,6 +529,6 @@
 
 	.refresh-icon-btn:hover {
 		color: var(--white);
-		background: var(--surface);
+		background: var(--surface-dim);
 	}
 </style>

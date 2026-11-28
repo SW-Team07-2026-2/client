@@ -3,6 +3,7 @@
 	import type { ChatActionPayload } from '../logic/chatStream';
 	import type { ChatMessage } from '../logic/types';
 	import MarkdownViewer from '#lib/common/design/MarkdownViewer.svelte';
+	import AILoadingState from './AILoadingState.svelte';
 
 	interface Props {
 		message: ChatMessage;
@@ -22,8 +23,14 @@
 </script>
 
 <!-- AI 메시지: 말풍선 박스 없이 투명 글래스 바탕 위에 마크다운 -->
-<div class="bot-ambient-message">
-	<MarkdownViewer content={message.text} />
+<div class="bot-ambient-message" class:is-transient-error={message.isTransientError}>
+	{#if message.showSteps && message.steps && message.steps.length > 0}
+		<AILoadingState steps={message.steps} isTalking={message.text.length > 0} />
+	{/if}
+
+	{#if message.text}
+		<MarkdownViewer content={message.text} />
+	{/if}
 
 	{#if showActionPill && message.action}
 		<div class="bot-action-wrap" in:fade={{ duration: 150 }}>
@@ -52,6 +59,10 @@
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
+	}
+
+	.bot-ambient-message.is-transient-error {
+		color: var(--muted);
 	}
 
 	.bot-time {

@@ -1,11 +1,8 @@
 <script lang="ts">
 	import AnimatedCheckbox from '#lib/common/design/AnimatedCheckbox.svelte';
+	import { ShippingAddressCard, ShippingAddressForm } from '#lib/common/design/address';
+	import { SmoothTab, type SmoothTabItem } from '#lib/common/design/smooth_tab';
 	import SlidingPrice from '#lib/common/design/SlidingPrice.svelte';
-	import {
-		SHIPPING_ADDRESS_DETAIL_MAX_LENGTH,
-		SHIPPING_PHONE_MAX_LENGTH,
-		SHIPPING_RECIPIENT_MAX_LENGTH
-	} from '#lib/config/pay';
 	import { LoadingSpinner } from '#lib/dedicated/loading';
 	import type {
 		CheckoutItemSnapshot,
@@ -14,6 +11,7 @@
 	} from '../logic/types';
 
 	interface Props {
+		mobile?: boolean;
 		loading: boolean;
 		errorMessage: string | null;
 		items: readonly CheckoutItemSnapshot[];
@@ -34,6 +32,7 @@
 	}
 
 	let {
+		mobile = false,
 		loading,
 		errorMessage,
 		items,
@@ -53,12 +52,30 @@
 		onSearchAddress
 	}: Props = $props();
 
-	let detailInputEl = $state<HTMLInputElement | undefined>(undefined);
+	const selectedAddressValue = $derived(
+		selectedAddressId === 'manual' ? 'manual' : String(selectedAddressId)
+	);
+	const addressTabItems = $derived<SmoothTabItem[]>([
+		...addresses.map((addr) => ({
+			id: String(addr.id),
+			title: addr.label || addr.recipientName,
+			badge: addr.isDefault ? '기본' : undefined
+		})),
+		{
+			id: 'manual',
+			title: '직접 입력하기'
+		}
+	]);
+	const addressById = $derived(new Map(addresses.map((addr) => [String(addr.id), addr])));
 
-	async function handleSearchAddress() {
-		const picked = await onSearchAddress();
-		if (picked) {
-			detailInputEl?.focus();
+	function handleSelectAddressValue(val: string) {
+		if (val === 'manual') {
+			onSelectAddress('manual');
+			return;
+		}
+		const numId = Number(val);
+		if (Number.isFinite(numId)) {
+			onSelectAddress(numId);
 		}
 	}
 </script>
@@ -77,138 +94,41 @@
 		<section class="checkout-section" aria-label="배송지 정보">
 			<h2 class="section-heading">배송지 정보</h2>
 
-			{#if addresses.length > 0}
-				<div class="address-chips" role="radiogroup" aria-label="저장된 배송지">
-					{#each addresses as addr (addr.id)}
-						<button
-							type="button"
-							class="addr-chip"
-							class:is-selected={selectedAddressId === addr.id}
-							onclick={() => onSelectAddress(addr.id)}
+			<SmoothTab
+				items={addressTabItems}
+				value={selectedAddressValue}
+				onChange={handleSelectAddressValue}
+				label="배송지 선택"
+			>
+				{#snippet panel(tab)}
+					{@const savedAddr = tab.id !== 'manual' ? addressById.get(tab.id) : undefined}
+					{#if savedAddr}
+						<ShippingAddressCard address={savedAddr} />
+					{:else}
+						<ShippingAddressForm
+							{shipping}
+							{mobile}
+							onUpdateField={onUpdateShipping}
+							{onSearchAddress}
 						>
-							<span>{addr.label || addr.recipientName}</span>
-							{#if addr.isDefault}
-								<span class="chip-badge">기본</span>
-							{/if}
-						</button>
-					{/each}
-					<button
-						type="button"
-						class="addr-chip"
-						class:is-selected={selectedAddressId === 'manual'}
-						onclick={() => onSelectAddress('manual')}
-					>
-						직접 입력
-					</button>
-				</div>
+							{#snippet footer()}
+								<label class="save-addr-check">
+									<AnimatedCheckbox
+										checked={saveAsNewAddress}
+										ariaLabel="이 배송지를 주소록에 저장"
+										onChange={onToggleSaveAddress}
+									/>
+									<span>이 배송지를 주소록에 저장</span>
+								</label>
+							{/snippet}
+						</ShippingAddressForm>
+					{/if}
+				{/snippet}
+			</SmoothTab>
+
+			{#if validationError}
+				<p class="validation-error" role="alert">{validationError}</p>
 			{/if}
-
-			<div class="shipping-form">
-				<div class="form-row-2">
-					<label class="field-group">
-						<span class="field-label">수령인</span>
-						<input
-							type="text"
-							maxlength={SHIPPING_RECIPIENT_MAX_LENGTH}
-							class="field-input"
-							placeholder="이름 입력"
-							value={shipping.recipientName}
-							oninput={(e) => onUpdateShipping('recipientName', e.currentTarget.value)}
-						/>
-					</label>
-
-					<label class="field-group">
-						<span class="field-label">연락처</span>
-						<input
-							type="tel"
-							inputmode="numeric"
-							maxlength={SHIPPING_PHONE_MAX_LENGTH}
-							class="field-input"
-							placeholder="010-0000-0000"
-							value={shipping.phone}
-							oninput={(e) => {
-								onUpdateShipping('phone', e.currentTarget.value);
-								e.currentTarget.value = shipping.phone;
-							}}
-						/>
-					</label>
-				</div>
-
-				<div class="form-row-zone">
-					<label class="field-group">
-						<span class="field-label">우편번호 (5자리)</span>
-						<input
-							type="text"
-							readonly
-							class="field-input is-readonly"
-							placeholder="주소 검색으로 입력"
-							value={shipping.zonecode}
-							onclick={handleSearchAddress}
-						/>
-					</label>
-
-					<div class="field-group is-search-btn">
-						<span class="field-label" aria-hidden="true">&nbsp;</span>
-						<button type="button" class="addr-search-btn" onclick={handleSearchAddress}>
-							<svg
-								width="15"
-								height="15"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								aria-hidden="true"
-							>
-								<circle cx="11" cy="11" r="8" />
-								<path d="m21 21-4.3-4.3" />
-							</svg>
-							<span>주소 검색</span>
-						</button>
-					</div>
-				</div>
-
-				<label class="field-group">
-					<span class="field-label">기본 주소</span>
-					<input
-						type="text"
-						readonly
-						class="field-input is-readonly"
-						placeholder="주소 검색을 눌러 도로명 주소를 입력해 주세요"
-						value={shipping.address}
-						onclick={handleSearchAddress}
-					/>
-				</label>
-
-				<label class="field-group">
-					<span class="field-label">상세 주소 (선택)</span>
-					<input
-						bind:this={detailInputEl}
-						type="text"
-						maxlength={SHIPPING_ADDRESS_DETAIL_MAX_LENGTH}
-						class="field-input"
-						placeholder="동 · 호수 등 상세 주소"
-						value={shipping.addressDetail}
-						oninput={(e) => onUpdateShipping('addressDetail', e.currentTarget.value)}
-					/>
-				</label>
-
-				{#if selectedAddressId === 'manual'}
-					<label class="save-addr-check">
-						<AnimatedCheckbox
-							checked={saveAsNewAddress}
-							ariaLabel="이 배송지를 주소록에 저장"
-							onChange={onToggleSaveAddress}
-						/>
-						<span>이 배송지를 주소록에 저장</span>
-					</label>
-				{/if}
-
-				{#if validationError}
-					<p class="validation-error" role="alert">{validationError}</p>
-				{/if}
-			</div>
 		</section>
 
 		<section class="checkout-section" aria-label="주문 상품">
@@ -240,10 +160,25 @@
 		<section class="checkout-section" aria-label="결제 수단">
 			<h2 class="section-heading">결제 수단</h2>
 
-			{#if widgetLoading}
-				<div class="widget-status">
-					<LoadingSpinner size={20} />
-					<span>결제 위젯을 불러오는 중입니다...</span>
+			{#if widgetLoading && !widgetError}
+				<div class="widget-skeleton" role="status" aria-busy="true" aria-label="결제 수단 불러오는 중">
+					<div class="wsk-head skeleton-shimmer"></div>
+					<div class="wsk-grid">
+						{#each [0, 1, 2, 3, 4, 5] as idx (idx)}
+							<div
+								class="wsk-tile skeleton-shimmer"
+								style:--skeleton-delay="{idx * 55}ms"
+							></div>
+						{/each}
+					</div>
+					<div class="wsk-divider"></div>
+					<div class="wsk-agree-row">
+						<div class="wsk-check skeleton-shimmer"></div>
+						<div class="wsk-agree-lines">
+							<div class="wsk-line is-long skeleton-shimmer"></div>
+							<div class="wsk-line is-short skeleton-shimmer"></div>
+						</div>
+					</div>
 				</div>
 			{/if}
 
@@ -253,7 +188,11 @@
 				</div>
 			{/if}
 
-			<div class="toss-widget-box" class:is-hidden={Boolean(widgetError)}>
+			<div
+				class="toss-widget-box"
+				class:is-hidden={Boolean(widgetError)}
+				class:is-mounting={widgetLoading && !widgetError}
+			>
 				<div id={paymentMethodsId}></div>
 				<div id={agreementId}></div>
 			</div>
@@ -312,142 +251,6 @@
 		color: var(--muted);
 	}
 
-	.address-chips {
-		display: flex;
-		align-items: center;
-		flex-wrap: wrap;
-		gap: 0.45rem;
-	}
-
-	.addr-chip {
-		height: 36px;
-		padding: 0 0.85rem;
-		border: none;
-		border-radius: 999px;
-		background: var(--surface);
-		color: var(--muted);
-		font: inherit;
-		font-size: 0.84rem;
-		font-weight: var(--fw-semibold);
-		display: inline-flex;
-		align-items: center;
-		gap: 0.35rem;
-		cursor: pointer;
-		transition:
-			background-color 0.16s ease,
-			color 0.16s ease;
-	}
-
-	.addr-chip.is-selected {
-		background: var(--white-2);
-		color: var(--bg);
-	}
-
-	.chip-badge {
-		font-size: 0.7rem;
-		opacity: 0.8;
-	}
-
-	.shipping-form {
-		display: flex;
-		flex-direction: column;
-		gap: 0.85rem;
-	}
-
-	.form-row-2 {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 0.75rem;
-	}
-
-	.form-row-zone {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 0.75rem;
-		align-items: end;
-	}
-
-	.field-group.is-search-btn {
-		flex-shrink: 0;
-	}
-
-	.addr-search-btn {
-		height: 46px;
-		padding: 0 1.05rem;
-		border: 1px solid var(--line);
-		border-radius: 12px;
-		background: var(--surface);
-		color: var(--white-2);
-		font: inherit;
-		font-size: 0.88rem;
-		font-weight: var(--fw-semibold);
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.4rem;
-		white-space: nowrap;
-		cursor: pointer;
-		box-sizing: border-box;
-		transition:
-			background-color 0.16s ease,
-			border-color 0.16s ease,
-			color 0.16s ease,
-			transform 0.14s ease;
-	}
-
-	.addr-search-btn:hover {
-		background: var(--surface-2);
-		border-color: var(--line-wave);
-		color: var(--white);
-	}
-
-	.addr-search-btn:active {
-		background: var(--surface-3);
-		transform: scale(0.985);
-	}
-
-	.field-group {
-		display: flex;
-		flex-direction: column;
-		gap: 0.4rem;
-		min-width: 0;
-	}
-
-	.field-label {
-		font-size: 0.78rem;
-		font-weight: var(--fw-semibold);
-		color: var(--muted);
-	}
-
-	.field-input {
-		height: 46px;
-		padding: 0 0.9rem;
-		border: none;
-		border-radius: 12px;
-		background: var(--surface);
-		color: var(--white);
-		font: inherit;
-		font-size: 0.92rem;
-		box-sizing: border-box;
-		outline: none;
-		transition: background-color 0.15s ease;
-	}
-
-	.field-input.is-readonly {
-		background: var(--surface-dim);
-		color: var(--fg);
-		cursor: pointer;
-	}
-
-	.field-input:focus {
-		background: var(--surface-2);
-	}
-
-	.field-input::placeholder {
-		color: var(--muted);
-		opacity: 0.75;
-	}
-
 	.save-addr-check {
 		display: inline-flex;
 		align-items: center;
@@ -478,7 +281,7 @@
 		gap: 0.85rem;
 		padding: 0.85rem;
 		border-radius: 14px;
-		background: var(--surface);
+		background: var(--surface-dim);
 	}
 
 	.order-thumb {
@@ -525,21 +328,77 @@
 		flex-shrink: 0;
 	}
 
-	.widget-status {
+	.widget-skeleton {
+		padding: 1.25rem;
+		border-radius: 16px;
+		background: var(--surface-dim);
+		border: var(--thin-border);
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.wsk-head {
+		width: 112px;
+		height: 18px;
+		border-radius: 6px;
+	}
+
+	.wsk-grid {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 0.65rem;
+	}
+
+	.wsk-tile {
+		height: 48px;
+		border-radius: 12px;
+	}
+
+	.wsk-divider {
+		height: 1px;
+		background: color-mix(in srgb, var(--white) 8%, transparent);
+		margin: 0.15rem 0;
+	}
+
+	.wsk-agree-row {
 		display: flex;
 		align-items: center;
-		gap: 0.65rem;
-		padding: 1.25rem;
-		border-radius: 14px;
-		background: var(--surface);
-		color: var(--muted);
-		font-size: 0.88rem;
+		gap: 0.75rem;
+	}
+
+	.wsk-check {
+		width: 20px;
+		height: 20px;
+		border-radius: 6px;
+		flex-shrink: 0;
+	}
+
+	.wsk-agree-lines {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+
+	.wsk-line {
+		height: 13px;
+		border-radius: 6px;
+	}
+
+	.wsk-line.is-long {
+		width: 68%;
+	}
+
+	.wsk-line.is-short {
+		width: 42%;
 	}
 
 	.widget-notice {
 		padding: 1.1rem 1.25rem;
 		border-radius: 14px;
-		background: var(--surface);
+		background: var(--surface-dim);
 		color: var(--muted);
 		font-size: 0.88rem;
 	}
@@ -558,10 +417,15 @@
 		display: none;
 	}
 
+	.toss-widget-box.is-mounting {
+		height: 0;
+		opacity: 0;
+		pointer-events: none;
+	}
+
 	@container pay-flow (max-width: 540px) {
-		.form-row-2,
-		.form-row-zone {
-			grid-template-columns: minmax(0, 1fr);
+		.wsk-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 	}
 </style>

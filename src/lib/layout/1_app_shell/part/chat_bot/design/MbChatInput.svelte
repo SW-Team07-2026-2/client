@@ -1,6 +1,9 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { slide } from 'svelte/transition';
-	import FdDiv from '#lib/common/design/fluid/FdDiv.svelte';
+	import LetterLimitInput from '#lib/common/design/LetterLimitInput.svelte';
+	import FdButton from '#lib/common/design/fluid/FdButton.svelte';
+	import { ArrowRightIcon } from '#lib/common/design/icon';
 	import { FluidSetting } from '#lib/common/type/fluid';
 	import type { ChatAttachment } from '../logic/types';
 	import { CHAT_FILE_ACCEPT, getFileExtension } from '../logic/attachment';
@@ -12,12 +15,13 @@
 		disabled?: boolean;
 		placeholder?: string;
 		maxLength?: number;
-		inputEl?: HTMLInputElement;
+		inputEl?: HTMLTextAreaElement;
 		onChangeValue?: (next: string) => void;
 		onAddFiles?: (files: FileList | File[]) => void;
 		onRemoveAttachment?: (id: string) => void;
 		onSend?: (keepFocus?: boolean) => void;
 		onClose?: () => void;
+		onHeightChange?: (height: number) => void;
 	}
 
 	let {
@@ -26,43 +30,72 @@
 		canSubmit,
 		disabled = false,
 		placeholder = '음악 취향이나 궁금한 점을 물어보세요...',
-		maxLength = 300,
+		maxLength = 100,
 		inputEl = $bindable(undefined),
 		onChangeValue,
 		onAddFiles,
 		onRemoveAttachment,
 		onSend,
-		onClose
+		onClose,
+		onHeightChange
 	}: Props = $props();
 
+	let deckEl: HTMLElement | undefined = $state(undefined);
 	let fileInputEl: HTMLInputElement | undefined = $state(undefined);
-	let isFocused = $state(false);
+	let fieldEl: HTMLTextAreaElement | HTMLInputElement | undefined = $state(undefined);
 
-	const fluidSetting = $derived.by(
-		() =>
-			new FluidSetting({
-				radius: 22,
-				reach: 0,
-				bulge: 0,
-				bulgeWidth: 24,
-				layers: 2,
-				layerGap: 2.0,
-				waveAmp: 1.4,
-				waveLength: 74,
-				spin: 0.72,
-				staticFrontWave: true,
-				bulgeReactive: false,
-				clickReactive: false,
-				pauseWhenIdle: !isFocused,
-				borderWidth: 0,
-				color: isFocused ? '#25252b' : '#1a1a1f',
-				hoverColor: isFocused ? '#25252b' : '#212127',
-				pressColor: isFocused ? '#25252b' : '#212127',
-				waveColor: isFocused ? '#32323b' : '#26262e',
-				textColor: '#eee',
-				pressDeform: { x: 0, y: 0 }
-			})
-	);
+	$effect(() => {
+		inputEl = fieldEl instanceof HTMLTextAreaElement ? fieldEl : undefined;
+	});
+
+	const SEND_ACTIVE_SETTING = new FluidSetting({
+		radius: 999,
+		inset: 3,
+		reach: 0,
+		bulge: 0,
+		layers: 2,
+		layerGap: 1.4,
+		waveAmp: 1.2,
+		waveLength: 36,
+		spin: 1.0,
+		bulgeReactive: false,
+		pauseWhenIdle: true,
+		color: 'var(--white-2)',
+		hoverColor: 'var(--white)',
+		pressColor: 'var(--white-3)',
+		waveColor: 'var(--white-3)',
+		hoverWaveColor: 'var(--white-3)',
+		textColor: 'var(--bg)',
+		borderWidth: 0
+	});
+
+	const SEND_DISABLED_SETTING = SEND_ACTIVE_SETTING.with({
+		hoverReactive: false,
+		clickReactive: false,
+		layerGap: 0,
+		waveAmp: 0,
+		color: 'var(--surface-2)',
+		hoverColor: 'var(--surface-2)',
+		pressColor: 'var(--surface-2)',
+		waveColor: 'var(--surface-2)',
+		hoverWaveColor: 'var(--surface-2)',
+		textColor: 'var(--muted)'
+	});
+
+	const sendBtnSetting = $derived(canSubmit ? SEND_ACTIVE_SETTING : SEND_DISABLED_SETTING);
+
+	onMount(() => {
+		if (deckEl && typeof ResizeObserver !== 'undefined') {
+			const report = () => {
+				if (!deckEl) return;
+				onHeightChange?.(Math.ceil(deckEl.getBoundingClientRect().height));
+			};
+			report();
+			const ro = new ResizeObserver(report);
+			ro.observe(deckEl);
+			return () => ro.disconnect();
+		}
+	});
 
 	function handleFileInputChange(e: Event & { currentTarget: HTMLInputElement }) {
 		if (e.currentTarget.files && e.currentTarget.files.length > 0) {
@@ -70,28 +103,10 @@
 			e.currentTarget.value = '';
 		}
 	}
-
-	function handleInputKeyDown(e: KeyboardEvent) {
-		if (e.key === 'Enter' && !e.shiftKey) {
-			if (e.isComposing) return;
-			e.preventDefault();
-			onSend?.(false);
-		} else if (e.key === 'Escape') {
-			onClose?.();
-		}
-	}
-
-	function handleBodyClick(e: MouseEvent) {
-		const target = e.target as HTMLElement | null;
-		if (target?.closest('button, .preview-chip')) return;
-		if (!disabled && document.activeElement !== inputEl) {
-			inputEl?.focus();
-		}
-	}
 </script>
 
-<!-- 모바일 채팅 하단 플로팅 인풋 덱 (터치 전용 · 순수 렌더링) -->
-<footer class="mb-chat-floating-deck">
+<!-- 모바일 채팅 하단 플로팅 공용 LetterLimitInput 덱 (터치 전용 · 순수 렌더링) -->
+<footer bind:this={deckEl} class="mb-chat-floating-deck">
 	<input
 		bind:this={fileInputEl}
 		type="file"
@@ -105,28 +120,30 @@
 		class="chat-input-form"
 		onsubmit={(e) => {
 			e.preventDefault();
-			onSend?.(false);
+			if (canSubmit) onSend?.(false);
 		}}
 	>
-		<div class="input-shell">
-			<FdDiv
-				setting={fluidSetting}
-				{disabled}
-				fullWidth={true}
-				staticFrontWave={true}
-				class="chat-fd-wrap"
-				bodyClass="chat-fd-body"
-				onclick={handleBodyClick}
-			>
+		<LetterLimitInput
+			{value}
+			{maxLength}
+			nearThreshold={15}
+			{canSubmit}
+			{disabled}
+			{placeholder}
+			ariaLabel="메시지 입력"
+			keepFocusOnEnter={false}
+			bind:inputEl={fieldEl}
+			class="mb-ll-override"
+			{onChangeValue}
+			onSubmit={(keepFocus) => onSend?.(keepFocus)}
+			onEscape={() => onClose?.()}
+		>
+			{#snippet topTray()}
 				{#if attachedFiles.length > 0}
 					<div class="attached-inside-tray" transition:slide={{ duration: 220 }}>
 						<div class="attached-previews-scroll">
 							{#each attachedFiles as att, attIdx (att.id || `preview-${attIdx}`)}
-								<div
-									class="preview-chip"
-									class:is-img={att.isImage}
-									style:animation-delay="{(attIdx % 5) * -0.55}s"
-								>
+								<div class="preview-chip" class:is-img={att.isImage}>
 									{#if att.isImage}
 										<img src={att.url} alt={att.name || '첨부 이미지'} class="preview-thumb" />
 									{:else if att.isAudio}
@@ -187,61 +204,46 @@
 						</div>
 					</div>
 				{/if}
+			{/snippet}
 
-				<div class="chat-input-row">
-					<button
-						type="button"
-						class="inline-attach-btn"
-						onclick={() => fileInputEl?.click()}
-						{disabled}
-						aria-label="파일 첨부"
+			{#snippet footLeading()}
+				<button
+					type="button"
+					class="inline-attach-btn"
+					onclick={() => fileInputEl?.click()}
+					{disabled}
+					aria-label="파일 첨부"
+				>
+					<svg
+						width="16"
+						height="16"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
 					>
-						<svg
-							width="16"
-							height="16"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<line x1="12" y1="5" x2="12" y2="19"></line>
-							<line x1="5" y1="12" x2="19" y2="12"></line>
-						</svg>
-					</button>
+						<line x1="12" y1="5" x2="12" y2="19"></line>
+						<line x1="5" y1="12" x2="19" y2="12"></line>
+					</svg>
+				</button>
+			{/snippet}
 
-					<input
-						bind:this={inputEl}
-						type="text"
-						{value}
-						{placeholder}
-						{disabled}
-						maxlength={maxLength}
-						class="chat-native-input"
-						oninput={(e) => onChangeValue?.(e.currentTarget.value)}
-						onkeydown={handleInputKeyDown}
-						onfocus={() => (isFocused = true)}
-						onblur={() => (isFocused = false)}
-					/>
-
-					<button
+			{#snippet submitButton({ canSubmit: ready })}
+				<div class="send-btn-offset">
+					<FdButton
 						type="submit"
-						class="inline-send-btn"
-						class:visible={value.trim().length > 0 || attachedFiles.length > 0}
-						disabled={!canSubmit}
+						setting={sendBtnSetting}
+						disabled={!ready}
 						aria-label="메시지 전송"
+						class="chat-send-fd-btn"
 					>
-						<svg xmlns="http://www.w3.org/2000/svg" width="21" height="24" viewBox="0 0 448 512">
-							<path
-								fill="currentColor"
-								d="M438.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L338.8 224H32c-17.7 0-32 14.3-32 32s14.3 32 32 32h306.7L233.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l160-160z"
-							/>
-						</svg>
-					</button>
+						<ArrowRightIcon size={17} strokeWidth={2.2} />
+					</FdButton>
 				</div>
-			</FdDiv>
-		</div>
+			{/snippet}
+		</LetterLimitInput>
 	</form>
 </footer>
 
@@ -251,6 +253,7 @@
 		bottom: 0;
 		left: 0;
 		right: 0;
+		padding: 0 var(--content-padding-x-mobile) 12px;
 		background: transparent;
 		border: none;
 		display: flex;
@@ -265,34 +268,62 @@
 		align-items: flex-end;
 		background: transparent;
 		border: none;
-		box-shadow: none;
 		width: 100%;
 	}
 
-	.input-shell {
-		flex: 1 1 0%;
-		width: 100%;
-		min-width: 0;
+	.chat-input-form :global(.mb-ll-override) {
+		--ll-bg: var(--surface-dim);
+		--ll-bg-focus: var(--surface-1);
+		--ll-font-size: 0.94rem;
+		--ll-radius: 22px;
 	}
 
-	:global(.fd-wrap.chat-fd-wrap) {
-		display: grid;
-		width: 100%;
-		min-width: 0;
-		grid-template-columns: minmax(0, 1fr);
+	.inline-attach-btn {
+		background: color-mix(in srgb, var(--white) 6%, transparent);
+		border: none;
+		color: var(--white-2);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		border-radius: 999px;
+		cursor: pointer;
+		padding: 0;
+		flex-shrink: 0;
+		-webkit-tap-highlight-color: transparent;
+		transition:
+			background-color 0.16s ease,
+			transform 0.16s ease;
 	}
 
-	:global(.fd-wrap.chat-fd-wrap .fd-body.chat-fd-body) {
-		position: relative;
-		display: flex;
-		flex-direction: column;
-		align-items: stretch;
-		min-width: 0;
-		width: 100%;
-		padding: 0.44rem 0.65rem 0.44rem 0.85rem;
-		gap: 0;
-		cursor: text;
-		box-shadow: none;
+	.inline-attach-btn:active:not(:disabled) {
+		transform: scale(0.92);
+		background: color-mix(in srgb, var(--white) 14%, transparent);
+	}
+
+	.inline-attach-btn:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	.send-btn-offset {
+		margin-top: -3px;
+		margin-bottom: -3px;
+		margin-right: -3px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.send-btn-offset :global(.fd-btn.chat-send-fd-btn) {
+		width: 40px;
+		height: 32px;
+		padding: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		line-height: 0;
 	}
 
 	.attached-inside-tray {
@@ -307,7 +338,7 @@
 		align-items: center;
 		gap: 8px;
 		overflow-x: auto;
-		padding: 9px 4px 5px 4px;
+		padding: 6px 2px 4px;
 		scrollbar-width: none;
 	}
 
@@ -321,10 +352,10 @@
 		align-items: center;
 		gap: 6px;
 		padding: 5px 8px 5px 7px;
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--white) 8%, transparent);
 		border: none;
 		border-radius: 12px;
-		color: #e2e8f0;
+		color: var(--fg);
 		font-size: 0.75rem;
 		flex-shrink: 0;
 	}
@@ -344,26 +375,18 @@
 	}
 
 	.preview-file-icon {
-		color: #818cf8;
+		color: var(--white-2);
 		display: flex;
 		align-items: center;
 	}
 
-	.preview-file-icon.audio {
-		color: #c084fc;
-	}
-
-	.preview-file-icon.video {
-		color: #38bdf8;
-	}
-
 	.preview-file-badge {
 		font-size: 0.6rem;
-		font-weight: 700;
+		font-weight: var(--fw-bold);
 		padding: 2px 5px;
 		border-radius: 5px;
-		background: rgba(255, 255, 255, 0.14);
-		color: #e2e8f0;
+		background: color-mix(in srgb, var(--white) 14%, transparent);
+		color: var(--fg);
 		letter-spacing: 0.02em;
 		flex-shrink: 0;
 	}
@@ -380,8 +403,8 @@
 		height: 20px;
 		border-radius: 9999px;
 		border: none;
-		background: rgba(255, 255, 255, 0.18);
-		color: #ffffff;
+		background: color-mix(in srgb, var(--white) 18%, transparent);
+		color: var(--white);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -395,103 +418,6 @@
 		position: absolute;
 		top: -5px;
 		right: -5px;
-		background: rgba(15, 15, 20, 0.85);
-	}
-
-	.chat-input-row {
-		display: flex;
-		align-items: center;
-		gap: 0.45rem;
-		min-height: 32px;
-		width: 100%;
-	}
-
-	.chat-native-input {
-		flex: 1 1 0%;
-		min-width: 0;
-		width: 100%;
-		border: none;
-		outline: none;
-		background: transparent;
-		font: inherit;
-		font-size: 0.95rem;
-		line-height: 1.4;
-		color: var(--fg, #eee);
-		padding: 0.15rem 0;
-		margin: 0;
-		-webkit-appearance: none;
-		appearance: none;
-	}
-
-	.chat-native-input::placeholder {
-		color: #808080;
-		opacity: 1;
-	}
-
-	.inline-attach-btn {
-		background: transparent;
-		border: none;
-		color: #ffffff;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 30px;
-		height: 30px;
-		border-radius: 9999px;
-		cursor: pointer;
-		padding: 0;
-		flex-shrink: 0;
-		opacity: 0.85;
-		-webkit-tap-highlight-color: transparent;
-	}
-
-	.inline-attach-btn:active {
-		transform: scale(0.92);
-	}
-
-	.inline-send-btn {
-		width: 0;
-		height: 30px;
-		opacity: 0;
-		margin-left: 0;
-		padding: 0;
-		border: none;
-		border-radius: 9999px;
-		background: #ffffff;
-		color: #111827;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		cursor: pointer;
-		pointer-events: none;
-		transform: scale(0.35) rotate(-15deg);
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-		flex-shrink: 0;
-		overflow: hidden;
-		-webkit-tap-highlight-color: transparent;
-		transition:
-			width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
-			transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
-			opacity 0.22s ease,
-			margin-left 0.24s cubic-bezier(0.16, 1, 0.3, 1);
-	}
-
-	.inline-send-btn.visible {
-		width: 30px;
-		opacity: 1;
-		margin-left: 4px;
-		pointer-events: auto;
-		transform: scale(1) rotate(0deg);
-	}
-
-	.inline-send-btn:active {
-		background: #e2e8f0;
-		transform: scale(0.92) rotate(0deg);
-	}
-
-	.inline-send-btn svg {
-		width: 13px;
-		height: 13px;
-		flex-shrink: 0;
+		background: color-mix(in srgb, var(--bg) 85%, transparent);
 	}
 </style>

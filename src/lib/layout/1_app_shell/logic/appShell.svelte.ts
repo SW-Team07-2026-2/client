@@ -1,7 +1,8 @@
-import { goto } from '$app/navigation';
+import { goto, pushState } from '$app/navigation';
 import { page } from '$app/state';
 import { auth } from '#lib/auth';
 import { catalogFeed } from '#lib/common/logic';
+import { ALERT_ROUTE_PATH, isAlertRoute } from '#lib/config/routes';
 import {
 	cancelSmoothScroll,
 	handleSameRouteScrollTop,
@@ -130,7 +131,7 @@ export class AppShellController {
 		const targetHref = catalogFeed.getCategoryNavHref(nextValue, currentPath);
 		const normalizedFrom = currentPath.replace(/\/+$/, '') || '/';
 		const fromOtherCategoryList = OTHER_CATEGORY_LIST_PATHS.has(normalizedFrom);
-		void goto(targetHref, { reset: false, replaceState: fromOtherCategoryList });
+		void goto(targetHref, { reset: false, replace: fromOtherCategoryList });
 	};
 
 	handleMobileActiveReselect = (selectedRoute: string): void => {
@@ -143,25 +144,34 @@ export class AppShellController {
 
 	/* ── 모바일 3-패널 전환 (챗봇=left · 알림=right · 뒤로가기=center) ── */
 
+	private blurActiveElement(): void {
+		if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+			document.activeElement.blur();
+		}
+	}
+
 	openMobileOverlay = (kind: Exclude<MobileOverlayKind, null>): void => {
 		if (this.activeMobileOverlay === kind) return;
 		const wasClosed = this.activeMobileOverlay === null;
+		this.skipHistoryBackOnClose = false;
 		this.activeMobileOverlay = kind;
 
 		const pageOverlay = page.state.mobileOverlay;
 		if (typeof window !== 'undefined' && wasClosed && !pageOverlay && !this.openingHistoryPending) {
 			this.openingHistoryPending = true;
-			void goto('', {
-				state: { ...page.state, mobileOverlay: kind },
-				shallow: true
-			}).finally(() => {
+			const targetUrl = kind === 'notifications' ? ALERT_ROUTE_PATH : '';
+			try {
+				/* pushState로 브라우저 URL만 /alert로 반영하고 중앙 MainSection 라우트는 그대로 유지 */
+				pushState(targetUrl, { ...page.state, mobileOverlay: kind });
+			} finally {
 				this.openingHistoryPending = false;
-			});
+			}
 		}
 	};
 
 	closeMobileOverlay = (): void => {
 		if (!this.activeMobileOverlay) return;
+		this.blurActiveElement();
 		showMobileHeader();
 		const pageOverlay = page.state.mobileOverlay;
 		if (typeof window !== 'undefined' && pageOverlay && !this.skipHistoryBackOnClose) {
@@ -170,10 +180,29 @@ export class AppShellController {
 		}
 		this.skipHistoryBackOnClose = false;
 		this.activeMobileOverlay = null;
+		if (isAlertRoute(this.pathname)) {
+			void goto('/artist', { replace: true });
+		}
 	};
 
-	syncOverlayFromHistoryState = (pageOverlay: MobileOverlayKind | undefined): void => {
+	syncOverlayFromHistoryState = (
+		pageOverlay: MobileOverlayKind | undefined,
+		mobile = false,
+		pathname = this.pathname
+	): void => {
+		if (mobile && isAlertRoute(pathname)) {
+			if (this.activeMobileOverlay !== 'notifications') {
+				this.activeMobileOverlay = 'notifications';
+			}
+			return;
+		}
+		if (pageOverlay && this.activeMobileOverlay !== pageOverlay) {
+			this.skipHistoryBackOnClose = false;
+			this.activeMobileOverlay = pageOverlay;
+			return;
+		}
 		if (!pageOverlay && this.activeMobileOverlay !== null && !this.openingHistoryPending) {
+			this.blurActiveElement();
 			showMobileHeader();
 			this.skipHistoryBackOnClose = true;
 			this.activeMobileOverlay = null;

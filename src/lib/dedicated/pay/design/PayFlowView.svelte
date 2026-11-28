@@ -201,6 +201,7 @@
 								/>
 							{:else}
 								<CheckoutFormSection
+									{mobile}
 									loading={checkout.loading}
 									errorMessage={checkout.error}
 									items={checkout.items}
@@ -329,7 +330,7 @@
 		padding: 0 1.25rem;
 		border: none;
 		border-radius: 12px;
-		background: var(--surface);
+		background: var(--surface-dim);
 		color: var(--white-2);
 		font: inherit;
 		font-size: 0.88rem;
@@ -339,7 +340,7 @@
 	}
 
 	.empty-browse-btn:hover {
-		background: var(--surface-2);
+		background: var(--surface-1);
 	}
 
 	.pay-flow-layout {
@@ -359,7 +360,6 @@
 	.pay-slide-pane {
 		grid-area: 1 / 1;
 		min-width: 0;
-		will-change: transform, opacity;
 	}
 
 	@container pay-flow (max-width: 820px) {

@@ -8,5 +8,6 @@ export { default as FdTitle } from './FdTitle.svelte';
 export { default as FdBgmPlayer } from './FdBgmPlayer.svelte';
 export { default as FdSegmentedControl } from './FdSegmentedControl.svelte';
 export type { SegmentOption, SegmentInput, SegmentMergeConfig } from './FdSegmentedControl.svelte';
+export { default as FdSwitch } from './FdSwitch.svelte';
 export { default as FdToast } from './FdToast.svelte';
 export type { ToastType } from './FdToast.svelte';

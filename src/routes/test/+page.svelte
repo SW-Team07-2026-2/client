@@ -1,4 +1,6 @@
 <script lang="ts">
+	import BookingPageView from '#lib/dedicated/booking/design/BookingPageView.svelte';
+	import type { BookingConcertMeta, QueueStatusDto } from '#lib/dedicated/booking/logic/types';
 	import type { AlbumCardGroup } from '#lib/layout/4_category/4-3_album/logic/albumCategory.svelte';
 	import PcAlbumItem from '#lib/layout/4_category/4-3_album/design/PcAlbumItem.svelte';
 	import MbAlbumItem from '#lib/layout/4_category/4-3_album/design/MbAlbumItem.svelte';
@@ -375,6 +377,34 @@
 	];
 
 	let lastClicked = $state<string>('');
+
+	// ── 콘서트 대기열 프리뷰 상태 ──
+	const MOCK_BOOKING_CONCERT: BookingConcertMeta = {
+		id: 10,
+		title: '아도이 (ADOY) 단독 콘서트 — HER',
+		venueName: '예스24 라이브홀',
+		posterUrl: '',
+		startsAt: '2026-12-12T10:00:00Z',
+		queueEnabled: true,
+		maxSeatsPerUser: 4,
+		saleStatus: 'ON_SALE',
+		sessions: [
+			{ id: 7, startsAt: '2026-12-12T10:00:00Z', saleStatus: 'ON_SALE', isClosed: false },
+			{ id: 8, startsAt: '2026-12-13T09:00:00Z', saleStatus: 'ON_SALE', isClosed: false }
+		]
+	};
+
+	let previewQueueState = $state<'WAITING' | 'SOLD_OUT' | 'EXPIRED'>('WAITING');
+	let previewQueueRank = $state(128);
+	const previewQueueTotal = 1200;
+	const previewQueueStatus = $derived<QueueStatusDto>({
+		state: previewQueueState,
+		rank: previewQueueRank,
+		total: previewQueueTotal,
+		etaSeconds: Math.max(5, Math.round(previewQueueRank * 1.4)),
+		pollAfterMs: 3000
+	});
+	const EMPTY_SEAT_SET = new Set<number>();
 </script>
 
 <svelte:head>
@@ -389,6 +419,85 @@
 			<p class="test-clicked">마지막 클릭: <strong>{lastClicked}</strong></p>
 		{/if}
 	</header>
+
+	<!-- 0. 콘서트 예매 대기열 프리뷰 -->
+	<section class="test-section">
+		<div class="queue-preview-bar">
+			<h2 class="section-title">Concert Booking Queue Preview (BookingPageView · phase="queue")</h2>
+			<div class="queue-preview-controls">
+				<button
+					type="button"
+					class="preview-pill"
+					class:is-active={previewQueueState === 'WAITING'}
+					onclick={() => (previewQueueState = 'WAITING')}
+				>
+					WAITING
+				</button>
+				<button
+					type="button"
+					class="preview-pill"
+					class:is-active={previewQueueState === 'SOLD_OUT'}
+					onclick={() => (previewQueueState = 'SOLD_OUT')}
+				>
+					SOLD_OUT
+				</button>
+				<button
+					type="button"
+					class="preview-pill"
+					class:is-active={previewQueueState === 'EXPIRED'}
+					onclick={() => (previewQueueState = 'EXPIRED')}
+				>
+					EXPIRED
+				</button>
+
+				{#if previewQueueState === 'WAITING'}
+					<label class="rank-slider">
+						<span>순번: {previewQueueRank}</span>
+						<input type="range" min="1" max={previewQueueTotal} bind:value={previewQueueRank} />
+					</label>
+				{/if}
+			</div>
+		</div>
+
+		<div class="queue-preview-frame">
+			<BookingPageView
+				mobile={false}
+				phase="queue"
+				errorMessage={null}
+				concert={MOCK_BOOKING_CONCERT}
+				selectedSession={MOCK_BOOKING_CONCERT.sessions[0]}
+				selectedSessionId={7}
+				queueStatus={previewQueueStatus}
+				seatMap={null}
+				isLoadingSeats={false}
+				activeFloorId=""
+				selectedSeats={[]}
+				selectedSeatIds={EMPTY_SEAT_SET}
+				maxSeats={4}
+				totalPrice={0}
+				isCreatingBooking={false}
+				pendingBooking={null}
+				remainingSec={null}
+				isCancellingHold={false}
+				isMountingWidget={false}
+				isWidgetReady={false}
+				widgetError={null}
+				isRequestingPayment={false}
+				onSelectFloor={() => {}}
+				onChangeSession={() => {}}
+				onToggleSeat={() => {}}
+				onRemoveSeat={() => {}}
+				onRefreshSeats={() => {}}
+				onCreateBooking={() => {}}
+				onRequestPayment={() => {}}
+				onRetryWidget={() => {}}
+				onReturnToSeats={() => {}}
+				onGoBack={() => {
+					lastClicked = '[Queue Preview] 공연 상세로 돌아가기';
+				}}
+			/>
+		</div>
+	</section>
 
 	<!-- 1. PC 앨범 아이템 -->
 	<section class="test-section">
@@ -482,6 +591,61 @@
 		font-size: 1.12rem;
 		font-weight: var(--fw-bold);
 		color: var(--white);
+	}
+
+	.queue-preview-bar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+
+	.queue-preview-bar .section-title {
+		margin: 0;
+	}
+
+	.queue-preview-controls {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.45rem;
+	}
+
+	.preview-pill {
+		height: 30px;
+		padding: 0 0.7rem;
+		border: var(--thin-border);
+		border-radius: 999px;
+		background: transparent;
+		color: var(--muted);
+		font: inherit;
+		font-size: 0.78rem;
+		cursor: pointer;
+	}
+
+	.preview-pill.is-active {
+		background: var(--white);
+		border-color: var(--white);
+		color: var(--bg);
+		font-weight: var(--fw-semibold);
+	}
+
+	.rank-slider {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.78rem;
+		color: var(--muted);
+		margin-left: 0.35rem;
+	}
+
+	.queue-preview-frame {
+		border: var(--thin-border);
+		border-radius: 18px;
+		background: var(--bg);
+		overflow: hidden;
 	}
 
 	.pc-grid {

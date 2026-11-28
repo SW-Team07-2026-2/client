@@ -4,7 +4,7 @@
 	import ConcertDetail from './design/ConcertDetail.svelte';
 
 	interface Props {
-		id: number;
+		id: number | null;
 		mobile: boolean;
 		backLabel?: string;
 		onClose: () => void;
@@ -16,7 +16,9 @@
 	const waveActive = $derived(detailOverlay.getSlot('concert').phase === 'open');
 
 	$effect(() => {
-		controller.load(id);
+		if (id !== null && id > 0) {
+			controller.load(id);
+		}
 	});
 </script>
 
@@ -36,6 +38,8 @@
 	price={controller.price}
 	queueEnabled={controller.queueEnabled}
 	maxSeatsPerUser={controller.maxSeatsPerUser}
+	sessions={controller.sessions}
+	selectedSessionId={controller.selectedSessionId}
 	ctaLabel={controller.ctaLabel}
 	artists={controller.artists}
 	venue={controller.venue}
@@ -50,6 +54,7 @@
 	{backLabel}
 	{onClose}
 	onGoToArtist={controller.goToArtist}
+	onSelectSession={controller.selectSession}
 	onStartBooking={controller.startBooking}
 	onShareLink={controller.shareLink}
 />

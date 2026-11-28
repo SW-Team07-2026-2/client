@@ -391,8 +391,16 @@ export class CheckoutPageController {
 	};
 
 	private validateShipping(): string | null {
-		if (!this.shipping.recipientName.trim()) return '수령인 이름을 입력해 주세요.';
-		if (!this.shipping.phone.trim()) return '연락처를 입력해 주세요.';
+		const name = this.shipping.recipientName.trim();
+		if (!name) return '수령인 이름을 입력해 주세요.';
+		if (name.length > SHIPPING_RECIPIENT_MAX_LENGTH) {
+			return `수령인 이름은 최대 ${SHIPPING_RECIPIENT_MAX_LENGTH}자까지 입력할 수 있습니다.`;
+		}
+		const phoneDigits = this.shipping.phone.replace(/\D/g, '');
+		if (!phoneDigits) return '연락처를 입력해 주세요.';
+		if (!/^0\d{8,10}$/.test(phoneDigits)) {
+			return '올바른 연락처를 입력해 주세요. (0으로 시작하는 9~11자리 숫자)';
+		}
 		const zone = this.shipping.zonecode.trim();
 		if (!/^\d{5}$/.test(zone)) return '우편번호 5자리를 입력해 주세요.';
 		if (!this.shipping.address.trim()) return '기본 주소를 입력해 주세요.';

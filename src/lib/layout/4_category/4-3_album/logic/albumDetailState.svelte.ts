@@ -141,6 +141,13 @@ class AlbumDetailStateStore {
 			void runWorker();
 		}
 	}
+
+	/** 보유 음반(콜렉션) 등록·해제 시 증가하는 전역 리비전 (마이페이지 즉시 동기화용) */
+	collectionRevision = $state(0);
+
+	notifyCollectionChanged(): void {
+		this.collectionRevision += 1;
+	}
 }
 
 export const albumDetailState = new AlbumDetailStateStore();

@@ -4,22 +4,26 @@
 	import { detailSlideMotion } from '../logic/detailTransition';
 
 	interface Props {
-		itemId: number;
+		itemId: number | null;
 		phase: DetailPhase;
 		onExpandFinish: () => void;
 		onCloseFinish: () => void;
 		onClose: () => void;
-		children: Snippet<[{ id: number; close: () => void; mobile: boolean }]>;
+		children: Snippet<[{ id: number | null; close: () => void; mobile: boolean }]>;
 	}
 
 	let { itemId, phase, onExpandFinish, onCloseFinish, onClose, children }: Props = $props();
+	const isParked = $derived(phase === 'closed' || itemId === null);
 </script>
 
-<!-- PC 전용 상세 프레임: 안착(open) 시 일반 문서 흐름(window 스크롤) · 열기/닫기 시 GPU 슬라이드 업/다운 -->
+<!-- PC 전용 상세 프레임: 안착(open) 시 일반 문서 흐름(window 스크롤) · 열기/닫기 시 GPU 슬라이드 업/다운 · 닫힘 시 Keep-Alive 파킹 -->
 <div
 	use:detailSlideMotion={{ phase, onExpandFinish, onCloseFinish }}
 	class="pc-detail-frame"
 	class:is-transitioning={phase === 'expanding' || phase === 'closing'}
+	class:is-parked={isParked}
+	inert={isParked ? true : undefined}
+	aria-hidden={isParked ? true : undefined}
 	data-detail-phase={phase}
 	role="region"
 	aria-label="상세 페이지"
@@ -53,6 +57,10 @@
 		overflow: hidden;
 		pointer-events: none;
 		will-change: transform, opacity;
+	}
+
+	.pc-detail-frame.is-parked {
+		display: none;
 	}
 
 	.pc-detail-body {

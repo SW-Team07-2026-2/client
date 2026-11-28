@@ -1,7 +1,7 @@
 <script lang="ts">
 	import SpringDropdown, {
 		type SpringDropdownOption
-	} from '../../../4_category/_shared/design/SpringDropdown.svelte';
+	} from '#lib/common/design/SpringDropdown.svelte';
 	import { FEED_SEGMENT_ITEMS } from '../../logic/contentSection.svelte';
 
 	interface Props {

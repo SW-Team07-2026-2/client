@@ -1,10 +1,21 @@
 <script lang="ts">
+	import { RefreshCcwIcon } from '#lib/common/design/icon';
+
 	interface Props {
 		botName: string;
+		showRefresh?: boolean;
+		onRefresh?: () => void;
 		onClose?: () => void;
 	}
 
-	let { botName, onClose }: Props = $props();
+	let { botName, showRefresh = false, onRefresh, onClose }: Props = $props();
+	let refreshHovered = $state(false);
+	let refreshIconRef = $state<{ rotate?: () => void } | null>(null);
+
+	function handleRefreshClick() {
+		refreshIconRef?.rotate?.();
+		onRefresh?.();
+	}
 </script>
 
 <!-- PC 채팅 영역 상단 헤더 (순수 렌더링) -->
@@ -16,11 +27,27 @@
 		<span class="bot-title">{botName}</span>
 	</div>
 
-	<button type="button" class="chat-close-btn" onclick={onClose} aria-label="대화창 닫기">
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-		</svg>
-	</button>
+	<div class="header-actions">
+		{#if showRefresh}
+			<button
+				type="button"
+				class="chat-action-btn"
+				onclick={handleRefreshClick}
+				onpointerenter={() => (refreshHovered = true)}
+				onpointerleave={() => (refreshHovered = false)}
+				aria-label="대화 새로고침"
+				title="새로고침"
+			>
+				<RefreshCcwIcon bind:this={refreshIconRef} size={16} strokeWidth={2} hovered={refreshHovered} />
+			</button>
+		{/if}
+
+		<button type="button" class="chat-action-btn" onclick={onClose} aria-label="대화창 닫기">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+			</svg>
+		</button>
+	</div>
 </header>
 
 <style>
@@ -61,28 +88,38 @@
 		letter-spacing: -0.01em;
 	}
 
-	.chat-close-btn {
+	.header-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		flex-shrink: 0;
+	}
+
+	.chat-action-btn {
 		pointer-events: auto;
 		width: 32px;
 		height: 32px;
 		border-radius: 10px;
 		background: transparent;
 		border: none;
-		color: #b9b9b9;
+		color: var(--muted);
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		transition: all 0.15s ease;
+		transition:
+			background-color 0.15s ease,
+			color 0.15s ease,
+			transform 0.15s ease;
 	}
 
-	.chat-close-btn:hover {
-		background: rgba(255, 255, 255, 0.1);
-		color: var(--white, #ffffff);
+	.chat-action-btn:hover {
+		background: color-mix(in srgb, var(--white) 10%, transparent);
+		color: var(--white);
 		transform: scale(1.05);
 	}
 
-	.chat-close-btn svg {
+	.chat-action-btn svg {
 		width: 18px;
 		height: 18px;
 	}

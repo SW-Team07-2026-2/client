@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { ArrowLeftIcon, ChevronLeftIcon } from './icon';
 
 	interface Props {
 		/** 모바일 여부 (목록 복귀 시 PC: ArrowLeft, 모바일: ChevronLeft) */
@@ -66,36 +67,9 @@
 				</g>
 			</svg>
 		{:else if mobile}
-			<svg
-				width="24"
-				height="24"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				aria-hidden="true"
-			>
-				<path class="chevron-path" d="m15 18-6-6 6-6" />
-			</svg>
+			<ChevronLeftIcon size={24} hovered={backHovered} />
 		{:else}
-			<svg
-				width="22"
-				height="22"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				aria-hidden="true"
-			>
-				<g class="arrow-group">
-					<path d="M19 12H5" />
-					<path d="m12 19-7-7 7-7" />
-				</g>
-			</svg>
+			<ArrowLeftIcon size={22} hovered={backHovered} />
 		{/if}
 	</button>
 
@@ -186,29 +160,6 @@
 		border-radius: 8px;
 	}
 
-	/* 모바일 ChevronLeft 호버 애니메이션: x: 0 -> -4 (0.3s ease-in-out) */
-	.chevron-path {
-		transform: translateX(0);
-		transition: transform 0.3s ease-in-out;
-	}
-
-	.nav-icon-btn.is-back:hover .chevron-path,
-	.nav-icon-btn.is-back:focus-visible .chevron-path {
-		transform: translateX(-4px);
-	}
-
-	/* PC ArrowLeft 호버 애니메이션: group x: 0 -> -25% (0.3s ease-in-out) */
-	.arrow-group {
-		transform-box: fill-box;
-		transform: translateX(0);
-		transition: transform 0.3s ease-in-out;
-	}
-
-	.nav-icon-btn.is-back:hover .arrow-group,
-	.nav-icon-btn.is-back:focus-visible .arrow-group {
-		transform: translateX(-25%);
-	}
-
 	/* 다른 페이지 복귀 Redo2 호버 애니메이션: rotate [0 -> 10deg -> 0] (0.6s ease-in-out) */
 	.redo-group {
 		transform-box: fill-box;
@@ -276,18 +227,6 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.chevron-path,
-		.arrow-group {
-			transition: none;
-		}
-
-		.nav-icon-btn.is-back:hover .chevron-path,
-		.nav-icon-btn.is-back:focus-visible .chevron-path,
-		.nav-icon-btn.is-back:hover .arrow-group,
-		.nav-icon-btn.is-back:focus-visible .arrow-group {
-			transform: none;
-		}
-
 		.nav-icon-btn.is-back.is-hovered .redo-group,
 		.nav-icon-btn.is-share.is-hovered .share-shaft,
 		.nav-icon-btn.is-share.is-hovered .share-head {

@@ -8,7 +8,7 @@
 
 	interface Props {
 		category: CatalogCategoryKey;
-		id: number;
+		id: number | null;
 		mobile: boolean;
 		backLabel?: string;
 		onClose: () => void;

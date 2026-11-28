@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
 	import { auth } from '#lib/auth';
+	import PullToRefreshIndicator from '#lib/common/design/PullToRefreshIndicator.svelte';
+	import {
+		attachMobilePullToRefresh,
+		type PullToRefreshState
+	} from '#lib/common/logic/pullToRefresh';
 	import { ChatBotController } from './logic/chatBot.svelte';
 	import { DEFAULT_CHAT_API_URL } from './logic/chatStream';
 	import Bot, { type BotState } from './design/Bot.svelte';
@@ -47,8 +52,41 @@
 	let panelEl: HTMLDivElement | null = $state(null);
 	let homeAnchorEl: HTMLDivElement | null = $state(null);
 	let messageContainerEl: HTMLDivElement | null = $state(null);
-	let chatInputEl: HTMLInputElement | undefined = $state(undefined);
+	let chatInputEl: HTMLTextAreaElement | undefined = $state(undefined);
 	let botFlyTransform = $state('translate3d(0, 0, 0) scale(1)');
+	let inputDeckHeight = $state(112);
+	let isMobileKeyboardOpen = $state(false);
+	let ptrState = $state<PullToRefreshState>({
+		pullPx: 0,
+		progress: 0,
+		ready: false,
+		refreshing: false
+	});
+
+	function handleInputDeckHeightChange(nextHeight: number) {
+		if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
+		const prevHeight = inputDeckHeight;
+		if (nextHeight === prevHeight) return;
+
+		const delta = nextHeight - prevHeight;
+		const container = messageContainerEl;
+		const wasNearBottom = container
+			? container.scrollHeight - container.scrollTop - container.clientHeight <= 120
+			: false;
+
+		inputDeckHeight = nextHeight;
+
+		if (container && delta !== 0 && (delta > 0 || wasNearBottom)) {
+			void tick().then(() => {
+				if (!messageContainerEl) return;
+				if (delta > 0) {
+					messageContainerEl.scrollTop += delta;
+				} else if (wasNearBottom) {
+					messageContainerEl.scrollTop = messageContainerEl.scrollHeight;
+				}
+			});
+		}
+	}
 
 	async function scrollToBottom(smooth = true) {
 		await tick();
@@ -134,6 +172,45 @@
 		}
 	});
 
+	$effect(() => {
+		if (!embedded || !open || typeof window === 'undefined') {
+			isMobileKeyboardOpen = false;
+			return;
+		}
+		const vv = window.visualViewport;
+		if (!vv) return;
+
+		let prevVvHeight = vv.height;
+		const handleVvResize = () => {
+			const nextH = vv.height;
+			isMobileKeyboardOpen = window.innerHeight - nextH > 100;
+			if (nextH < prevVvHeight - 40) {
+				void scrollToBottom(false);
+			}
+			prevVvHeight = nextH;
+		};
+		handleVvResize();
+		vv.addEventListener('resize', handleVvResize);
+		return () => {
+			vv.removeEventListener('resize', handleVvResize);
+		};
+	});
+
+	$effect(() => {
+		if (!embedded || !open || !messageContainerEl) {
+			ptrState = { pullPx: 0, progress: 0, ready: false, refreshing: false };
+			return;
+		}
+		return attachMobilePullToRefresh({
+			target: messageContainerEl,
+			canStart: () => embedded && open && !ctrl.isGenerating,
+			onStateChange: (next) => {
+				ptrState = next;
+			},
+			onRefresh: () => ctrl.refreshChatHistory(true)
+		});
+	});
+
 	onMount(() => {
 		updatePcBotPosition();
 		const handleResize = () => updatePcBotPosition();
@@ -169,14 +246,19 @@
 			return;
 		}
 
+		const isBusyThinking =
+			ctrl.isGenerating || ctrl.botState === 'thinking' || ctrl.botState === 'talking';
+
 		if (!open) {
 			open = true;
-			botRef?.wink?.('right');
-			ctrl.triggerHappy(1000);
+			if (!isBusyThinking) {
+				botRef?.wink?.('right');
+				ctrl.triggerHappy(1000);
+			}
 			void scrollToBottom(false);
 			setTimeout(() => void scrollToBottom(false), 120);
 			setTimeout(() => void scrollToBottom(false), 450);
-		} else {
+		} else if (!isBusyThinking) {
 			botRef?.wink?.('left');
 			ctrl.triggerHappy(1000);
 		}
@@ -201,10 +283,23 @@
 
 {#if embedded}
 	<!-- 모바일 MbShellStage 좌측 패널 전용 (자체 MbChatHeader + 채팅 + MbChatInput 소유) -->
-	<section class="embedded-chat-root {className}" aria-label="{botName} 대화창">
+	<section
+		class="embedded-chat-root {className}"
+		class:is-keyboard-open={isMobileKeyboardOpen}
+		aria-label="{botName} 대화창"
+	>
 		<MbChatHeader {botName} onClose={handleClose} />
 
 		<div class="embedded-chat-stage">
+			<PullToRefreshIndicator
+				pullPx={ptrState.pullPx}
+				progress={ptrState.progress}
+				ready={ptrState.ready}
+				refreshing={ptrState.refreshing}
+				position="absolute"
+				top="2px"
+			/>
+
 			<ChatMessages
 				bind:containerEl={messageContainerEl}
 				messages={ctrl.messages}
@@ -215,23 +310,27 @@
 				isServiceUnavailable={ctrl.isServiceUnavailable}
 				serviceErrorStatus={ctrl.serviceErrorStatus}
 				hasAttachments={ctrl.attachedFiles.length > 0}
+				bottomInset={inputDeckHeight}
+				disableTopFade={true}
+				isRefreshing={ctrl.isRefreshing}
 				onAction={ctrl.handleActionClick}
 			/>
 
-			{#if !ctrl.isServiceUnavailable}
-				<MbChatInput
-					value={ctrl.inputText}
-					attachedFiles={ctrl.attachedFiles}
-					canSubmit={ctrl.canSubmit}
-					maxLength={ctrl.maxLength}
-					bind:inputEl={chatInputEl}
-					onChangeValue={ctrl.setInputText}
-					onAddFiles={ctrl.addFiles}
-					onRemoveAttachment={ctrl.removeAttachment}
-					onSend={handleSend}
-					onClose={handleClose}
-				/>
-			{/if}
+			<MbChatInput
+				value={ctrl.inputText}
+				attachedFiles={ctrl.attachedFiles}
+				canSubmit={ctrl.canSubmit}
+				disabled={ctrl.isServiceUnavailable}
+				placeholder={ctrl.isServiceUnavailable ? '지금은 잠시 대화가 어려워요...' : undefined}
+				maxLength={ctrl.maxLength}
+				bind:inputEl={chatInputEl}
+				onChangeValue={ctrl.setInputText}
+				onAddFiles={ctrl.addFiles}
+				onRemoveAttachment={ctrl.removeAttachment}
+				onSend={handleSend}
+				onClose={handleClose}
+				onHeightChange={handleInputDeckHeightChange}
+			/>
 		</div>
 	</section>
 {:else}
@@ -247,7 +346,12 @@
 			aria-modal="true"
 		>
 			<div class="panel-inner-content" class:visible={open}>
-				<PcChatHeader {botName} onClose={handleClose} />
+				<PcChatHeader
+					{botName}
+					showRefresh={ctrl.hasErrorState}
+					onRefresh={() => ctrl.refreshChatHistory(true)}
+					onClose={handleClose}
+				/>
 
 				<ChatMessages
 					bind:containerEl={messageContainerEl}
@@ -259,23 +363,26 @@
 					isServiceUnavailable={ctrl.isServiceUnavailable}
 					serviceErrorStatus={ctrl.serviceErrorStatus}
 					hasAttachments={ctrl.attachedFiles.length > 0}
+					bottomInset={inputDeckHeight}
+					isRefreshing={ctrl.isRefreshing}
 					onAction={ctrl.handleActionClick}
 				/>
 
-				{#if !ctrl.isServiceUnavailable}
-					<PcChatInput
-						value={ctrl.inputText}
-						attachedFiles={ctrl.attachedFiles}
-						canSubmit={ctrl.canSubmit}
-						maxLength={ctrl.maxLength}
-						bind:inputEl={chatInputEl}
-						onChangeValue={ctrl.setInputText}
-						onAddFiles={ctrl.addFiles}
-						onRemoveAttachment={ctrl.removeAttachment}
-						onSend={handleSend}
-						onClose={handleClose}
-					/>
-				{/if}
+				<PcChatInput
+					value={ctrl.inputText}
+					attachedFiles={ctrl.attachedFiles}
+					canSubmit={ctrl.canSubmit}
+					disabled={ctrl.isServiceUnavailable}
+					placeholder={ctrl.isServiceUnavailable ? '지금은 잠시 대화가 어려워요...' : undefined}
+					maxLength={ctrl.maxLength}
+					bind:inputEl={chatInputEl}
+					onChangeValue={ctrl.setInputText}
+					onAddFiles={ctrl.addFiles}
+					onRemoveAttachment={ctrl.removeAttachment}
+					onSend={handleSend}
+					onClose={handleClose}
+					onHeightChange={handleInputDeckHeightChange}
+				/>
 			</div>
 		</div>
 
@@ -310,7 +417,7 @@
 	.embedded-chat-root {
 		position: relative;
 		width: 100%;
-		height: 100dvh;
+		height: 100%;
 		padding-top: env(safe-area-inset-top, 0px);
 		padding-bottom: env(safe-area-inset-bottom, 0px);
 		box-sizing: border-box;
@@ -318,6 +425,10 @@
 		flex-direction: column;
 		background: var(--bg);
 		overflow: hidden;
+	}
+
+	.embedded-chat-root.is-keyboard-open {
+		padding-bottom: 0;
 	}
 
 	.embedded-chat-stage {

@@ -266,5 +266,69 @@
 	:global(.bot-md-content .md-table-wrap::-webkit-scrollbar-thumb:hover) {
 		background: rgba(255, 255, 255, 0.25);
 	}
+
+	/* LaTeX 수식 렌더링 스타일 */
+	:global(.bot-md-content .md-math-inline) {
+		font-family: 'Cambria Math', 'Times New Roman', Georgia, serif;
+		font-size: 1.02em;
+		letter-spacing: 0.01em;
+		color: var(--white-2);
+	}
+
+	:global(.bot-md-content .md-math-block) {
+		margin: 0.75rem 0;
+		padding: 0.7rem 1rem;
+		border-radius: 10px;
+		background: color-mix(in srgb, var(--white) 5%, transparent);
+		text-align: center;
+		overflow-x: auto;
+		font-family: 'Cambria Math', 'Times New Roman', Georgia, serif;
+		font-size: 1.08rem;
+		line-height: 1.6;
+		color: var(--white);
+	}
+
+	:global(.bot-md-content .md-math-var) {
+		font-style: italic;
+	}
+
+	:global(.bot-md-content .md-math-text) {
+		font-style: normal;
+	}
+
+	:global(.bot-md-content .md-math-op) {
+		margin: 0 0.14em;
+		font-style: normal;
+	}
+
+	:global(.bot-md-content .md-frac) {
+		display: inline-flex;
+		flex-direction: column;
+		align-items: center;
+		vertical-align: middle;
+		margin: 0 0.2em;
+		font-size: 0.88em;
+		line-height: 1.15;
+	}
+
+	:global(.bot-md-content .md-frac-num) {
+		padding: 0 0.2em 0.1em;
+		border-bottom: 1px solid currentColor;
+	}
+
+	:global(.bot-md-content .md-frac-den) {
+		padding: 0.1em 0.2em 0;
+	}
+
+	:global(.bot-md-content .md-sqrt) {
+		display: inline-flex;
+		align-items: baseline;
+	}
+
+	:global(.bot-md-content .md-sqrt-inner) {
+		border-top: 1px solid currentColor;
+		padding: 0 0.12em;
+		margin-left: 0.04em;
+	}
 </style>
 

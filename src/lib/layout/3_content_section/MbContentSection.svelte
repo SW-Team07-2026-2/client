@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { getMainSectionContext } from '../2_main_section/logic/context';
 	import type { MainSectionDescriptor } from '../2_main_section/logic/sectionRegistry';
 	import { CategoryDetailView, CategoryView } from '../4_category';
@@ -35,6 +35,14 @@
 
 	const isSliding = $derived(mainSectionCtx?.isSlidingOrSwiping() ?? false);
 	const listScrollY = $derived(mainSectionCtx?.getSectionListScrollY(section.key) ?? 0);
+	let detailShellReady = $state(false);
+
+	onMount(() => {
+		const timer = setTimeout(() => {
+			detailShellReady = true;
+		}, 250);
+		return () => clearTimeout(timer);
+	});
 
 	$effect.pre(() => {
 		detailCtrl?.sync(active, detailId, true, isSliding);
@@ -62,13 +70,6 @@
 		class="mb-content-list-area"
 		class:has-pinned-control={section.supportsOptions}
 	>
-		{#if !section.supportsOptions}
-			<header class="mb-mypage-heading">
-				<h1>{section.title}</h1>
-				<p>{section.description}</p>
-			</header>
-		{/if}
-
 		<CategoryView {section} {active} />
 	</div>
 
@@ -86,16 +87,18 @@
 		/>
 	{/if}
 
-	{#if detailCtrl && filterableKey && detailCtrl.isVisible && detailCtrl.renderId !== null}
-		{@const currentDetailId = detailCtrl.renderId}
+	{#if detailCtrl && filterableKey && (detailShellReady || (detailCtrl.isVisible && detailCtrl.renderId !== null))}
+		{@const currentDetailId = detailCtrl.isVisible ? detailCtrl.renderId : null}
 		<MbDetailFrame
 			itemId={currentDetailId}
 			phase={detailCtrl.phase}
 			{active}
 			sliding={isSliding}
 			{listScrollY}
-			savedScrollTop={detailCtrl.getScrollTop(currentDetailId)}
-			onScrollChange={(top) => detailCtrl.saveScrollTop(currentDetailId, top)}
+			savedScrollTop={currentDetailId !== null ? detailCtrl.getScrollTop(currentDetailId) : 0}
+			onScrollChange={(top) => {
+				if (currentDetailId !== null) detailCtrl.saveScrollTop(currentDetailId, top);
+			}}
 			onExpandFinish={detailCtrl.finishExpand}
 			onCloseFinish={detailCtrl.finishClose}
 			onClose={detailCtrl.close}
@@ -128,22 +131,5 @@
 
 	.mb-content-list-area.has-pinned-control {
 		padding-top: var(--pc-pinned-control-height, 72px);
-	}
-
-	.mb-mypage-heading {
-		margin-bottom: 1rem;
-	}
-
-	.mb-mypage-heading h1 {
-		margin: 0;
-		font-size: 1.45rem;
-		font-weight: var(--fw-bold);
-		color: var(--white);
-	}
-
-	.mb-mypage-heading p {
-		margin: 0.3rem 0 0;
-		font-size: 0.85rem;
-		color: var(--muted);
 	}
 </style>

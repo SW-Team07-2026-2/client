@@ -4,6 +4,7 @@
 	import type { LayoutProps } from './$types';
 	import { onNavigate } from '$app/navigation';
 	import { page } from '$app/state';
+	import AlertDialogViewport from '#lib/common/design/dialog/AlertDialogViewport.svelte';
 	import ToastViewport from '#lib/common/design/toast/ToastViewport.svelte';
 	import { isMobile, useAnalytics } from '#lib/common/logic';
 	import {
@@ -108,5 +109,7 @@
 		ondone={handleSplashDone}
 	/>
 {/if}
+
+<AlertDialogViewport />
 
 <ToastViewport swipeDirection={['down', 'left']} progressBar={true} />
