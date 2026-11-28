@@ -34,11 +34,23 @@
 		payFlow?: Snippet<[{ active: boolean }]>;
 		/** 현재 라우트가 장바구니 · 주문/결제 플로우인지 여부 */
 		payFlowActive?: boolean;
+		/** Keep-Alive로 유지되는 PC 알림함(/alert) 슬롯 */
+		alertFlow?: Snippet<[{ active: boolean }]>;
+		/** 현재 라우트가 PC 알림함인지 여부 */
+		alertFlowActive?: boolean;
 		/** 메인 레지스트리에 속하지 않는 예외 라우트 폴백 슬롯 */
 		children?: Snippet;
 	}
 
-	let { pinnedHeader, pinnedControl, payFlow, payFlowActive = false, children }: Props = $props();
+	let {
+		pinnedHeader,
+		pinnedControl,
+		payFlow,
+		payFlowActive = false,
+		alertFlow,
+		alertFlowActive = false,
+		children
+	}: Props = $props();
 
 	const ctrl = new MainSectionController();
 	let stageEl = $state<HTMLDivElement | undefined>(undefined);
@@ -318,7 +330,19 @@
 			</div>
 		{/if}
 
-		{#if ctrl.activeSection === null && !payFlowActive && children}
+		{#if alertFlow}
+			<div
+				class="alert-flow-keepalive"
+				class:is-active={alertFlowActive}
+				class:is-parked={!alertFlowActive}
+				inert={!alertFlowActive ? true : undefined}
+				aria-hidden={!alertFlowActive ? true : undefined}
+			>
+				{@render alertFlow({ active: alertFlowActive })}
+			</div>
+		{/if}
+
+		{#if ctrl.activeSection === null && !payFlowActive && !alertFlowActive && children}
 			<div use:bindFallbackPane class="fallback-route-pane">
 				{@render children()}
 			</div>
@@ -440,8 +464,16 @@
 		contain: style;
 	}
 
-	.pay-flow-keepalive.is-parked {
+	.pay-flow-keepalive.is-parked,
+	.alert-flow-keepalive.is-parked {
 		display: none;
+	}
+
+	.alert-flow-keepalive {
+		position: relative;
+		z-index: 2;
+		width: 100%;
+		contain: style;
 	}
 
 	/* Keep-Alive 장바구니/결제 퇴장 시 cloneNode 없이 라이브 패널을 100dvh 커튼으로 잘라 위로 퇴장 */

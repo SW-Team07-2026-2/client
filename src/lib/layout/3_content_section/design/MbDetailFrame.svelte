@@ -32,7 +32,8 @@
 	}: Props = $props();
 
 	let scrollBodyEl = $state<HTMLDivElement | null>(null);
-	const isShown = $derived(active || sliding);
+	const isParked = $derived(phase === 'closed' || itemId === null);
+	const isShown = $derived(!isParked && (active || sliding));
 	let restoringScroll = false;
 
 	// Keep-Alive 파킹(display: none) 해제, 아이템 전환, 또는 슬라이드 종료(absolute -> fixed 레이어 전환) 시
@@ -88,6 +89,9 @@
 	class="mb-detail-frame"
 	class:is-sliding={sliding}
 	class:is-transitioning={phase === 'expanding' || phase === 'closing'}
+	class:is-parked={isParked}
+	inert={isParked ? true : undefined}
+	aria-hidden={isParked ? true : undefined}
 	style:top={sliding ? `${listScrollY - 60}px` : undefined}
 	data-detail-phase={phase}
 	role="region"
@@ -123,6 +127,10 @@
 
 	.mb-detail-frame.is-transitioning {
 		pointer-events: none;
+	}
+
+	.mb-detail-frame.is-parked {
+		display: none;
 	}
 
 	.mb-detail-scroll-body {

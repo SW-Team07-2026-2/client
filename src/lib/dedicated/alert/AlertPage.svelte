@@ -1,17 +1,37 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { isMobile } from '#lib/common/logic';
 	import PcAlertView from './design/pc/PcAlertView.svelte';
 	import { AlertController } from './logic/alert.svelte';
 
+	interface Props {
+		/** Keep-Alive 파킹 중에는 false, 실제 /alert 활성 시 true */
+		active?: boolean;
+	}
+
+	let { active = true }: Props = $props();
+
 	const ctrl = new AlertController();
 	const mobile = $derived(isMobile.current);
+	let hasLoaded = false;
+	let wasActive = untrack(() => active);
 
-	onMount(() => {
-		if (!mobile) {
-			void ctrl.load();
-		}
+	$effect(() => {
+		const isNowActive = active;
+		const isMb = mobile;
+		if (isMb) return;
+
+		untrack(() => {
+			if (!hasLoaded) {
+				hasLoaded = true;
+				void ctrl.load();
+			} else if (isNowActive && !wasActive) {
+				// Keep-Alive 재진입 시 기존 목록을 즉시 표시하면서 백그라운드 갱신
+				void ctrl.load();
+			}
+			wasActive = isNowActive;
+		});
 	});
 
 	function handleBack() {

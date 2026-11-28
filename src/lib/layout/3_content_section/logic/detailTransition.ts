@@ -125,6 +125,10 @@ export function detailSlideMotion(node: HTMLElement, initialParams: DetailSlideM
 	function cancel() {
 		activeSession?.cancel();
 		activeSession = null;
+		// Keep-Alive 상세 프레임 재사용 시 이전 fill: 'forwards' 슬라이드 다운 잔존 애니메이션을 완전히 제거
+		for (const anim of node.getAnimations()) {
+			anim.cancel();
+		}
 	}
 
 	function apply(params: DetailSlideMotionParams) {
@@ -143,7 +147,6 @@ export function detailSlideMotion(node: HTMLElement, initialParams: DetailSlideM
 		if (params.phase === 'closing') {
 			cancel();
 			activeSession = runDetailSlideDown(node, () => {
-				activeSession = null;
 				params.onCloseFinish();
 			});
 			return;
